@@ -1,5 +1,5 @@
 import type { CacheFirstLoop } from "../../loop.js";
-import { listSessions } from "../../session.js";
+import { deleteSession, listSessions } from "../../session.js";
 
 export interface SlashResult {
   /** Text to display back to the user as a system/info line. */
@@ -40,8 +40,9 @@ export function handleSlash(cmd: string, args: string[], loop: CacheFirstLoop): 
           "  /model <id>              deepseek-chat or deepseek-reasoner",
           "  /harvest [on|off]        Pillar 2: structured plan-state extraction",
           "  /branch <N|off>          run N parallel samples (N>=2), pick most confident",
-          "  /sessions                list saved sessions (on disk under ~/.reasonix/sessions)",
-          "  /clear                   clear displayed history (log is kept)",
+          "  /sessions                list saved sessions (current is marked with ▸)",
+          "  /forget                  delete the current session from disk",
+          "  /clear                   clear displayed history (log + session kept)",
           "  /exit                    quit",
           "",
           "Presets:",
@@ -49,8 +50,9 @@ export function handleSlash(cmd: string, args: string[], loop: CacheFirstLoop): 
           "  smart  reasoner        harvest                  ~10x cost, slower",
           "  max    reasoner        harvest     branch 3     ~30x cost, slowest",
           "",
-          "Sessions:",
-          "  reasonix chat --session <name>   resume or create a named session",
+          "Sessions (auto-enabled by default, named 'default'):",
+          "  reasonix chat --session <name>   use a different named session",
+          "  reasonix chat --no-session       disable persistence for this run",
         ].join("\n"),
       };
 
@@ -58,19 +60,34 @@ export function handleSlash(cmd: string, args: string[], loop: CacheFirstLoop): 
       const items = listSessions();
       if (items.length === 0) {
         return {
-          info: "no saved sessions yet — launch with `reasonix chat --session <name>` to start one",
+          info: "no saved sessions yet — chat normally and your messages will be saved automatically",
         };
       }
       const lines = ["Saved sessions:"];
       for (const s of items) {
         const sizeKb = (s.size / 1024).toFixed(1);
         const when = s.mtime.toISOString().replace("T", " ").slice(0, 16);
+        const marker = s.name === loop.sessionName ? "▸" : " ";
         lines.push(
-          `  ${s.name.padEnd(24)} ${String(s.messageCount).padStart(5)} msgs  ${sizeKb.padStart(7)} KB  ${when}`,
+          `  ${marker} ${s.name.padEnd(22)} ${String(s.messageCount).padStart(5)} msgs  ${sizeKb.padStart(7)} KB  ${when}`,
         );
       }
+      lines.push("");
       lines.push("Resume with: reasonix chat --session <name>");
       return { info: lines.join("\n") };
+    }
+
+    case "forget": {
+      if (!loop.sessionName) {
+        return { info: "not in a session — nothing to forget" };
+      }
+      const name = loop.sessionName;
+      const ok = deleteSession(name);
+      return {
+        info: ok
+          ? `▸ deleted session "${name}" — current screen still shows the conversation, but next launch starts fresh`
+          : `could not delete session "${name}" (already gone?)`,
+      };
     }
 
     case "status": {

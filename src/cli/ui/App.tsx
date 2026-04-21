@@ -65,17 +65,36 @@ export function App({ model, system, transcript, harvest, branch, session }: App
     return l;
   }, [model, system, harvest, branch, session]);
 
-  // On first mount, surface a resume banner if the session had prior messages.
-  const resumeBannerShown = useRef(false);
+  // Surface a one-time banner about session state on first mount.
+  const sessionBannerShown = useRef(false);
   useEffect(() => {
-    if (!resumeBannerShown.current && session && loop.resumedMessageCount > 0) {
-      resumeBannerShown.current = true;
+    if (sessionBannerShown.current) return;
+    sessionBannerShown.current = true;
+    if (!session) {
+      setHistorical((prev) => [
+        ...prev,
+        {
+          id: `sys-session-${Date.now()}`,
+          role: "info",
+          text: "▸ ephemeral chat (no session persistence) — drop --no-session to enable",
+        },
+      ]);
+    } else if (loop.resumedMessageCount > 0) {
       setHistorical((prev) => [
         ...prev,
         {
           id: `sys-resume-${Date.now()}`,
           role: "info",
-          text: `▸ resumed session "${session}" with ${loop.resumedMessageCount} prior messages · type /history or ask naturally`,
+          text: `▸ resumed session "${session}" with ${loop.resumedMessageCount} prior messages · /forget to start over · /sessions to list`,
+        },
+      ]);
+    } else {
+      setHistorical((prev) => [
+        ...prev,
+        {
+          id: `sys-newsession-${Date.now()}`,
+          role: "info",
+          text: `▸ session "${session}" (new) — auto-saved as you chat · /forget to delete · /sessions to list`,
         },
       ]);
     }
@@ -252,7 +271,8 @@ function CommandStrip() {
   return (
     <Box paddingX={2}>
       <Text dimColor>
-        /help · /preset {"<fast|smart|max>"} · /model · /harvest · /branch · /clear · /exit
+        /help · /preset {"<fast|smart|max>"} · /sessions · /model · /harvest · /branch · /clear ·
+        /exit
       </Text>
     </Box>
   );

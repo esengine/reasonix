@@ -73,15 +73,17 @@ Measured on live DeepSeek API:
 ### CLI
 
 ```bash
-npx reasonix chat                # just chat — everything else is inside
+npx reasonix chat                # auto-saves to session 'default'; resumes next time
+npx reasonix chat --session work # use a different named session
+npx reasonix chat --no-session   # ephemeral — nothing persisted
 npx reasonix run "ask anything"  # one-shot, streams to stdout
 npx reasonix stats session.jsonl # read back a saved transcript
-npx reasonix chat --session work # resume a named session (prior context loaded)
 ```
 
-Named sessions are persisted to `~/.reasonix/sessions/<name>.jsonl` —
-every turn's message log is appended atomically, so killing the CLI never
-loses context. Inside the TUI type `/sessions` to list what's saved.
+Sessions live as JSONL under `~/.reasonix/sessions/<name>.jsonl` — every
+turn's message log is appended atomically, so killing the CLI never loses
+context. Inside the TUI: `/sessions` to list, `/forget` to delete the
+current one.
 
 ### Inside the chat — slash commands
 

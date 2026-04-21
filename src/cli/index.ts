@@ -31,17 +31,28 @@ program
   )
   .option(
     "--session <name>",
-    "Resume or create a named session (stored under ~/.reasonix/sessions/)",
+    "Use a named session (default: 'default'). Resume the same session next time.",
   )
+  .option("--no-session", "Disable session persistence for this run (ephemeral chat)")
   .action(async (opts) => {
+    // Default behavior: every chat is auto-saved to a session named 'default'
+    // and auto-resumed next launch. Pass --no-session to opt out, or
+    // --session <name> to use a different session.
+    let session: string | undefined;
+    if (opts.session === false) {
+      session = undefined; // --no-session
+    } else if (typeof opts.session === "string" && opts.session.length > 0) {
+      session = opts.session;
+    } else {
+      session = "default";
+    }
     await chatCommand({
       model: opts.model,
       system: opts.system,
       transcript: opts.transcript,
       harvest: !!opts.harvest,
       branch: Number.isFinite(opts.branch) && opts.branch > 1 ? opts.branch : undefined,
-      session:
-        typeof opts.session === "string" && opts.session.length > 0 ? opts.session : undefined,
+      session,
     });
   });
 

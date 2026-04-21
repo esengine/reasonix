@@ -155,4 +155,22 @@ describe("handleSlash", () => {
     expect(r.info).toMatch(/smart/);
     expect(r.info).toMatch(/max/);
   });
+
+  it("/help mentions sessions", () => {
+    const r = handleSlash("help", [], makeLoop());
+    expect(r.info).toMatch(/\/sessions/);
+    expect(r.info).toMatch(/\/forget/);
+  });
+
+  it("/sessions returns a hint when none exist", () => {
+    const r = handleSlash("sessions", [], makeLoop());
+    expect(r.info).toMatch(/no saved sessions yet|Saved sessions/);
+  });
+
+  it("/forget on a session-less loop says nothing to forget", () => {
+    const loop = makeLoop();
+    expect(loop.sessionName).toBeNull();
+    const r = handleSlash("forget", [], loop);
+    expect(r.info).toMatch(/nothing to forget/);
+  });
 });
