@@ -29,6 +29,10 @@ program
     "Self-consistency: run N parallel samples per turn and pick the most confident (disables streaming; enables harvest)",
     (v) => Number.parseInt(v, 10),
   )
+  .option(
+    "--session <name>",
+    "Resume or create a named session (stored under ~/.reasonix/sessions/)",
+  )
   .action(async (opts) => {
     await chatCommand({
       model: opts.model,
@@ -36,6 +40,8 @@ program
       transcript: opts.transcript,
       harvest: !!opts.harvest,
       branch: Number.isFinite(opts.branch) && opts.branch > 1 ? opts.branch : undefined,
+      session:
+        typeof opts.session === "string" && opts.session.length > 0 ? opts.session : undefined,
     });
   });
 

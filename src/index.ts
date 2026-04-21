@@ -51,6 +51,17 @@ export type {
 export { harvest, emptyPlanState, isPlanStateEmpty } from "./harvest.js";
 export type { TypedPlanState, HarvestOptions } from "./harvest.js";
 
+export {
+  appendSessionMessage,
+  deleteSession,
+  listSessions,
+  loadSessionMessages,
+  sanitizeName as sanitizeSessionName,
+  sessionPath,
+  sessionsDir,
+} from "./session.js";
+export type { SessionInfo } from "./session.js";
+
 export { loadDotenv } from "./env.js";
 
 export { fetchWithRetry } from "./retry.js";

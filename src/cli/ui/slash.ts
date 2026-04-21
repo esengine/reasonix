@@ -1,4 +1,5 @@
 import type { CacheFirstLoop } from "../../loop.js";
+import { listSessions } from "../../session.js";
 
 export interface SlashResult {
   /** Text to display back to the user as a system/info line. */
@@ -39,6 +40,7 @@ export function handleSlash(cmd: string, args: string[], loop: CacheFirstLoop): 
           "  /model <id>              deepseek-chat or deepseek-reasoner",
           "  /harvest [on|off]        Pillar 2: structured plan-state extraction",
           "  /branch <N|off>          run N parallel samples (N>=2), pick most confident",
+          "  /sessions                list saved sessions (on disk under ~/.reasonix/sessions)",
           "  /clear                   clear displayed history (log is kept)",
           "  /exit                    quit",
           "",
@@ -46,8 +48,30 @@ export function handleSlash(cmd: string, args: string[], loop: CacheFirstLoop): 
           "  fast   deepseek-chat   no harvest  no branch    ~1¢/100turns  ← default",
           "  smart  reasoner        harvest                  ~10x cost, slower",
           "  max    reasoner        harvest     branch 3     ~30x cost, slowest",
+          "",
+          "Sessions:",
+          "  reasonix chat --session <name>   resume or create a named session",
         ].join("\n"),
       };
+
+    case "sessions": {
+      const items = listSessions();
+      if (items.length === 0) {
+        return {
+          info: "no saved sessions yet — launch with `reasonix chat --session <name>` to start one",
+        };
+      }
+      const lines = ["Saved sessions:"];
+      for (const s of items) {
+        const sizeKb = (s.size / 1024).toFixed(1);
+        const when = s.mtime.toISOString().replace("T", " ").slice(0, 16);
+        lines.push(
+          `  ${s.name.padEnd(24)} ${String(s.messageCount).padStart(5)} msgs  ${sizeKb.padStart(7)} KB  ${when}`,
+        );
+      }
+      lines.push("Resume with: reasonix chat --session <name>");
+      return { info: lines.join("\n") };
+    }
 
     case "status": {
       const branchBudget = loop.branchOptions.budget ?? 1;

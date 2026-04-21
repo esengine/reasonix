@@ -132,6 +132,9 @@ src/
 - **v0.0.4** — Schema flatten auto-applied in ToolRegistry (closes Pillar 3).
 - **v0.0.5** — Self-consistency branching (`--branch N`) driven by Pillar 2
   plan-state uncertainty count.
+- **v0.0.6** — Named session persistence (`--session <name>`), JSONL log
+  stored under `~/.reasonix/sessions/`, restored into the append-only log
+  on resume.
 - **v0.1** — τ-bench numbers published, streaming polish, transcript replay.
 - **v0.2** — Self-consistency / branch-budget sampling driven by plan state.
 - **v0.3** — MCP client, session persistence.

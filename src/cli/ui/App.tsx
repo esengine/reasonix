@@ -15,6 +15,7 @@ export interface AppProps {
   transcript?: string;
   harvest?: boolean;
   branch?: number;
+  session?: string;
 }
 
 /**
@@ -30,7 +31,7 @@ interface StreamingState {
   reasoning: string;
 }
 
-export function App({ model, system, transcript, harvest, branch }: AppProps) {
+export function App({ model, system, transcript, harvest, branch, session }: AppProps) {
   const { exit } = useApp();
   const [historical, setHistorical] = useState<DisplayEvent[]>([]);
   const [streaming, setStreaming] = useState<DisplayEvent | null>(null);
@@ -59,10 +60,26 @@ export function App({ model, system, transcript, harvest, branch }: AppProps) {
     if (loopRef.current) return loopRef.current;
     const client = new DeepSeekClient();
     const prefix = new ImmutablePrefix({ system });
-    const l = new CacheFirstLoop({ client, prefix, model, harvest, branch });
+    const l = new CacheFirstLoop({ client, prefix, model, harvest, branch, session });
     loopRef.current = l;
     return l;
-  }, [model, system, harvest, branch]);
+  }, [model, system, harvest, branch, session]);
+
+  // On first mount, surface a resume banner if the session had prior messages.
+  const resumeBannerShown = useRef(false);
+  useEffect(() => {
+    if (!resumeBannerShown.current && session && loop.resumedMessageCount > 0) {
+      resumeBannerShown.current = true;
+      setHistorical((prev) => [
+        ...prev,
+        {
+          id: `sys-resume-${Date.now()}`,
+          role: "info",
+          text: `▸ resumed session "${session}" with ${loop.resumedMessageCount} prior messages · type /history or ask naturally`,
+        },
+      ]);
+    }
+  }, [session, loop]);
 
   const prefixHash = loop.prefix.fingerprint;
 

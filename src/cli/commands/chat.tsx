@@ -11,6 +11,7 @@ export interface ChatOptions {
   transcript?: string;
   harvest?: boolean;
   branch?: number;
+  session?: string;
 }
 
 interface RootProps extends ChatOptions {
@@ -38,6 +39,7 @@ function Root({ initialKey, ...appProps }: RootProps) {
       transcript={appProps.transcript}
       harvest={appProps.harvest}
       branch={appProps.branch}
+      session={appProps.session}
     />
   );
 }

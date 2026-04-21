@@ -8,6 +8,7 @@ import {
 import { type HarvestOptions, type TypedPlanState, emptyPlanState, harvest } from "./harvest.js";
 import { AppendOnlyLog, type ImmutablePrefix, VolatileScratch } from "./memory.js";
 import { type RepairReport, ToolCallRepair } from "./repair/index.js";
+import { appendSessionMessage, loadSessionMessages } from "./session.js";
 import { SessionStats, type TurnStats } from "./telemetry.js";
 import { ToolRegistry } from "./tools.js";
 import type { ChatMessage, ToolCall } from "./types.js";
@@ -71,6 +72,12 @@ export interface CacheFirstLoopOptions {
    * since the default selector scores samples by plan-state uncertainty.
    */
   branch?: number | BranchOptions;
+  /**
+   * Session name. When set, the loop pre-loads the session's prior messages
+   * into its log on construction, and appends every new log entry to
+   * `~/.reasonix/sessions/<name>.jsonl` so the next run can resume.
+   */
+  session?: string;
 }
 
 /**
@@ -107,6 +114,10 @@ export class CacheFirstLoop {
   harvestOptions: HarvestOptions;
   branchEnabled: boolean;
   branchOptions: BranchOptions;
+  sessionName: string | null;
+
+  /** Number of messages that were pre-loaded from the session file. */
+  readonly resumedMessageCount: number;
 
   private _turn = 0;
   private _streamPreference: boolean;
@@ -145,6 +156,28 @@ export class CacheFirstLoop {
 
     const allowedNames = new Set([...this.prefix.toolSpecs.map((s) => s.function.name)]);
     this.repair = new ToolCallRepair({ allowedToolNames: allowedNames });
+
+    // Session resume: pre-load prior messages into the log if a session name
+    // is provided. New messages appended to the log are also persisted.
+    this.sessionName = opts.session ?? null;
+    if (this.sessionName) {
+      const prior = loadSessionMessages(this.sessionName);
+      for (const msg of prior) this.log.append(msg);
+      this.resumedMessageCount = prior.length;
+    } else {
+      this.resumedMessageCount = 0;
+    }
+  }
+
+  private appendAndPersist(message: ChatMessage): void {
+    this.log.append(message);
+    if (this.sessionName) {
+      try {
+        appendSessionMessage(this.sessionName, message);
+      } catch {
+        /* disk full or permission denied shouldn't kill the chat */
+      }
+    }
   }
 
   /**
@@ -361,7 +394,7 @@ export class CacheFirstLoop {
 
       // Commit the user turn to the log only on success of the first round-trip.
       if (pendingUser !== null) {
-        this.log.append({ role: "user", content: pendingUser });
+        this.appendAndPersist({ role: "user", content: pendingUser });
         pendingUser = null;
       }
 
@@ -377,7 +410,7 @@ export class CacheFirstLoop {
         reasoningContent || null,
       );
 
-      this.log.append(this.assistantMessage(assistantContent, repairedCalls));
+      this.appendAndPersist(this.assistantMessage(assistantContent, repairedCalls));
 
       yield {
         turn: this._turn,
@@ -398,7 +431,7 @@ export class CacheFirstLoop {
         const name = call.function?.name ?? "";
         const args = call.function?.arguments ?? "{}";
         const result = await this.tools.dispatch(name, args);
-        this.log.append({
+        this.appendAndPersist({
           role: "tool",
           tool_call_id: call.id ?? "",
           name,
