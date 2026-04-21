@@ -4,6 +4,7 @@ import { chatCommand } from "./commands/chat.js";
 import { diffCommand } from "./commands/diff.js";
 import { replayCommand } from "./commands/replay.js";
 import { runCommand } from "./commands/run.js";
+import { sessionsCommand } from "./commands/sessions.js";
 import { statsCommand } from "./commands/stats.js";
 import { versionCommand } from "./commands/version.js";
 
@@ -89,6 +90,14 @@ program
   .description("Summarize a JSONL transcript produced by `reasonix chat --transcript`.")
   .action((transcript: string) => {
     statsCommand({ transcript });
+  });
+
+program
+  .command("sessions [name]")
+  .description("List saved chat sessions, or inspect one by name.")
+  .option("-v, --verbose", "Include system prompts + tool-call metadata when inspecting")
+  .action((name: string | undefined, opts) => {
+    sessionsCommand({ name, verbose: !!opts.verbose });
   });
 
 program
