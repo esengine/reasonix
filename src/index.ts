@@ -9,9 +9,11 @@ export type {
   LoopEvent,
   EventRole,
   BranchSummary,
+  BranchProgress,
+  ReconfigurableOptions,
 } from "./loop.js";
 
-export { runBranches, defaultSelector } from "./consistency.js";
+export { runBranches, defaultSelector, aggregateBranchUsage } from "./consistency.js";
 export type {
   BranchOptions,
   BranchSample,

@@ -34,6 +34,11 @@ export interface BranchOptions {
   harvestOptions?: HarvestOptions;
   /** Custom selector. Default: min uncertainties, tie-break shortest answer. */
   selector?: BranchSelector;
+  /**
+   * Fires as each sample finishes (main call + harvest both complete).
+   * Useful for progress UI. Not awaited; exceptions are swallowed.
+   */
+  onSampleDone?: (sample: BranchSample) => void;
 }
 
 export interface BranchResult {
@@ -66,11 +71,40 @@ export async function runBranches(
     temperatures.map(async (temperature, index): Promise<BranchSample> => {
       const response = await client.chat({ ...request, temperature });
       const planState = await harvest(response.reasoningContent, client, opts.harvestOptions);
-      return { index, temperature, response, planState };
+      const sample: BranchSample = { index, temperature, response, planState };
+      try {
+        opts.onSampleDone?.(sample);
+      } catch {
+        /* callback errors must not poison the await */
+      }
+      return sample;
     }),
   );
 
   return { chosen: selector(samples), samples };
+}
+
+/** Sum usage across branch samples for telemetry purposes. */
+export function aggregateBranchUsage(samples: readonly BranchSample[]) {
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let promptCacheHitTokens = 0;
+  let promptCacheMissTokens = 0;
+  for (const s of samples) {
+    promptTokens += s.response.usage.promptTokens;
+    completionTokens += s.response.usage.completionTokens;
+    totalTokens += s.response.usage.totalTokens;
+    promptCacheHitTokens += s.response.usage.promptCacheHitTokens;
+    promptCacheMissTokens += s.response.usage.promptCacheMissTokens;
+  }
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    promptCacheHitTokens,
+    promptCacheMissTokens,
+  };
 }
 
 function resolveTemperatures(budget: number, custom?: readonly number[]): number[] {

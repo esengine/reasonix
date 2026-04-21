@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
 import React from "react";
 import { type TypedPlanState, isPlanStateEmpty } from "../../harvest.js";
-import type { BranchSummary } from "../../loop.js";
+import type { BranchProgress, BranchSummary } from "../../loop.js";
 import type { TurnStats } from "../../telemetry.js";
 import { Markdown } from "./markdown.js";
 
@@ -14,6 +14,7 @@ export interface DisplayEvent {
   reasoning?: string;
   planState?: TypedPlanState;
   branch?: BranchSummary;
+  branchProgress?: BranchProgress;
   toolName?: string;
   stats?: TurnStats;
   repair?: string;
@@ -143,6 +144,32 @@ function ReasoningBlock({ reasoning }: { reasoning: string }) {
  * the terminal viewport and leaves artifacts in scrollback.
  */
 function StreamingAssistant({ event }: { event: DisplayEvent }) {
+  if (event.branchProgress) {
+    const p = event.branchProgress;
+    const pct = Math.round((p.completed / p.total) * 100);
+    return (
+      <Box flexDirection="column" marginTop={1}>
+        <Box>
+          <Text bold color="green">
+            assistant{" "}
+          </Text>
+          <Text color="blue">
+            🔀 branching {p.completed}/{p.total} ({pct}%)
+          </Text>
+        </Box>
+        <Text dimColor>
+          {"  latest #"}
+          {p.latestIndex}
+          {" T="}
+          {p.latestTemperature.toFixed(1)}
+          {" u="}
+          {p.latestUncertainties}
+          {p.completed < p.total ? "  · waiting for other samples…" : "  · selecting winner…"}
+        </Text>
+      </Box>
+    );
+  }
+
   const tail = lastLine(event.text, 140);
   const reasoningTail = event.reasoning ? lastLine(event.reasoning, 120) : "";
   return (

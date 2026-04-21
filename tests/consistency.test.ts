@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { DeepSeekClient } from "../src/client.js";
-import { type BranchSample, defaultSelector, runBranches } from "../src/consistency.js";
+import { DeepSeekClient, Usage } from "../src/client.js";
+import {
+  type BranchSample,
+  aggregateBranchUsage,
+  defaultSelector,
+  runBranches,
+} from "../src/consistency.js";
 import { emptyPlanState } from "../src/harvest.js";
 
 interface MainCallScript {
@@ -50,6 +55,32 @@ function makeFakeFetch(
     );
   }) as unknown as typeof fetch;
 }
+
+describe("aggregateBranchUsage", () => {
+  it("sums token counts across all samples", () => {
+    const mk = (pt: number, ct: number, hit: number, miss: number): BranchSample => ({
+      index: 0,
+      temperature: 0,
+      response: {
+        content: "",
+        reasoningContent: null,
+        toolCalls: [],
+        usage: new Usage(pt, ct, pt + ct, hit, miss),
+        raw: null,
+      },
+      planState: emptyPlanState(),
+    });
+    const agg = aggregateBranchUsage([
+      mk(100, 50, 80, 20),
+      mk(200, 70, 150, 50),
+      mk(120, 40, 100, 20),
+    ]);
+    expect(agg.promptTokens).toBe(420);
+    expect(agg.completionTokens).toBe(160);
+    expect(agg.promptCacheHitTokens).toBe(330);
+    expect(agg.promptCacheMissTokens).toBe(90);
+  });
+});
 
 describe("defaultSelector", () => {
   it("picks the sample with fewest uncertainties", () => {
@@ -160,6 +191,25 @@ describe("runBranches", () => {
     );
     expect(r.chosen.response.content).toBe("ans-1");
     expect(r.chosen.planState.uncertainties.length).toBe(0);
+  });
+
+  it("fires onSampleDone exactly once per sample", async () => {
+    const fakeFetch = makeFakeFetch(
+      {
+        "0": { content: "ans", reasoning: "reasoning trace for sample 0, long enough." },
+        "0.5": { content: "ans", reasoning: "reasoning trace for sample 1, long enough." },
+        "1": { content: "ans", reasoning: "reasoning trace for sample 2, long enough." },
+      },
+      JSON.stringify({ subgoals: [], hypotheses: [], uncertainties: [], rejectedPaths: [] }),
+    );
+    const client = new DeepSeekClient({ apiKey: "sk-test", fetch: fakeFetch });
+    const onSampleDone = vi.fn();
+    await runBranches(
+      client,
+      { model: "deepseek-reasoner", messages: [{ role: "user", content: "hi" }] },
+      { budget: 3, onSampleDone },
+    );
+    expect(onSampleDone).toHaveBeenCalledTimes(3);
   });
 
   it("accepts custom temperatures override", async () => {

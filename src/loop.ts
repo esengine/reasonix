@@ -1,5 +1,10 @@
-import type { DeepSeekClient } from "./client.js";
-import { type BranchOptions, type BranchSample, runBranches } from "./consistency.js";
+import { type DeepSeekClient, Usage } from "./client.js";
+import {
+  type BranchOptions,
+  type BranchSample,
+  aggregateBranchUsage,
+  runBranches,
+} from "./consistency.js";
 import { type HarvestOptions, type TypedPlanState, emptyPlanState, harvest } from "./harvest.js";
 import { AppendOnlyLog, type ImmutablePrefix, VolatileScratch } from "./memory.js";
 import { type RepairReport, ToolCallRepair } from "./repair/index.js";
@@ -14,6 +19,7 @@ export type EventRole =
   | "done"
   | "error"
   | "branch_start"
+  | "branch_progress"
   | "branch_done";
 
 export interface BranchSummary {
@@ -21,6 +27,14 @@ export interface BranchSummary {
   chosenIndex: number;
   uncertainties: number[]; // per-sample uncertainty counts
   temperatures: number[];
+}
+
+export interface BranchProgress {
+  completed: number;
+  total: number;
+  latestIndex: number;
+  latestTemperature: number;
+  latestUncertainties: number;
 }
 
 export interface LoopEvent {
@@ -33,6 +47,7 @@ export interface LoopEvent {
   planState?: TypedPlanState;
   repair?: RepairReport;
   branch?: BranchSummary;
+  branchProgress?: BranchProgress;
   error?: string;
 }
 
@@ -194,12 +209,25 @@ export class CacheFirstLoop {
 
       try {
         if (this.branchEnabled) {
-          yield {
-            turn: this._turn,
-            role: "branch_start",
-            content: "",
+          const budget = this.branchOptions.budget ?? 1;
+          yield { turn: this._turn, role: "branch_start", content: "" };
+
+          // Queue samples as they complete so we can yield progress events
+          // in resolution order (not launch order).
+          const queue: BranchSample[] = [];
+          let waiter: ((s: BranchSample) => void) | null = null;
+
+          const onSampleDone = (sample: BranchSample) => {
+            if (waiter) {
+              const w = waiter;
+              waiter = null;
+              w(sample);
+            } else {
+              queue.push(sample);
+            }
           };
-          const result = await runBranches(
+
+          const branchPromise = runBranches(
             this.client,
             {
               model: this.model,
@@ -209,12 +237,46 @@ export class CacheFirstLoop {
             {
               ...this.branchOptions,
               harvestOptions: this.harvestOptions,
+              onSampleDone,
             },
           );
+
+          for (let k = 0; k < budget; k++) {
+            const sample: BranchSample =
+              queue.shift() ??
+              (await new Promise<BranchSample>((resolve) => {
+                waiter = resolve;
+              }));
+            yield {
+              turn: this._turn,
+              role: "branch_progress",
+              content: "",
+              branchProgress: {
+                completed: k + 1,
+                total: budget,
+                latestIndex: sample.index,
+                latestTemperature: sample.temperature,
+                latestUncertainties: sample.planState.uncertainties.length,
+              },
+            };
+          }
+
+          const result = await branchPromise;
           assistantContent = result.chosen.response.content;
           reasoningContent = result.chosen.response.reasoningContent ?? "";
           toolCalls = result.chosen.response.toolCalls;
-          usage = result.chosen.response.usage;
+
+          // Cost accounting: sum usage across ALL samples, not just the winner.
+          // (We paid for all three.) Harvest-call tokens are not tracked; they
+          // amount to rounding error compared to the main R1 calls.
+          const agg = aggregateBranchUsage(result.samples);
+          usage = new Usage(
+            agg.promptTokens,
+            agg.completionTokens,
+            agg.totalTokens,
+            agg.promptCacheHitTokens,
+            agg.promptCacheMissTokens,
+          );
           preHarvestedPlanState = result.chosen.planState;
           branchSummary = summarizeBranch(result.chosen, result.samples);
           yield {
@@ -284,11 +346,7 @@ export class CacheFirstLoop {
         return;
       }
 
-      const turnStats = this.stats.record(
-        this._turn,
-        this.model,
-        usage ?? new (await import("./client.js")).Usage(),
-      );
+      const turnStats = this.stats.record(this._turn, this.model, usage ?? new Usage());
 
       // Commit the user turn to the log only on success of the first round-trip.
       if (pendingUser !== null) {

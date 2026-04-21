@@ -150,9 +150,18 @@ export function App({ model, system, transcript, harvest, branch }: AppProps) {
               text: "",
               streaming: true,
             });
+          } else if (ev.role === "branch_progress") {
+            // Live-update the streaming slot with per-sample completion info.
+            setStreaming({
+              id: assistantId,
+              role: "assistant",
+              text: "",
+              streaming: true,
+              branchProgress: ev.branchProgress,
+            });
           } else if (ev.role === "branch_done") {
             // Intermediate: branching finished but assistant_final not yet emitted.
-            // We keep streaming state alive; actual render happens on assistant_final.
+            // Keep streaming state alive; actual render happens on assistant_final.
           } else if (ev.role === "assistant_final") {
             flush();
             const repairNote = ev.repair ? describeRepair(ev.repair) : "";
