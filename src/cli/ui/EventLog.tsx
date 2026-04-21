@@ -81,7 +81,7 @@ function ReasoningBlock({ reasoning }: { reasoning: string }) {
   const preview =
     flat.length <= max ? flat : `${flat.slice(0, max)}… (+${flat.length - max} chars)`;
   return (
-    <Box>
+    <Box marginBottom={1}>
       <Text dimColor italic>
         {"↳ thinking: "}
         {preview}
