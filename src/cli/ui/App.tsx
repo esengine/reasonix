@@ -17,29 +17,47 @@ export interface AppProps {
 type Action =
   | { type: "push"; event: DisplayEvent }
   | { type: "append_assistant"; id: string; delta: string }
-  | { type: "mark_assistant_done"; id: string };
+  | { type: "append_reasoning"; id: string; delta: string }
+  | {
+      type: "finalize_assistant";
+      id: string;
+      stats?: DisplayEvent["stats"];
+      repair?: string;
+    };
+
+function patchEvent(
+  state: DisplayEvent[],
+  id: string,
+  patch: (ev: DisplayEvent) => DisplayEvent,
+): DisplayEvent[] {
+  const copy = state.slice();
+  for (let i = copy.length - 1; i >= 0; i--) {
+    if (copy[i]!.id === id) {
+      copy[i] = patch(copy[i]!);
+      return copy;
+    }
+  }
+  return state;
+}
 
 function reducer(state: DisplayEvent[], action: Action): DisplayEvent[] {
   if (action.type === "push") return [...state, action.event];
   if (action.type === "append_assistant") {
-    const copy = state.slice();
-    for (let i = copy.length - 1; i >= 0; i--) {
-      if (copy[i]!.id === action.id) {
-        copy[i] = { ...copy[i]!, text: copy[i]!.text + action.delta };
-        return copy;
-      }
-    }
-    return state;
+    return patchEvent(state, action.id, (ev) => ({ ...ev, text: ev.text + action.delta }));
   }
-  if (action.type === "mark_assistant_done") {
-    const copy = state.slice();
-    for (let i = copy.length - 1; i >= 0; i--) {
-      if (copy[i]!.id === action.id) {
-        copy[i] = { ...copy[i]!, streaming: false };
-        return copy;
-      }
-    }
-    return state;
+  if (action.type === "append_reasoning") {
+    return patchEvent(state, action.id, (ev) => ({
+      ...ev,
+      reasoning: (ev.reasoning ?? "") + action.delta,
+    }));
+  }
+  if (action.type === "finalize_assistant") {
+    return patchEvent(state, action.id, (ev) => ({
+      ...ev,
+      streaming: false,
+      stats: action.stats ?? ev.stats,
+      repair: action.repair ?? ev.repair,
+    }));
   }
   return state;
 }
@@ -112,20 +130,22 @@ export function App({ model, system, transcript }: AppProps) {
       try {
         for await (const ev of loop.step(text)) {
           writeTranscript(ev);
-          if (ev.role === "assistant_delta" && ev.content) {
-            dispatch({ type: "append_assistant", id: assistantId, delta: ev.content });
+          if (ev.role === "assistant_delta") {
+            if (ev.content) {
+              dispatch({ type: "append_assistant", id: assistantId, delta: ev.content });
+            }
+            if (ev.reasoningDelta) {
+              dispatch({ type: "append_reasoning", id: assistantId, delta: ev.reasoningDelta });
+            }
           }
           if (ev.role === "assistant_final") {
-            dispatch({ type: "mark_assistant_done", id: assistantId });
-            if (ev.repair) {
-              const note = describeRepair(ev.repair);
-              if (note) {
-                dispatch({
-                  type: "push",
-                  event: { id: `r-${Date.now()}`, role: "info", text: note },
-                });
-              }
-            }
+            const repairNote = ev.repair ? describeRepair(ev.repair) : "";
+            dispatch({
+              type: "finalize_assistant",
+              id: assistantId,
+              stats: ev.stats,
+              repair: repairNote || undefined,
+            });
           }
           if (ev.role === "tool") {
             dispatch({

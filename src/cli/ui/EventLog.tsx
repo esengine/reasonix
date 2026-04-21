@@ -8,6 +8,7 @@ export interface DisplayEvent {
   id: string;
   role: DisplayRole;
   text: string;
+  reasoning?: string;
   toolName?: string;
   stats?: TurnStats;
   repair?: string;
@@ -50,6 +51,7 @@ function EventRow({ event }: { event: DisplayEvent }) {
           </Text>
           {event.streaming ? <Text dimColor>(streaming…)</Text> : null}
         </Box>
+        {event.reasoning ? <ReasoningBlock reasoning={event.reasoning} /> : null}
         <Text>{event.text || <Text dimColor>(no content)</Text>}</Text>
         {event.stats ? <StatsLine stats={event.stats} /> : null}
         {event.repair ? <Text color="magenta"> {event.repair}</Text> : null}
@@ -84,6 +86,22 @@ function EventRow({ event }: { event: DisplayEvent }) {
   return (
     <Box>
       <Text>{event.text}</Text>
+    </Box>
+  );
+}
+
+function ReasoningBlock({ reasoning }: { reasoning: string }) {
+  const max = 500;
+  const preview =
+    reasoning.length <= max
+      ? reasoning
+      : `${reasoning.slice(0, max)}… (+${reasoning.length - max} chars)`;
+  return (
+    <Box borderStyle="single" borderColor="gray" paddingX={1} marginBottom={0}>
+      <Text dimColor italic>
+        {"thinking › "}
+        {preview}
+      </Text>
     </Box>
   );
 }
