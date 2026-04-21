@@ -22,8 +22,14 @@ unused. Reasonix is opinionated about three things:
 ### 1. Cache-First Loop
 DeepSeek bills cached input tokens at **~10% of the miss rate**. Reasonix
 structures the agent loop as `[Immutable Prefix] + [Append-Only Log] +
-[Volatile Scratch]` so every turn reuses the exact byte prefix. Typical
-cache-hit ratios on long agent loops: **70–95%**.
+[Volatile Scratch]` so every turn reuses the exact byte prefix.
+
+**Validated on real DeepSeek API (`deepseek-chat`):**
+
+| scenario | turns | cache hit | cost | cost on Claude Sonnet 4.6 | savings |
+|---|---|---|---|---|---|
+| Chinese multi-turn chat | 5 | **85.2%** | $0.000923 | $0.015174 | **93.9%** |
+| Tool-use (calculator) | 2 | **94.9%** | $0.000142 | $0.003351 | **95.8%** |
 
 ### 2. R1 Thought Harvesting
 R1's `reasoning_content` contains a *plan*, not just trivia to display. Reasonix
