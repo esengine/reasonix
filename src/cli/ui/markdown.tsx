@@ -58,7 +58,7 @@ function toSubscript(s: string): string {
   return out;
 }
 
-function stripMath(s: string): string {
+export function stripMath(s: string): string {
   return (
     s
       // Delimiters
@@ -66,15 +66,23 @@ function stripMath(s: string): string {
       .replace(/\s*\\\)/g, "")
       .replace(/\\\[\s*/g, "\n")
       .replace(/\s*\\\]/g, "\n")
-      // Fractions — \frac, \dfrac, \tfrac all render as (num)/(den)
-      .replace(/\\[dt]?frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1)/($2)")
-      .replace(/\\binom\{([^{}]+)\}\{([^{}]+)\}/g, "C($1,$2)")
-      .replace(/\\sqrt\{([^{}]+)\}/g, "√($1)")
-      .replace(/\\boxed\{([^{}]+)\}/g, "【$1】")
-      .replace(/\\text\{([^{}]+)\}/g, "$1")
-      .replace(/\\overline\{([^{}]+)\}/g, "$1̄")
-      .replace(/\\hat\{([^{}]+)\}/g, "$1̂")
-      .replace(/\\vec\{([^{}]+)\}/g, "→$1")
+      // Fractions — \frac, \dfrac, \tfrac. Allow whitespace and one nesting
+      // level inside braces (e.g. \frac{\sqrt{2}}{3}). Trim captured groups
+      // so '\frac{ a }{ b }' renders as '(a)/(b)'.
+      .replace(
+        /\\[dt]?frac\s*\{((?:[^{}]|\{[^{}]*\})+)\}\s*\{((?:[^{}]|\{[^{}]*\})+)\}/g,
+        (_m, num: string, den: string) => `(${num.trim()})/(${den.trim()})`,
+      )
+      .replace(
+        /\\binom\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g,
+        (_m, n: string, k: string) => `C(${n.trim()},${k.trim()})`,
+      )
+      .replace(/\\sqrt\s*\{([^{}]+)\}/g, (_m, g: string) => `√(${g.trim()})`)
+      .replace(/\\boxed\s*\{([^{}]+)\}/g, (_m, g: string) => `【${g.trim()}】`)
+      .replace(/\\text\s*\{([^{}]+)\}/g, (_m, g: string) => g.trim())
+      .replace(/\\overline\s*\{([^{}]+)\}/g, (_m, g: string) => `${g.trim()}̄`)
+      .replace(/\\hat\s*\{([^{}]+)\}/g, (_m, g: string) => `${g.trim()}̂`)
+      .replace(/\\vec\s*\{([^{}]+)\}/g, (_m, g: string) => `→${g.trim()}`)
       // Operators & symbols
       .replace(/\\cdot/g, "·")
       .replace(/\\times/g, "×")
@@ -125,6 +133,12 @@ function stripMath(s: string): string {
       .replace(/\^([0-9+\-n])/g, (_m, g: string) => toSuperscript(g))
       .replace(/_\{([\w+-]+)\}/g, (_m, g: string) => toSubscript(g))
       .replace(/_([0-9+\-])/g, (_m, g: string) => toSubscript(g))
+      // Catch-all fallbacks for any LaTeX command we didn't explicitly handle.
+      // Belt-and-braces: even if the model invents a new \weirdcommand{x}{y},
+      // we'd rather show '(x)/(y)' or 'x' than a raw backslash.
+      .replace(/\\[a-zA-Z]+\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, "($1)/($2)")
+      .replace(/\\[a-zA-Z]+\s*\{([^{}]+)\}/g, "$1")
+      .replace(/\\[a-zA-Z]+/g, "")
       // Collapse multiple whitespace introduced by the stripping above.
       .replace(/[ \t]{2,}/g, " ")
   );
