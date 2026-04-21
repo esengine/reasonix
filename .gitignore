@@ -15,4 +15,6 @@ Thumbs.db
 *.tsbuildinfo
 transcripts/
 sessions/
+*.jsonl
+!tests/**/*.jsonl
 .turbo/
