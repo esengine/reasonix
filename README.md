@@ -58,13 +58,38 @@ actually stays byte-stable.
 
 ## Validated numbers
 
-Measured on live DeepSeek API:
+**τ-bench-lite** — 8 multi-turn tool-use tasks, same tools / same prompt
+on both sides, sole variable is prefix stability. Measured on live
+DeepSeek `deepseek-chat`:
 
-| scenario | model | turns | cache hit | cost | Claude 4.6 would be | savings |
-|---|---|---|---|---|---|---|
-| Chinese multi-turn chat | `deepseek-chat` | 5 | **85.2%** | $0.000923 | $0.015174 | **93.9%** |
-| Tool-use (calculator) | `deepseek-chat` | 2 | **94.9%** | $0.000142 | $0.003351 | **95.8%** |
-| R1 math + harvest | `deepseek-reasoner` | 1 | 72.7% | $0.006478 | $0.044484 | 85.4% |
+| metric | baseline (cache-hostile) | Reasonix | delta |
+|---|---:|---:|---:|
+| runs | 8 | 8 | — |
+| **cache hit** | 43.9% | **94.3%** | **+50.3pp** |
+| cost / task | $0.002783 | $0.001621 | **−42% (×0.58)** |
+| vs Claude Sonnet 4.6 (token-count estimate) | — | — | **~96% cheaper** |
+| pass rate | 100% (8/8) | 88% (7/8) | 1 refusal-task predicate too strict (see [report.md][r]) |
+
+**Verify it yourself — no API key, zero cost:**
+
+```bash
+git clone https://github.com/esengine/reasonix.git && cd reasonix && npm install
+npx reasonix replay benchmarks/tau-bench/transcripts/t01_address_happy.reasonix.r1.jsonl
+npx reasonix diff \
+  benchmarks/tau-bench/transcripts/t01_address_happy.baseline.r1.jsonl \
+  benchmarks/tau-bench/transcripts/t01_address_happy.reasonix.r1.jsonl
+```
+
+The JSONL transcripts committed in `benchmarks/tau-bench/transcripts/`
+carry per-turn `usage`, `cost`, and `prefixHash`. Reasonix's prefix hash
+stays byte-stable across every model call; baseline's prefix churns on
+every turn. The cache delta is *mechanically* attributable to log
+stability, not to a different system prompt.
+
+Full 16-run report: [`benchmarks/tau-bench/report.md`][r]. Reproduce
+with your own API key: `npx tsx benchmarks/tau-bench/runner.ts`.
+
+[r]: ./benchmarks/tau-bench/report.md
 
 ---
 
