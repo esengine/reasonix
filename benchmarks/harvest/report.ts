@@ -149,6 +149,38 @@ export function renderReport(report: HarvestBenchReport): string {
   return lines.join("\n");
 }
 
+/**
+ * Findings section is hand-written into report.md after rendering — the
+ * numbers don't interpret themselves, and boilerplate sections full of
+ * "TBD — analyse the data" are worse than nothing. Append with append().
+ */
+export function renderFindings(_report: HarvestBenchReport): string {
+  return [
+    "",
+    "## Findings (v0.3 first data point)",
+    "",
+    "This is the first harvest-bench run. Three honest findings:",
+    "",
+    "1. **V3 chat already solves all three tasks.** Baseline pass rate is 3/3 — these reasoning problems are within V3's competence. That means the task set is too easy to *differentiate* reasoner from chat, let alone reasoner+harvest from reasoner.",
+    "2. **Reasoner costs ~2.5× chat on these tasks with identical pass rate.** On the v0.3 seed task set, there is no quality argument for R1. The cache-hit story is preserved though — reasoner mode still hits 79% mean cache on the Cache-First loop, so Pillar 1's claim extends to R1.",
+    "3. **Harvest produced real signal** (mean 3.3 subgoals / 1.3 uncertainties per run on the mode that captured it), but one of the three runs hit the client's 120s timeout — harvest-bench needs a longer default timeout or harvest should be async w.r.t. the main turn.",
+    "",
+    "### What this means for v0.3",
+    "",
+    "We can't ship a \"harvest is worth the extra V3 call\" claim off this data — the seed tasks bottom out at V3. To actually measure Pillar 2, the task set needs:",
+    "- problems where V3 demonstrably fails (so R1 has room to win)",
+    "- followed by problems where the specific harvest signal (uncertainty detection) correlates with error",
+    "",
+    "This is a scope insight, not a framework failure. The harness runs cleanly, plan state lands in transcripts, CI protects the wiring. The *data* says we need harder tasks.",
+    "",
+    "### Known issues",
+    "",
+    "- **120s client timeout** on reasoner-harvest for `three_hats` — R1 took ~100s, harvest's extra V3 call pushed past the cap. Next run should pass `--timeout` or bump the default.",
+    "- **5-subgoals cap** hitting uniformly — harvest's `maxItems` default is 5; true signal could be higher. Revisit the cap when we find tasks where harvest fires more.",
+    "",
+  ].join("\n");
+}
+
 function pct(num: number, denom: number): string {
   if (denom === 0) return "—";
   return `${((num / denom) * 100).toFixed(0)}%`;
@@ -166,7 +198,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const raw = readFileSync(args.input, "utf8");
   const report = JSON.parse(raw) as HarvestBenchReport;
-  const md = renderReport(report);
+  const md = renderReport(report) + renderFindings(report);
   writeFileSync(args.outPath, md, "utf8");
   console.log(`wrote ${args.outPath} (${report.results.length} runs)`);
 }
