@@ -53,6 +53,32 @@ export interface DiffReport {
   firstDivergenceTurn: number | null;
 }
 
+// ---------- navigation helpers (used by the Ink diff TUI) ----------
+
+/**
+ * Find the next pair (strictly after `fromIdx`) whose kind is not "match".
+ * Returns -1 when no later divergence exists. Used by DiffApp's `n` key.
+ */
+export function findNextDivergence(pairs: TurnPair[], fromIdx: number): number {
+  for (let i = fromIdx + 1; i < pairs.length; i++) {
+    if (pairs[i]!.kind !== "match") return i;
+  }
+  return -1;
+}
+
+/**
+ * Find the previous pair (strictly before `fromIdx`) whose kind is not
+ * "match". Returns -1 when no earlier divergence exists. Used by
+ * DiffApp's `N` / `p` key.
+ */
+export function findPrevDivergence(pairs: TurnPair[], fromIdx: number): number {
+  const start = Math.min(fromIdx - 1, pairs.length - 1);
+  for (let i = start; i >= 0; i--) {
+    if (pairs[i]!.kind !== "match") return i;
+  }
+  return -1;
+}
+
 export function diffTranscripts(
   a: { label: string; parsed: ReadTranscriptResult },
   b: { label: string; parsed: ReadTranscriptResult },

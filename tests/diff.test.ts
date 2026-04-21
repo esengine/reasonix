@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { diffTranscripts, renderMarkdown, renderSummaryTable, similarity } from "../src/diff.js";
+import {
+  diffTranscripts,
+  findNextDivergence,
+  findPrevDivergence,
+  renderMarkdown,
+  renderSummaryTable,
+  similarity,
+} from "../src/diff.js";
 import type { ReadTranscriptResult, TranscriptRecord } from "../src/transcript.js";
 
 function mkParsed(records: TranscriptRecord[], task = "t01"): ReadTranscriptResult {
@@ -187,5 +194,70 @@ describe("renderers", () => {
     expect(md).toMatch(/## Summary/);
     expect(md).toMatch(/## Turn-by-turn/);
     expect(md).toMatch(/cache hit/);
+  });
+});
+
+describe("divergence navigation (TUI)", () => {
+  // Build a report whose pair kinds form a predictable pattern.
+  function reportWithPattern(): ReturnType<typeof diffTranscripts> {
+    // turns 1-5: match, diverge, match, diverge, match
+    const a = [
+      mkAssistant(1, "same"),
+      mkTool(2, "lookup_order"),
+      mkAssistant(2, "a2"),
+      mkAssistant(3, "same3"),
+      mkTool(4, "lookup_user"),
+      mkAssistant(4, "a4"),
+      mkAssistant(5, "same5"),
+    ];
+    const b = [
+      mkAssistant(1, "same"),
+      mkTool(2, "cancel_order"), // tool name differs on turn 2
+      mkAssistant(2, "b2"),
+      mkAssistant(3, "same3"),
+      mkTool(4, "lookup_user"),
+      mkAssistant(4, "a4 very different answer content here"), // text differs on turn 4
+      mkAssistant(5, "same5"),
+    ];
+    return diffTranscripts(
+      { label: "A", parsed: mkParsed(a) },
+      { label: "B", parsed: mkParsed(b) },
+    );
+  }
+
+  it("findNextDivergence returns the next non-match index, or -1", () => {
+    const report = reportWithPattern();
+    // pattern: [match, diverge, match, diverge, match]
+    expect(findNextDivergence(report.pairs, -1)).toBe(1);
+    expect(findNextDivergence(report.pairs, 0)).toBe(1);
+    expect(findNextDivergence(report.pairs, 1)).toBe(3);
+    expect(findNextDivergence(report.pairs, 3)).toBe(-1);
+    expect(findNextDivergence(report.pairs, 4)).toBe(-1);
+  });
+
+  it("findPrevDivergence walks backwards", () => {
+    const report = reportWithPattern();
+    expect(findPrevDivergence(report.pairs, 4)).toBe(3);
+    expect(findPrevDivergence(report.pairs, 3)).toBe(1);
+    expect(findPrevDivergence(report.pairs, 1)).toBe(-1);
+    expect(findPrevDivergence(report.pairs, 0)).toBe(-1);
+  });
+
+  it("returns -1 on an empty report", () => {
+    const report = diffTranscripts(
+      { label: "A", parsed: mkParsed([]) },
+      { label: "B", parsed: mkParsed([]) },
+    );
+    expect(findNextDivergence(report.pairs, -1)).toBe(-1);
+    expect(findPrevDivergence(report.pairs, 99)).toBe(-1);
+  });
+
+  it("returns -1 when every pair matches", () => {
+    const recs = [mkAssistant(1, "ok"), mkAssistant(2, "ok")];
+    const report = diffTranscripts(
+      { label: "A", parsed: mkParsed(recs) },
+      { label: "B", parsed: mkParsed(recs) },
+    );
+    expect(findNextDivergence(report.pairs, -1)).toBe(-1);
   });
 });

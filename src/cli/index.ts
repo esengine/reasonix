@@ -93,12 +93,24 @@ program
 
 program
   .command("diff <a> <b>")
-  .description("Compare two transcripts: aggregate deltas + first divergence.")
-  .option("--md <path>", "Also write a markdown report (blog-ready) to this path")
+  .description(
+    "Compare two transcripts in a split-pane Ink TUI (default) or stdout table. Use n/N to jump across divergences.",
+  )
+  .option("--md <path>", "Write a markdown report (blog-ready) to this path")
+  .option("--print", "Force stdout table instead of the TUI (auto when piped)")
+  .option("--tui", "Force the TUI even when piped (rare)")
   .option("--label-a <label>", "Display label for transcript A (default: filename)")
   .option("--label-b <label>", "Display label for transcript B (default: filename)")
-  .action((a: string, b: string, opts) => {
-    diffCommand({ a, b, mdPath: opts.md, labelA: opts.labelA, labelB: opts.labelB });
+  .action(async (a: string, b: string, opts) => {
+    await diffCommand({
+      a,
+      b,
+      mdPath: opts.md,
+      labelA: opts.labelA,
+      labelB: opts.labelB,
+      print: !!opts.print,
+      tui: !!opts.tui,
+    });
   });
 
 program.command("version").description("Print Reasonix version.").action(versionCommand);

@@ -11,7 +11,8 @@
 import { Box, Static, Text, useApp, useInput } from "ink";
 import React, { useMemo, useState } from "react";
 import { type TurnPage, computeCumulativeStats } from "../../replay.js";
-import type { TranscriptMeta, TranscriptRecord } from "../../transcript.js";
+import type { TranscriptMeta } from "../../transcript.js";
+import { RecordView } from "./RecordView.js";
 import { StatsPanel } from "./StatsPanel.js";
 
 export interface ReplayAppProps {
@@ -109,105 +110,4 @@ export function ReplayApp({ meta, pages }: ReplayAppProps) {
       </Box>
     </Box>
   );
-}
-
-// ----------------------------------------------------------------------------
-
-function RecordView({ rec }: { rec: TranscriptRecord }) {
-  if (rec.role === "user") {
-    return (
-      <Box marginTop={1}>
-        <Text bold color="cyan">
-          you ›{" "}
-        </Text>
-        <Text>{rec.content}</Text>
-      </Box>
-    );
-  }
-  if (rec.role === "assistant_final") {
-    return (
-      <Box flexDirection="column" marginTop={1}>
-        <Box>
-          <Text bold color="green">
-            assistant
-          </Text>
-          {rec.cost !== undefined ? (
-            <Text dimColor>
-              {"  $"}
-              {rec.cost.toFixed(6)}
-            </Text>
-          ) : null}
-          {rec.usage ? <CacheBadge usage={rec.usage} /> : null}
-        </Box>
-        {rec.content ? (
-          <Text>{rec.content}</Text>
-        ) : (
-          <Text dimColor italic>
-            (tool-call response only)
-          </Text>
-        )}
-      </Box>
-    );
-  }
-  if (rec.role === "tool") {
-    return (
-      <Box flexDirection="column" marginTop={1}>
-        <Text color="yellow">
-          {"tool<"}
-          {rec.tool ?? "?"}
-          {">"}
-        </Text>
-        {rec.args ? (
-          <Text dimColor>
-            {"  args: "}
-            {truncate(rec.args, 200)}
-          </Text>
-        ) : null}
-        <Text dimColor>
-          {"  → "}
-          {truncate(rec.content, 400)}
-        </Text>
-      </Box>
-    );
-  }
-  if (rec.role === "error") {
-    return (
-      <Box marginTop={1}>
-        <Text color="red" bold>
-          error{" "}
-        </Text>
-        <Text color="red">{rec.error ?? rec.content}</Text>
-      </Box>
-    );
-  }
-  if (rec.role === "done" || rec.role === "assistant_delta") {
-    // Don't render — noise in replay
-    return null;
-  }
-  return (
-    <Box>
-      <Text dimColor>
-        [{rec.role}] {rec.content}
-      </Text>
-    </Box>
-  );
-}
-
-function CacheBadge({ usage }: { usage: NonNullable<TranscriptRecord["usage"]> }) {
-  const hit = usage.prompt_cache_hit_tokens ?? 0;
-  const miss = usage.prompt_cache_miss_tokens ?? 0;
-  const total = hit + miss;
-  if (total === 0) return null;
-  const pct = (hit / total) * 100;
-  const color = pct >= 70 ? "green" : pct >= 40 ? "yellow" : "red";
-  return (
-    <Text>
-      <Text dimColor>{"  · cache "}</Text>
-      <Text color={color}>{pct.toFixed(1)}%</Text>
-    </Text>
-  );
-}
-
-function truncate(s: string, max: number): string {
-  return s.length <= max ? s : `${s.slice(0, max)}… (+${s.length - max} chars)`;
 }
