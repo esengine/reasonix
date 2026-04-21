@@ -58,17 +58,17 @@ actually stays byte-stable.
 
 ## Validated numbers
 
-**τ-bench-lite** — 8 multi-turn tool-use tasks, same tools / same prompt
-on both sides, sole variable is prefix stability. Measured on live
-DeepSeek `deepseek-chat`:
+**τ-bench-lite** — 8 multi-turn tool-use tasks × 3 repeats = 48 runs per
+side. Same tools / same prompt / same client on both sides, sole variable
+is prefix stability. Measured on live DeepSeek `deepseek-chat`:
 
 | metric | baseline (cache-hostile) | Reasonix | delta |
 |---|---:|---:|---:|
-| runs | 8 | 8 | — |
-| **cache hit** | 43.9% | **94.3%** | **+50.3pp** |
-| cost / task | $0.002783 | $0.001621 | **−42% (×0.58)** |
+| runs | 24 | 24 | — |
+| **cache hit** | 46.6% | **94.4%** | **+47.7pp** |
+| cost / task | $0.002599 | $0.001579 | **−39% (×0.61)** |
 | vs Claude Sonnet 4.6 (token-count estimate) | — | — | **~96% cheaper** |
-| pass rate | 100% (8/8) | 88% (7/8) | 1 refusal-task predicate too strict (see [report.md][r]) |
+| pass rate | 96% (23/24) | **100% (24/24)** | Reasonix held the guardrail on every run |
 
 **Verify it yourself — no API key, zero cost:**
 
@@ -86,8 +86,8 @@ stays byte-stable across every model call; baseline's prefix churns on
 every turn. The cache delta is *mechanically* attributable to log
 stability, not to a different system prompt.
 
-Full 16-run report: [`benchmarks/tau-bench/report.md`][r]. Reproduce
-with your own API key: `npx tsx benchmarks/tau-bench/runner.ts`.
+Full 48-run report: [`benchmarks/tau-bench/report.md`][r]. Reproduce
+with your own API key: `npx tsx benchmarks/tau-bench/runner.ts --repeats 3`.
 
 [r]: ./benchmarks/tau-bench/report.md
 

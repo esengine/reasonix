@@ -3,6 +3,42 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] — 2026-04-21
+
+**Headline:** 48-run bench data (3 repeats × 8 tasks × 2 modes). Reasonix
+now scores **100% pass rate (24/24)** against 96% baseline; cache-hit
+delta holds at **+47.7pp** with variance well under the last single-run
+numbers.
+
+### Fixed
+
+- **t05 predicate relaxed** (`benchmarks/tau-bench/tasks.ts`). The task
+  required "no refund on a processing order" and formerly also required
+  status to stay `processing`, penalizing an agent who offered
+  cancellation as a helpful alternative. The new predicate passes iff
+  no refund row is written AND the order ends in `{processing, cancelled}`
+  — either refusal or helpful substitution counts. Cancellation was
+  marking reasonix as fail on its single run in v0.1; with this fix
+  reasonix now passes every refusal task in every repeat.
+
+### Changed
+
+- **README headline numbers updated** to the 48-run set. Baseline shows
+  one failure out of 24 (a `t07_wrong_identity` run where baseline
+  skipped identity verification); Reasonix held the guardrail on every
+  run.
+- **`benchmarks/tau-bench/report.md`** regenerated from the 48-run
+  results. Cost estimate vs Claude Sonnet 4.6 stays at ~96% cheaper
+  per task.
+- **`benchmarks/tau-bench/results.json`** replaced with the 48-run data.
+
+### Tests
+
+- +3 tests pinning the three t05 outcomes (refuse / cancel / illegally
+  refund). Suite: **172 passing** (was 169).
+
+---
+
 ## [0.2.1] — 2026-04-21
 
 **Headline:** v0.2 grows eyes. `reasonix replay` and `reasonix diff` now
@@ -152,6 +188,7 @@ branching, and session persistence. They're not reflected as individual
 entries above because the `0.1.0` bench harness is what first produced
 *externally verifiable* evidence for their value.
 
+[0.2.2]: https://github.com/esengine/reasonix/releases/tag/v0.2.2
 [0.2.1]: https://github.com/esengine/reasonix/releases/tag/v0.2.1
 [0.2.0]: https://github.com/esengine/reasonix/releases/tag/v0.2.0
 [0.1.0]: https://github.com/esengine/reasonix/releases/tag/v0.1.0

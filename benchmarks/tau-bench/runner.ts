@@ -372,7 +372,7 @@ function buildMeta(args: CliArgs, taskCount: number): BenchReport["meta"] {
     userSimModel: args.userSimModel,
     taskCount,
     repeatsPerTask: args.repeats,
-    reasonixVersion: "0.2.1",
+    reasonixVersion: "0.2.2",
   };
 }
 
