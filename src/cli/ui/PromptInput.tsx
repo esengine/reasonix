@@ -1,6 +1,6 @@
-import React from "react";
 import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
+import React from "react";
 
 export interface PromptInputProps {
   value: string;
@@ -19,7 +19,9 @@ export function PromptInput({
 }: PromptInputProps) {
   return (
     <Box borderStyle="round" borderColor={disabled ? "gray" : "cyan"} paddingX={1}>
-      <Text bold color={disabled ? "gray" : "cyan"}>you › </Text>
+      <Text bold color={disabled ? "gray" : "cyan"}>
+        you ›{" "}
+      </Text>
       {disabled ? (
         <Text dimColor>{placeholder ?? "…waiting for response…"}</Text>
       ) : (

@@ -27,20 +27,20 @@ export function repairTruncatedJson(input: string): TruncationRepairResult {
   }
 
   const stack: ("{" | "[" | '"')[] = [];
-  let escape = false;
+  let escaped = false;
   let inString = false;
   let lastSignificant = -1;
 
   for (let i = 0; i < input.length; i++) {
     const c = input[i]!;
     if (!/\s/.test(c)) lastSignificant = i;
-    if (escape) {
-      escape = false;
+    if (escaped) {
+      escaped = false;
       continue;
     }
     if (inString) {
       if (c === "\\") {
-        escape = true;
+        escaped = true;
         continue;
       }
       if (c === '"') {

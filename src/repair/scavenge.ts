@@ -47,16 +47,16 @@ function* iterateJsonObjects(text: string): Generator<string> {
     if (text[i] !== "{") continue;
     let depth = 0;
     let inString = false;
-    let escape = false;
+    let escaped = false;
     for (let j = i; j < text.length; j++) {
       const c = text[j]!;
-      if (escape) {
-        escape = false;
+      if (escaped) {
+        escaped = false;
         continue;
       }
       if (inString) {
         if (c === "\\") {
-          escape = true;
+          escaped = true;
           continue;
         }
         if (c === '"') inString = false;

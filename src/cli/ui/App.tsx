@@ -1,10 +1,10 @@
-import React, { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { type WriteStream, createWriteStream } from "node:fs";
 import { Box, useApp } from "ink";
-import { createWriteStream, type WriteStream } from "node:fs";
+import React, { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import { CacheFirstLoop, DeepSeekClient, ImmutablePrefix } from "../../index.js";
 import type { LoopEvent } from "../../loop.js";
 import type { SessionSummary } from "../../telemetry.js";
-import { EventLog, type DisplayEvent } from "./EventLog.js";
+import { type DisplayEvent, EventLog } from "./EventLog.js";
 import { PromptInput } from "./PromptInput.js";
 import { StatsPanel } from "./StatsPanel.js";
 
@@ -74,7 +74,7 @@ export function App({ model, system, transcript }: AppProps) {
 
   const prefixHash = loop.prefix.fingerprint;
 
-  const writeTranscript = (ev: LoopEvent) => {
+  const writeTranscript = useCallback((ev: LoopEvent) => {
     transcriptRef.current?.write(
       `${JSON.stringify({
         ts: new Date().toISOString(),
@@ -84,7 +84,7 @@ export function App({ model, system, transcript }: AppProps) {
         tool: ev.toolName,
       })}\n`,
     );
-  };
+  }, []);
 
   const handleSubmit = useCallback(
     async (raw: string) => {
@@ -150,7 +150,7 @@ export function App({ model, system, transcript }: AppProps) {
         setBusy(false);
       }
     },
-    [busy, exit, loop],
+    [busy, exit, loop, writeTranscript],
   );
 
   return (
@@ -159,12 +159,7 @@ export function App({ model, system, transcript }: AppProps) {
       <Box flexDirection="column" marginY={1}>
         <EventLog events={events} />
       </Box>
-      <PromptInput
-        value={input}
-        onChange={setInput}
-        onSubmit={handleSubmit}
-        disabled={busy}
-      />
+      <PromptInput value={input} onChange={setInput} onSubmit={handleSubmit} disabled={busy} />
     </Box>
   );
 }

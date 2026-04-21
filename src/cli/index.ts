@@ -44,10 +44,7 @@ program
     statsCommand({ transcript });
   });
 
-program
-  .command("version")
-  .description("Print Reasonix version.")
-  .action(versionCommand);
+program.command("version").description("Print Reasonix version.").action(versionCommand);
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);

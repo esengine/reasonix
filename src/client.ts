@@ -1,11 +1,5 @@
-import { createParser, type EventSourceMessage } from "eventsource-parser";
-import type {
-  ChatMessage,
-  ChatRequestOptions,
-  RawUsage,
-  ToolCall,
-  ToolSpec,
-} from "./types.js";
+import { type EventSourceMessage, createParser } from "eventsource-parser";
+import type { ChatMessage, ChatRequestOptions, RawUsage, ToolCall, ToolSpec } from "./types.js";
 
 export class Usage {
   constructor(
