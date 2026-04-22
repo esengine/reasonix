@@ -328,21 +328,27 @@ export function App({
       }
     }
 
-    // Outside slash mode: ↑/↓ recall prior prompts.
-    const hist = promptHistory.current;
-    if (key.upArrow) {
-      if (hist.length === 0) return;
-      const nextCursor = Math.min(historyCursor.current + 1, hist.length - 1);
-      historyCursor.current = nextCursor;
-      setInput(hist[hist.length - 1 - nextCursor] ?? "");
-      return;
-    }
-    if (key.downArrow) {
-      if (historyCursor.current < 0) return;
-      const nextCursor = historyCursor.current - 1;
-      historyCursor.current = nextCursor;
-      setInput(nextCursor < 0 ? "" : (hist[hist.length - 1 - nextCursor] ?? ""));
-      return;
+    // Outside slash mode: ↑/↓ recall prior prompts — but ONLY when the
+    // buffer is empty. A non-empty buffer hands those keys to
+    // PromptInput for cursor movement (multi-line navigation, or a
+    // no-op on single-line) so the user doesn't accidentally clobber
+    // typed text with a recalled prompt.
+    if (input.length === 0) {
+      const hist = promptHistory.current;
+      if (key.upArrow) {
+        if (hist.length === 0) return;
+        const nextCursor = Math.min(historyCursor.current + 1, hist.length - 1);
+        historyCursor.current = nextCursor;
+        setInput(hist[hist.length - 1 - nextCursor] ?? "");
+        return;
+      }
+      if (key.downArrow) {
+        if (historyCursor.current < 0) return;
+        const nextCursor = historyCursor.current - 1;
+        historyCursor.current = nextCursor;
+        setInput(nextCursor < 0 ? "" : (hist[hist.length - 1 - nextCursor] ?? ""));
+        return;
+      }
     }
   });
 

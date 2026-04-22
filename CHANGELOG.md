@@ -3,6 +3,89 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.15] — 2026-04-22
+
+**Headline:** Web search + fetch tools (on by default, zero
+configuration) plus real cursor editing in the prompt box (←/→,
+Backspace/Delete mid-string, multi-line ↑/↓ navigation).
+
+### Fixed
+
+- **PromptInput was append-only** — cursor was always pinned to
+  the end of the buffer, so the only way to fix a typo was
+  backspacing back through everything after it. Now:
+  - `←` / `→` move the cursor one column (clamped to buffer).
+  - `↑` / `↓` move across lines in a multi-line buffer, preserving
+    column when possible, clamping when the target line is shorter.
+  - `Ctrl+A` / `Ctrl+E` jump to start / end of the current line.
+  - `Backspace` deletes the char before the cursor; `Delete`
+    deletes the char under the cursor.
+  - Printable input inserts at the cursor (including multi-char
+    paste bursts).
+  - `Shift+Enter` / `Ctrl+J` insert a newline at the cursor.
+- **History recall no longer steals arrow keys from mid-edit.**
+  `↑` / `↓` only trigger prior-prompt recall when the buffer is
+  empty. A non-empty buffer keeps the arrows for cursor motion so
+  typed text isn't clobbered.
+
+### Added
+
+Web search + fetch tools are registered by default on `reasonix
+chat` and `reasonix code`. The model calls `web_search` /
+`web_fetch` on its own whenever a question needs fresher info than
+its training data. Backed by **Mojeek**'s public search page — no
+API key, no signup. Same Cache-First + repair + context-safety
+plumbing as every other tool.
+
+Implementation note: the first cut of this feature used DuckDuckGo,
+but a live probe from the dev machine confirmed DDG now serves
+HTTP 202 anti-bot pages for every unauthenticated POST regardless
+of UA. Mojeek is an independent-index engine that's been stable
+against the same probe (3/3 success on three queries spaced 3s
+apart). Real-browser `User-Agent` string avoids Mojeek's
+fast-path scraper filter.
+
+
+- **`src/tools/web.ts`** — two functions + one registration helper:
+  - `webSearch(query, opts?)` — fetches DDG's HTML endpoint, parses
+    ranked results (title + url + snippet). `topK` is clamped to
+    [1, 10]. Parser decodes DDG's `uddg=<url>` redirect wrapper and
+    common HTML entities.
+  - `webFetch(url, opts?)` — HTTP GET + HTML-to-text extraction
+    (scripts/styles/nav/footer/aside/svg stripped, paragraph breaks
+    preserved, entities decoded). 15s timeout, 32k-char cap (matches
+    tool-result budget), forwards caller's AbortSignal so Esc during
+    a long fetch is honored.
+  - `registerWebTools(registry, opts?)` — registers both as
+    ToolRegistry entries the model can invoke. Tool descriptions
+    guide the model to call search whenever training data might be
+    stale.
+- **`ReasonixConfig.search`** + **`searchEnabled()`** — a simple
+  boolean. Default on. Turn off with `search: false` in config or
+  `REASONIX_SEARCH=off|false|0` in env. No API keys, no provider
+  picker — one switch.
+- **Auto-registered in chat/code.** `reasonix chat` and
+  `reasonix code` register `web_search` + `web_fetch` by default.
+  Zero setup: after the normal wizard, the model can already reach
+  the web.
+
+### Tests (+18, suite 444→462)
+
+- `tests/web-tools.test.ts` (+13) — htmlToText strips
+  scripts/styles/nav/footer + decodes entities + collapses
+  whitespace; `parseDuckDuckGoResults` decodes redirect URLs + entities
+  + returns empty on unexpected markup; `webSearch` hits the DDG
+  endpoint with a browsery UA, respects topK, clamps to [1, 10],
+  throws on non-2xx; `formatSearchResults` renders the expected
+  layout; `registerWebTools` registers both verbs; `web_fetch` refuses
+  non-http(s) URLs; `webFetch` extracts title + body, truncates at
+  the cap with a visible marker, surfaces 404s.
+- `tests/config.test.ts` (+5) — `searchEnabled` defaults to true;
+  honors `search: false` in file; honors `REASONIX_SEARCH=off|false|0`;
+  stays true for unrelated env values; env off beats config true.
+
+---
+
 ## [0.4.14] — 2026-04-22
 
 **Headline:** Render-load reductions for Windows terminals where

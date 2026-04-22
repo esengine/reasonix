@@ -44,6 +44,12 @@ export interface ReasonixConfig {
   session?: string | null;
   /** Marks that `reasonix setup` has completed at least once. */
   setupCompleted?: boolean;
+  /**
+   * Whether `web_search` + `web_fetch` tools are registered. Default:
+   * enabled (no key required — backed by DuckDuckGo's public HTML
+   * endpoint). Set to `false` to keep the session offline.
+   */
+  search?: boolean;
 }
 
 export function defaultConfigPath(): string {
@@ -76,6 +82,19 @@ export function writeConfig(cfg: ReasonixConfig, path: string = defaultConfigPat
 export function loadApiKey(path: string = defaultConfigPath()): string | undefined {
   if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY;
   return readConfig(path).apiKey;
+}
+
+/**
+ * Resolve whether web-search tools should be registered. Default: on.
+ * Env `REASONIX_SEARCH=off` or config `search: false` turns it off.
+ * Any other value falls through to enabled.
+ */
+export function searchEnabled(path: string = defaultConfigPath()): boolean {
+  const env = process.env.REASONIX_SEARCH;
+  if (env === "off" || env === "false" || env === "0") return false;
+  const cfg = readConfig(path).search;
+  if (cfg === false) return false;
+  return true;
 }
 
 export function saveApiKey(key: string, path: string = defaultConfigPath()): void {

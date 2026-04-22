@@ -1,6 +1,6 @@
 import { render } from "ink";
 import React, { useState } from "react";
-import { loadApiKey } from "../../config.js";
+import { loadApiKey, searchEnabled } from "../../config.js";
 import { loadDotenv } from "../../env.js";
 import { McpClient } from "../../mcp/client.js";
 import { type InspectionReport, inspectMcpServer } from "../../mcp/inspect.js";
@@ -9,6 +9,7 @@ import { parseMcpSpec } from "../../mcp/spec.js";
 import { SseTransport } from "../../mcp/sse.js";
 import { type McpTransport, StdioTransport } from "../../mcp/stdio.js";
 import { ToolRegistry } from "../../tools.js";
+import { registerWebTools } from "../../tools/web.js";
 import { App } from "../ui/App.js";
 import { Setup } from "../ui/Setup.js";
 import type { McpServerSummary } from "../ui/slash.js";
@@ -188,6 +189,14 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
     }
   }
   const mcpSpecs = successfulSpecs;
+
+  // Register web search/fetch tools unless explicitly disabled. DDG
+  // backs them with no key required; the model invokes them whenever
+  // a question needs info fresher than its training data.
+  if (searchEnabled()) {
+    if (!tools) tools = new ToolRegistry();
+    registerWebTools(tools);
+  }
 
   const { waitUntilExit } = render(
     <Root

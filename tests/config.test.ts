@@ -8,6 +8,7 @@ import {
   readConfig,
   redactKey,
   saveApiKey,
+  searchEnabled,
   writeConfig,
 } from "../src/config.js";
 
@@ -15,12 +16,15 @@ describe("config", () => {
   let dir: string;
   let path: string;
   const originalEnv = process.env.DEEPSEEK_API_KEY;
+  const originalSearch = process.env.REASONIX_SEARCH;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "reasonix-test-"));
     path = join(dir, "config.json");
     // biome-ignore lint/performance/noDelete: the string "undefined" leaks into process.env otherwise
     delete process.env.DEEPSEEK_API_KEY;
+    // biome-ignore lint/performance/noDelete: same reason
+    delete process.env.REASONIX_SEARCH;
   });
 
   afterEach(() => {
@@ -30,6 +34,12 @@ describe("config", () => {
       delete process.env.DEEPSEEK_API_KEY;
     } else {
       process.env.DEEPSEEK_API_KEY = originalEnv;
+    }
+    if (originalSearch === undefined) {
+      // biome-ignore lint/performance/noDelete: same reason
+      delete process.env.REASONIX_SEARCH;
+    } else {
+      process.env.REASONIX_SEARCH = originalSearch;
     }
   });
 
@@ -105,5 +115,34 @@ describe("config", () => {
     writeConfig({ apiKey: "sk-xxxxxxxxxxxxxxxxxxxx", session: null }, path);
     const loaded = readConfig(path);
     expect(loaded.session).toBeNull();
+  });
+
+  it("searchEnabled defaults to true with no config and no env", () => {
+    expect(searchEnabled(path)).toBe(true);
+  });
+
+  it("searchEnabled honours `search: false` in the config file", () => {
+    writeConfig({ apiKey: "sk-test123abcdefghijkl", search: false }, path);
+    expect(searchEnabled(path)).toBe(false);
+  });
+
+  it("searchEnabled honours REASONIX_SEARCH=off/false/0", () => {
+    process.env.REASONIX_SEARCH = "off";
+    expect(searchEnabled(path)).toBe(false);
+    process.env.REASONIX_SEARCH = "false";
+    expect(searchEnabled(path)).toBe(false);
+    process.env.REASONIX_SEARCH = "0";
+    expect(searchEnabled(path)).toBe(false);
+  });
+
+  it("searchEnabled stays true for unrelated env values", () => {
+    process.env.REASONIX_SEARCH = "on";
+    expect(searchEnabled(path)).toBe(true);
+  });
+
+  it("env off beats config true", () => {
+    writeConfig({ apiKey: "sk-test123abcdefghijkl", search: true }, path);
+    process.env.REASONIX_SEARCH = "off";
+    expect(searchEnabled(path)).toBe(false);
   });
 });

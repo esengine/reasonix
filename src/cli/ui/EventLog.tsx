@@ -323,17 +323,25 @@ function StreamingAssistant({ event }: { event: DisplayEvent }) {
       ) : null}
       {tail ? (
         <Text dimColor>▸ {tail}</Text>
+      ) : preFirstByte ? (
+        <Text dimColor italic>
+          {"  connection open, first byte typically in 5-60s depending on model + load"}
+        </Text>
       ) : reasoningOnly ? (
         <Text color="yellow" dimColor>
           {
             "  R1 is thinking before it speaks — body text starts when reasoning completes (typically 20-90s)."
           }
         </Text>
-      ) : (
-        <Text dimColor italic>
-          {"  connection open, first byte typically in 5-60s depending on model + load"}
+      ) : toolCallOnly ? (
+        <Text color="magenta" dimColor>
+          {"  tool-call arguments streaming — the model is about to dispatch a tool"}
         </Text>
-      )}
+      ) : event.reasoning ? (
+        <Text color="yellow" dimColor>
+          {"  R1 still reasoning — body text or tool call arrives when thinking completes"}
+        </Text>
+      ) : null}
     </Box>
   );
 }

@@ -322,6 +322,72 @@ don't need this opt-out.
 
 ---
 
+## Web search — on by default
+
+The model has two web tools the moment you launch: `web_search` and
+`web_fetch`. No flag, no API key, no signup. When you ask about
+something the model wasn't trained on (new releases, current events,
+obscure APIs), it decides to call `web_search` on its own; if a
+snippet isn't enough it follows up with `web_fetch`.
+
+```
+you › Flutter 3.19 新加了什么？
+assistant
+  ▸ tool<web_search> → query: "Flutter 3.19 new features"
+  ▸ tool<web_fetch> → https://docs.flutter.dev/release/3-19
+  ▸ 3.19 主要新增了 …
+```
+
+Backed by **Mojeek**'s public search page — an independent web index,
+no API key, no signup, bot-friendly. Coverage on niche or very recent
+queries can be thinner than Google/Bing, but it's reliable from
+scripts and doesn't gate on cookies or sessions. (DDG was the original
+backend but it started serving anti-bot pages in 2026.)
+
+**Turn it off** (offline mode / privacy / CI):
+
+```json
+// ~/.reasonix/config.json
+{ "apiKey": "sk-…", "search": false }
+```
+
+```bash
+# Or one env var (wins over config):
+REASONIX_SEARCH=off npx reasonix
+```
+
+**Bring your own provider** (Kagi, SearXNG, Serper, an internal
+cache) — implement the two tools however you want and register them
+manually:
+
+```ts
+import { ToolRegistry } from "reasonix";
+// Register your own `web_search` / `web_fetch` on a ToolRegistry,
+// then pass it to CacheFirstLoop (or `reasonix chat --no-config`
+// with seedTools via library API).
+```
+
+Inside the session:
+
+```
+reasonix › Flutter 3.19 引入了什么新的 Navigator API？
+assistant
+  ▸ tool<web_search> → query: "Flutter 3.19 new Navigator API"
+    answer: Flutter 3.19 introduces the NavigatorObserver changes …
+    1. Flutter 3.19 Release Notes — https://docs.flutter.dev/…
+    2. What's new in Flutter 3.19 — https://medium.com/…
+  ▸ tool<web_fetch> → https://docs.flutter.dev/release/release-notes/3-19-0
+    (full page text, clipped at 32k)
+  ▸ 3.19 新增了 …
+```
+
+For advanced / self-hosted search (Kagi, SearXNG, internal caches)
+implement the `WebSearchProvider` interface and call
+`registerWebTools(registry, { provider })` yourself, or bridge an
+existing MCP search server via `--mcp`.
+
+---
+
 ## MCP — bring your own tools
 
 Any [MCP](https://spec.modelcontextprotocol.io/) server works. Wizard

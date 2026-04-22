@@ -33,6 +33,21 @@ export { ToolRegistry } from "./tools.js";
 export type { ToolDefinition, ToolCallContext } from "./tools.js";
 export { registerFilesystemTools } from "./tools/filesystem.js";
 export type { FilesystemToolsOptions } from "./tools/filesystem.js";
+export {
+  formatSearchResults,
+  htmlToText,
+  parseMojeekResults,
+  registerWebTools,
+  webFetch,
+  webSearch,
+} from "./tools/web.js";
+export type {
+  PageContent,
+  SearchResult,
+  WebFetchOptions,
+  WebSearchOptions,
+  WebToolsOptions,
+} from "./tools/web.js";
 
 export {
   SessionStats,
@@ -186,4 +201,4 @@ export type {
   JSONSchema,
 } from "./types.js";
 
-export const VERSION = "0.4.14";
+export const VERSION = "0.4.15";

@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
-import React from "react";
-import { type MultilineKey, processMultilineKey } from "./multiline-keys.js";
+import React, { useRef, useState } from "react";
+import { type MultilineKey, lineAndColumn, processMultilineKey } from "./multiline-keys.js";
 import { useTick } from "./ticker.js";
 
 export interface PromptInputProps {
@@ -12,19 +12,16 @@ export interface PromptInputProps {
 }
 
 /**
- * Input box with multi-line composition support. Behaves like the
- * old single-line prompt by default, but:
- *   - Ctrl+J inserts a newline (universal across terminals).
- *   - Shift+Enter inserts a newline (only on terminals that report
- *     the modifier via CSI-u — many don't).
- *   - `\<Enter>` at end of line acts as bash-style continuation —
- *     always works, even on terminals without modifier reporting.
- *   - Pasted multi-line text lands as-is instead of submitting on
- *     the first '\r'.
+ * Input box with real cursor support. ←/→ move one column, ↑/↓ move
+ * across lines in multi-line buffers, Ctrl+A / Ctrl+E jump to
+ * start/end of the current line. Backspace deletes before cursor,
+ * Delete deletes under cursor. Multi-line composition via Ctrl+J,
+ * Shift+Enter, or bash-style `\<Enter>`.
  *
- * No mid-string insertion cursor — edits happen at the end, like
- * a readline prompt in raw mode. Simple, predictable, enough for
- * 95% of prompts and any code paste.
+ * Cursor state lives locally. When the parent replaces `value` out
+ * of band (history recall, slash completion, setup wizard) the
+ * cursor jumps to end; the `lastLocalValueRef` guards distinguishes
+ * that case from our own edits.
  */
 export function PromptInput({
   value,
@@ -33,15 +30,29 @@ export function PromptInput({
   disabled,
   placeholder,
 }: PromptInputProps) {
-  // Blink from the shared ticker (TICK_MS ≈ 120ms) scaled by 4 so the
-  // visible on/off toggles land around 500ms — standard cursor blink.
-  // When disabled the cursor is hidden entirely.
+  const [cursor, setCursor] = useState(value.length);
+  // Tracks the last `value` we ourselves produced via onChange. If the
+  // incoming `value` prop diverges from this, the parent (or some other
+  // source) replaced the buffer — we reset the cursor to end.
+  const lastLocalValueRef = useRef(value);
+  if (value !== lastLocalValueRef.current) {
+    lastLocalValueRef.current = value;
+    if (cursor !== value.length) {
+      // Conditional setState during render is the "derived state" pattern;
+      // React schedules the re-render and the else branch of the `if`
+      // prevents infinite loops.
+      setCursor(value.length);
+    }
+  }
+
+  // Shared ticker drives the cursor blink. Dividing the tick by 4 lands
+  // the visible on/off cycle around 480ms — standard cursor cadence.
   const tick = useTick();
   const showCursor = disabled ? false : Math.floor(tick / 4) % 2 === 0;
 
   useInput(
     (input, key) => {
-      const keyEvent: MultilineKey = {
+      const ke: MultilineKey = {
         input,
         return: key.return,
         shift: key.shift,
@@ -58,8 +69,14 @@ export function PromptInput({
         pageUp: key.pageUp,
         pageDown: key.pageDown,
       };
-      const action = processMultilineKey(value, keyEvent);
-      if (action.next !== null) onChange(action.next);
+      const action = processMultilineKey(value, cursor, ke);
+      if (action.next !== null) {
+        lastLocalValueRef.current = action.next;
+        onChange(action.next);
+      }
+      if (action.cursor !== null) {
+        setCursor(action.cursor);
+      }
       if (action.submit) onSubmit(action.submitValue ?? value);
     },
     { isActive: !disabled },
@@ -71,17 +88,14 @@ export function PromptInput({
 
   const lines = value.length > 0 ? value.split("\n") : [""];
   const borderColor = disabled ? "gray" : "cyan";
+  const { line: cursorLine, col: cursorCol } = lineAndColumn(value, cursor);
 
   return (
     <Box borderStyle="round" borderColor={borderColor} paddingX={1} flexDirection="column">
       {lines.map((line, i) => {
-        const isLast = i === lines.length - 1;
         const isFirst = i === 0;
         const showPlaceholder = isFirst && value.length === 0;
-        // Line content never survives a re-keying here: the value buffer
-        // fully re-renders on every keystroke, so the array index IS the
-        // stable identity. Biome's rule targets list reordering, which
-        // doesn't apply to an append-only splits-by-newline view.
+        const isCursorLine = i === cursorLine;
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: stable by construction — lines are derived from `value.split("\n")` and never reordered
           <Box key={i}>
@@ -92,21 +106,59 @@ export function PromptInput({
             ) : (
               <Text dimColor>{"     "}</Text>
             )}
-            {/* When showing the placeholder, the cursor is at position 0 —
-                put it BEFORE the dimmed hint text so it visually matches
-                "you're about to type here," not "you typed the placeholder."
-                When showing real content, the cursor follows the last char
-                of the last line (append-only edit model). */}
-            {showPlaceholder && isLast && !disabled ? (
-              <Text color={borderColor}>{showCursor ? "▌" : " "}</Text>
-            ) : null}
-            {showPlaceholder ? <Text dimColor>{effectivePlaceholder}</Text> : <Text>{line}</Text>}
-            {!showPlaceholder && isLast && !disabled ? (
-              <Text color={borderColor}>{showCursor ? "▌" : " "}</Text>
-            ) : null}
+            {showPlaceholder ? (
+              <>
+                {isCursorLine && !disabled ? (
+                  <Text color={borderColor}>{showCursor ? "▌" : " "}</Text>
+                ) : null}
+                <Text dimColor>{effectivePlaceholder}</Text>
+              </>
+            ) : isCursorLine && !disabled ? (
+              <LineWithCursor
+                line={line}
+                col={cursorCol}
+                showCursor={showCursor}
+                borderColor={borderColor}
+              />
+            ) : (
+              <Text>{line}</Text>
+            )}
           </Box>
         );
       })}
     </Box>
+  );
+}
+
+function LineWithCursor({
+  line,
+  col,
+  showCursor,
+  borderColor,
+}: {
+  line: string;
+  col: number;
+  showCursor: boolean;
+  borderColor: "cyan" | "gray";
+}) {
+  const before = line.slice(0, col);
+  const atCursor = line.slice(col, col + 1);
+  const after = line.slice(col + 1);
+  if (atCursor.length === 0) {
+    // Cursor sits past the last char of this line (end-of-line). Render
+    // a trailing block so the user sees where they're typing next.
+    return (
+      <>
+        <Text>{before}</Text>
+        <Text color={borderColor}>{showCursor ? "▌" : " "}</Text>
+      </>
+    );
+  }
+  return (
+    <>
+      <Text>{before}</Text>
+      <Text inverse={showCursor}>{atCursor}</Text>
+      <Text>{after}</Text>
+    </>
   );
 }
