@@ -85,6 +85,29 @@ export {
 } from "./diff.js";
 export type { DiffReport, DiffSide, TurnPair, RenderOptions as DiffRenderOptions } from "./diff.js";
 
+// ---------- MCP (v0.3 foundation) ----------
+export { McpClient } from "./mcp/client.js";
+export type { McpClientOptions } from "./mcp/client.js";
+export { StdioTransport } from "./mcp/stdio.js";
+export type { McpTransport, StdioTransportOptions } from "./mcp/stdio.js";
+export { bridgeMcpTools, flattenMcpResult } from "./mcp/registry.js";
+export type { BridgeOptions, BridgeResult } from "./mcp/registry.js";
+export {
+  MCP_PROTOCOL_VERSION,
+  isJsonRpcError,
+} from "./mcp/types.js";
+export type {
+  McpTool,
+  McpToolSchema,
+  CallToolResult,
+  ListToolsResult,
+  McpContentBlock,
+  InitializeResult,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  JsonRpcMessage,
+} from "./mcp/types.js";
+
 export { fetchWithRetry } from "./retry.js";
 export type { RetryOptions, RetryInfo } from "./retry.js";
 
