@@ -97,6 +97,14 @@ export function App({
   // would need per-project scoping we haven't designed.
   const promptHistory = useRef<string[]>([]);
   const historyCursor = useRef<number>(-1);
+  // Full untruncated tool results, in arrival order. The EventLog
+  // renderer clips tool output at 400 chars for display; `/tool N`
+  // reads from this ref to show the real thing. Not persisted — a
+  // resumed session replays the log (which has the same content in
+  // `tool` messages) but we don't repopulate this ref on resume
+  // because the user wouldn't expect `/tool` to reach back across
+  // process boundaries.
+  const toolHistoryRef = useRef<Array<{ toolName: string; text: string }>>([]);
   const [summary, setSummary] = useState<SessionSummary>({
     turns: 0,
     totalCostUsd: 0,
@@ -289,6 +297,7 @@ export function App({
           codeDiscard: codeMode ? codeDiscard : undefined,
           codeRoot: codeMode?.rootDir,
           pendingEditCount: codeMode ? pendingEdits.current.length : undefined,
+          toolHistory: () => toolHistoryRef.current,
         });
         if (result.exit) {
           transcriptRef.current?.end();
@@ -426,6 +435,10 @@ export function App({
           } else if (ev.role === "tool") {
             flush();
             setOngoingTool(null);
+            toolHistoryRef.current.push({
+              toolName: ev.toolName ?? "?",
+              text: ev.content,
+            });
             setHistorical((prev) => [
               ...prev,
               {
@@ -592,7 +605,10 @@ function CommandStrip({ codeMode }: { codeMode: boolean }) {
           /apply
         </Text>
       ) : null}
-      <Text dimColor>↑/↓ recall prompts · /retry re-send last · /think see R1 full reasoning</Text>
+      <Text dimColor>
+        ↑/↓ recall prompts · /retry re-send last · /think see R1 reasoning · /tool N full tool
+        output
+      </Text>
       <Text dimColor>Esc (while thinking) — abort & summarize what was found so far</Text>
     </Box>
   );

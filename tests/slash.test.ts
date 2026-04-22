@@ -330,6 +330,84 @@ describe("handleSlash", () => {
     expect(r.info).toMatch(/\/retry/);
   });
 
+  it("/tool with no history says none yet", () => {
+    const r = handleSlash("tool", [], makeLoop());
+    expect(r.info).toMatch(/no tool calls yet/);
+  });
+
+  it("/tool with history lists entries, most recent first", () => {
+    const r = handleSlash("tool", [], makeLoop(), {
+      toolHistory: () => [
+        { toolName: "fs_read_file", text: "old content" },
+        { toolName: "fs_list_directory", text: "newer content" },
+      ],
+    });
+    expect(r.info).toMatch(/Tool calls in this session \(2/);
+    // Most recent is #1 — the list must order so fs_list_directory
+    // (newer) appears before fs_read_file (older).
+    const idxNewer = r.info!.indexOf("fs_list_directory");
+    const idxOlder = r.info!.indexOf("fs_read_file");
+    expect(idxNewer).toBeGreaterThan(-1);
+    expect(idxOlder).toBeGreaterThan(idxNewer);
+  });
+
+  it("/tool N dumps the Nth-most-recent tool output in full", () => {
+    const big = "X".repeat(2000);
+    const r = handleSlash("tool", ["1"], makeLoop(), {
+      toolHistory: () => [
+        { toolName: "fs_read_file", text: "older" },
+        { toolName: "fs_list_directory", text: big },
+      ],
+    });
+    expect(r.info).toMatch(/tool<fs_list_directory>/);
+    expect(r.info).toMatch(/2000 chars/);
+    // Full 2000 X's included — not truncated.
+    expect(r.info).toContain(big);
+  });
+
+  it("/tool 2 reaches one call back from the most recent", () => {
+    const r = handleSlash("tool", ["2"], makeLoop(), {
+      toolHistory: () => [
+        { toolName: "fs_read_file", text: "target" },
+        { toolName: "fs_list_directory", text: "most recent" },
+      ],
+    });
+    expect(r.info).toMatch(/tool<fs_read_file>/);
+    expect(r.info).toContain("target");
+  });
+
+  it("/tool N past history length reports bounds", () => {
+    const r = handleSlash("tool", ["5"], makeLoop(), {
+      toolHistory: () => [{ toolName: "fs_read_file", text: "one" }],
+    });
+    expect(r.info).toMatch(/only 1 tool call/);
+  });
+
+  it("/tool with non-numeric arg returns usage", () => {
+    const r = handleSlash("tool", ["huh"], makeLoop(), {
+      toolHistory: () => [{ toolName: "fs_read_file", text: "one" }],
+    });
+    expect(r.info).toMatch(/usage: \/tool/);
+  });
+
+  it("/tool list trims the display to 10 most recent but hints at older", () => {
+    const many = Array.from({ length: 15 }, (_, i) => ({
+      toolName: `t${i}`,
+      text: `call-${i}`,
+    }));
+    const r = handleSlash("tool", [], makeLoop(), { toolHistory: () => many });
+    // Most recent (#1 = t14) and 10th back (#10 = t5) should be shown.
+    expect(r.info).toContain("t14");
+    expect(r.info).toContain("t5");
+    // t4 would be #11 — beyond the first-page cutoff.
+    expect(r.info).toMatch(/5 earlier.*reach with \/tool N/);
+  });
+
+  it("/help mentions /tool", () => {
+    const r = handleSlash("help", [], makeLoop());
+    expect(r.info).toMatch(/\/tool/);
+  });
+
   it("/status shows ctx / session / mcp / pending lines with rich detail", () => {
     const loop = makeLoop();
     // Make it look like one turn ran so lastPromptTokens > 0.

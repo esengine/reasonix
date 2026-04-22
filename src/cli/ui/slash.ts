@@ -63,6 +63,13 @@ export interface SlashContext {
    * omitted → treat as 0 (chat-only session).
    */
   pendingEditCount?: number;
+  /**
+   * Callback returning every tool result seen this session in
+   * chronological order (oldest first). Powers `/tool [N]` for
+   * inspecting the full untruncated output that `EventLog` clips at
+   * 400 chars for display. Absent → `/tool` replies "not available".
+   */
+  toolHistory?: () => Array<{ toolName: string; text: string }>;
 }
 
 export function parseSlash(text: string): { cmd: string; args: string[] } | null {
@@ -102,6 +109,7 @@ export function handleSlash(
           "  /setup                   (exit + reconfigure) → run `reasonix setup`",
           "  /compact [cap]           shrink large tool results in history (default 4k/result)",
           "  /think                   dump the most recent turn's full R1 reasoning (reasoner only)",
+          "  /tool [N]                list tool calls (or dump full output of #N, 1=most recent)",
           "  /retry                   truncate & resend your last message (fresh sample from the model)",
           "  /apply                   (code mode) commit the pending edit blocks to disk",
           "  /discard                 (code mode) drop pending edits without writing",
@@ -180,6 +188,43 @@ export function handleSlash(
         };
       }
       return { info: `↳ full thinking (${raw.length} chars):\n\n${raw.trim()}` };
+    }
+
+    case "tool": {
+      // EventLog truncates tool results at 400 chars for display. When
+      // the user wants to check what the model actually read (e.g. to
+      // verify it isn't hallucinating a file's contents), they need
+      // the full text. `/tool` is the escape hatch.
+      const history = ctx.toolHistory?.() ?? [];
+      if (history.length === 0) {
+        return {
+          info:
+            "no tool calls yet in this session. `/tool` lists them once the model has actually " +
+            "used a tool; `/tool N` dumps the full (untruncated) output of the Nth-most-recent.",
+        };
+      }
+      const raw = (args[0] ?? "").toLowerCase();
+      if (raw === "" || raw === "list" || raw === "ls") {
+        return { info: formatToolList(history) };
+      }
+      const n = Number.parseInt(raw, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        return {
+          info: "usage: /tool [N]   (no arg → list; N=1 → most recent result in full, N=2 → previous, …)",
+        };
+      }
+      if (n > history.length) {
+        return {
+          info: `only ${history.length} tool call(s) in history — asked for #${n}. Try /tool with no arg to see the list.`,
+        };
+      }
+      const entry = history[history.length - n];
+      if (!entry) {
+        return { info: `could not read tool call #${n}` };
+      }
+      return {
+        info: `↳ tool<${entry.toolName}> #${n} (${entry.text.length} chars):\n\n${entry.text}`,
+      };
     }
 
     case "undo": {
@@ -364,6 +409,33 @@ export function handleSlash(
     default:
       return { unknown: true, info: `unknown command: /${cmd}  (try /help)` };
   }
+}
+
+function formatToolList(history: Array<{ toolName: string; text: string }>): string {
+  const total = history.length;
+  const header = `Tool calls in this session (${total}, most recent first):`;
+  // Show the 10 most recent. Older ones are rarely what the user
+  // wants — and the help footer tells them how to reach any entry
+  // by index if they do.
+  const shown = Math.min(total, 10);
+  const lines: string[] = [header];
+  for (let i = 0; i < shown; i++) {
+    const entry = history[total - 1 - i];
+    if (!entry) continue;
+    const idx = i + 1; // 1-based from most recent
+    const flat = entry.text.replace(/\s+/g, " ").trim();
+    const preview = flat.length > 80 ? `${flat.slice(0, 80)}…` : flat;
+    const name = entry.toolName.length > 24 ? `${entry.toolName.slice(0, 23)}…` : entry.toolName;
+    lines.push(
+      `  #${String(idx).padStart(2)}  ${name.padEnd(24)}  ${String(entry.text.length).padStart(6)} chars  ${preview}`,
+    );
+  }
+  if (total > shown) {
+    lines.push(`  … (${total - shown} earlier, reach with /tool N)`);
+  }
+  lines.push("");
+  lines.push("View full output: /tool N   (N=1 → most recent)");
+  return lines.join("\n");
 }
 
 function compactNum(n: number): string {

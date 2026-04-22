@@ -3,6 +3,38 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] — 2026-04-21
+
+**Headline:** `/tool` slash command — inspect the full untruncated
+output of any tool call this session. The `EventLog` renderer has
+always clipped tool results at 400 chars for display; when the model
+says "I read your file, it says …", users had no way to verify that
+claim against what the tool actually returned. Now they do.
+
+### Added
+
+- **`/tool`** (no arg) — list up to 10 most recent tool calls with
+  tool name, char count, and a one-line preview. `#1` is the most
+  recent; older entries are paged behind a "… (N earlier)" hint.
+- **`/tool N`** — dump the Nth-most-recent tool result in full,
+  untruncated. Reads from an in-memory ref populated as each `tool`
+  event lands in `App.tsx`. Not persisted across process restarts
+  (resumed sessions don't rebuild the history — the tool messages
+  are still in the session log for the model's sake, but `/tool`
+  history is per-process).
+- **`SlashContext.toolHistory` callback** — the TUI passes
+  `() => toolHistoryRef.current`; pure `handleSlash` tests stub
+  an array directly. Keeps `slash.ts` stateless.
+
+### Tests (+8, suite 332→340)
+
+- `tests/slash.test.ts` (+8) — empty-history message, list ordering
+  (most recent first), `/tool 1` dumps full content, `/tool 2`
+  reaches one back, out-of-bounds message, non-numeric → usage,
+  list pagination at 15 entries, `/help` mentions `/tool`.
+
+---
+
 ## [0.4.3] — 2026-04-21
 
 **Headline:** Seven more UX improvements on top of 0.4.2. Layered in
