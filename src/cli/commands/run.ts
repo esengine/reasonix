@@ -7,7 +7,8 @@ import { CacheFirstLoop, DeepSeekClient, ImmutablePrefix } from "../../index.js"
 import { McpClient } from "../../mcp/client.js";
 import { bridgeMcpTools } from "../../mcp/registry.js";
 import { parseMcpSpec } from "../../mcp/spec.js";
-import { StdioTransport } from "../../mcp/stdio.js";
+import { SseTransport } from "../../mcp/sse.js";
+import { type McpTransport, StdioTransport } from "../../mcp/stdio.js";
 import { ToolRegistry } from "../../tools.js";
 import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../transcript.js";
 
@@ -80,13 +81,17 @@ export async function runCommand(opts: RunOptions): Promise<void> {
           : mcpSpecs.length === 1 && opts.mcpPrefix
             ? opts.mcpPrefix
             : "";
-        const mcp = new McpClient({
-          transport: new StdioTransport({ command: spec.command, args: spec.args }),
-        });
+        const transport: McpTransport =
+          spec.transport === "sse"
+            ? new SseTransport({ url: spec.url })
+            : new StdioTransport({ command: spec.command, args: spec.args });
+        const mcp = new McpClient({ transport });
         await mcp.initialize();
         const bridge = await bridgeMcpTools(mcp, { registry: tools, namePrefix: prefix });
+        const source =
+          spec.transport === "sse" ? spec.url : `${spec.command} ${spec.args.join(" ")}`;
         process.stderr.write(
-          `▸ MCP[${spec.name ?? "anon"}]: ${bridge.registeredNames.length} tool(s) from ${spec.command} ${spec.args.join(" ")}\n`,
+          `▸ MCP[${spec.name ?? "anon"}]: ${bridge.registeredNames.length} tool(s) from ${source}\n`,
         );
         clients.push(mcp);
       } catch (err) {

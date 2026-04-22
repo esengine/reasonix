@@ -90,8 +90,12 @@ export { McpClient } from "./mcp/client.js";
 export type { McpClientOptions } from "./mcp/client.js";
 export { StdioTransport } from "./mcp/stdio.js";
 export type { McpTransport, StdioTransportOptions } from "./mcp/stdio.js";
+export { SseTransport } from "./mcp/sse.js";
+export type { SseTransportOptions } from "./mcp/sse.js";
 export { bridgeMcpTools, flattenMcpResult } from "./mcp/registry.js";
 export type { BridgeOptions, BridgeResult } from "./mcp/registry.js";
+export { parseMcpSpec } from "./mcp/spec.js";
+export type { McpSpec, StdioMcpSpec, SseMcpSpec } from "./mcp/spec.js";
 export {
   MCP_PROTOCOL_VERSION,
   isJsonRpcError,
@@ -131,4 +135,4 @@ export type {
   JSONSchema,
 } from "./types.js";
 
-export const VERSION = "0.3.0-alpha.3";
+export const VERSION = "0.3.0-alpha.4";

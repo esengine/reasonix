@@ -3,6 +3,53 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0-alpha.4] — 2026-04-21
+
+**Headline:** MCP over HTTP+SSE. Bridge *remote* / hosted MCP servers,
+not just local subprocesses. Pass a URL to `--mcp` and Reasonix opens
+an SSE stream and POSTs JSON-RPC to the endpoint the server advertises.
+
+### Added
+
+- **`SseTransport`** (`src/mcp/sse.ts`) — 2024-11-05 HTTP+SSE wire:
+  GET the SSE URL, wait for `event: endpoint`, POST every outgoing
+  JSON-RPC frame to that URL, read responses off the SSE channel.
+  Headers are passthrough, so `Authorization: Bearer ...` works for
+  hosted servers behind auth.
+- **`--mcp` now accepts URLs.** The parser routes anything starting
+  with `http://` or `https://` to `SseTransport`; everything else is
+  stdio as before. Both namespaced and anonymous forms work:
+    ```
+    reasonix chat --mcp "kb=https://mcp.example.com/sse"
+    reasonix run  --mcp "http://127.0.0.1:9000/sse" --task "..."
+    ```
+- `McpSpec` is now a discriminated union:
+  `{ transport: "stdio", command, args } | { transport: "sse", url }`.
+  Callers who inspected `spec.command` / `spec.args` need to branch on
+  `spec.transport` first — not a concern for `--mcp` CLI users.
+- `src/index.ts` exports `SseTransport`, `SseTransportOptions`,
+  `parseMcpSpec`, and the `McpSpec` union types.
+
+### Tests
+
+- `tests/mcp-sse.test.ts` (+4) — in-process `http.Server` fake that
+  implements the SSE wire. Covers: relative-path endpoint resolution,
+  absolute endpoint URLs, a full `McpClient.initialize` →
+  `listTools` round-trip over SSE, and handshake-failure propagation.
+- `parseMcpSpec` SSE cases (+4) — anonymous URL, namespaced URL,
+  case-insensitive scheme, and `ws://` staying routed to stdio (no
+  surprise detection beyond the two supported schemes).
+- Suite: **241 passing** (was 233).
+
+### Notes
+
+- Still targeting MCP protocol `2024-11-05`. The 2025-03-26 spec's
+  "Streamable HTTP" transport (single endpoint, no separate SSE GET)
+  is a separate body of work — deferred until there's a server in
+  the wild worth testing against.
+
+---
+
 ## [0.3.0-alpha.3] — 2026-04-22
 
 **Headline:** multi-server MCP + discovery command. Bridge two or more

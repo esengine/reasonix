@@ -5,7 +5,8 @@ import { loadDotenv } from "../../env.js";
 import { McpClient } from "../../mcp/client.js";
 import { bridgeMcpTools } from "../../mcp/registry.js";
 import { parseMcpSpec } from "../../mcp/spec.js";
-import { StdioTransport } from "../../mcp/stdio.js";
+import { SseTransport } from "../../mcp/sse.js";
+import { type McpTransport, StdioTransport } from "../../mcp/stdio.js";
 import { ToolRegistry } from "../../tools.js";
 import { App } from "../ui/App.js";
 import { Setup } from "../ui/Setup.js";
@@ -72,13 +73,18 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
           : mcpSpecs.length === 1 && opts.mcpPrefix
             ? opts.mcpPrefix
             : "";
-        const transport = new StdioTransport({ command: spec.command, args: spec.args });
+        const transport: McpTransport =
+          spec.transport === "sse"
+            ? new SseTransport({ url: spec.url })
+            : new StdioTransport({ command: spec.command, args: spec.args });
         const mcp = new McpClient({ transport });
         await mcp.initialize();
         const bridge = await bridgeMcpTools(mcp, { registry: tools, namePrefix: prefix });
         const label = spec.name ?? "anon";
+        const source =
+          spec.transport === "sse" ? spec.url : `${spec.command} ${spec.args.join(" ")}`;
         process.stderr.write(
-          `▸ MCP[${label}]: ${bridge.registeredNames.length} tool(s) from ${spec.command} ${spec.args.join(" ")}\n`,
+          `▸ MCP[${label}]: ${bridge.registeredNames.length} tool(s) from ${source}\n`,
         );
         clients.push(mcp);
       } catch (err) {

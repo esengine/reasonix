@@ -131,6 +131,11 @@ reasonix chat \
   --mcp "fs=npx -y @modelcontextprotocol/server-filesystem /tmp/safe" \
   --mcp "mem=npx -y @modelcontextprotocol/server-memory"
 # Tools land in a shared registry as fs_read_file, mem_set, etc.
+
+# Remote / hosted MCP server — pass an http(s) URL instead of a command.
+# Reasonix opens an SSE stream and POSTs JSON-RPC to the endpoint the
+# server advertises (MCP 2024-11-05 HTTP+SSE transport).
+reasonix chat --mcp "kb=https://mcp.example.com/sse"
 ```
 
 [mcp]: ./benchmarks/tau-bench/transcripts/mcp-demo.add.jsonl

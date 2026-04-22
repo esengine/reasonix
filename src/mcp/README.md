@@ -27,11 +27,15 @@ it and keep everything else.
 src/mcp/
 ├── types.ts      JSON-RPC 2.0 + MCP-specific message types
 ├── stdio.ts      McpTransport interface + StdioTransport (spawn child)
+├── sse.ts        SseTransport (HTTP+SSE for remote/hosted servers)
+├── spec.ts       parseMcpSpec — parses --mcp CLI arg into transport-tagged spec
+├── catalog.ts    curated list of popular official MCP servers
 ├── client.ts     McpClient: initialize / listTools / callTool
 ├── registry.ts   bridgeMcpTools: MCP → ToolRegistry
 └── README.md     (this file)
 
-tests/mcp.test.ts — 10 tests, in-process fake transport, no child processes
+tests/mcp.test.ts — in-process fake transport, no child processes
+tests/mcp-sse.test.ts — in-process http.Server fake for SSE
 ```
 
 ## What's NOT here (yet)
@@ -45,7 +49,8 @@ tests/mcp.test.ts — 10 tests, in-process fake transport, no child processes
 | Prompts / `prompts/list` | deferred | ditto |
 | Progress notifications | deferred | long-running tool support comes with the CLI work |
 | Streaming results | deferred | current shape returns one CallToolResult per call |
-| SSE transport | deferred | stdio covers the common case; SSE is a later variant |
+| SSE transport | ✅ shipped | `src/mcp/sse.ts` — pass `http(s)://…` to `--mcp` |
+| Streamable HTTP (2025-03-26 spec) | deferred | waiting for a real server to validate against |
 | MCP server that Reasonix exposes | never | out of scope — Reasonix is a client |
 
 ## Usage (CLI)
