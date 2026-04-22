@@ -131,4 +131,4 @@ export type {
   JSONSchema,
 } from "./types.js";
 
-export const VERSION = "0.3.0-alpha.1";
+export const VERSION = "0.3.0-alpha.2";

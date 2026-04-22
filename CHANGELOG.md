@@ -3,6 +3,46 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0-alpha.2] — 2026-04-22
+
+**Headline:** Windows `--mcp` actually works now, plus a second live
+data point through the *official* `@modelcontextprotocol/server-filesystem`.
+
+### Fixed
+
+- **Windows `npx`/`pnpm` MCP launch**. `StdioTransport` now defaults to
+  `shell: true` on win32 so `.cmd` shims (npx.cmd, pnpm.cmd) resolve.
+  Previously `--mcp "npx -y ..."` failed with EPIPE on Windows because
+  `spawn("npx")` couldn't find `npx.cmd` without a shell. POSIX behavior
+  unchanged.
+- **Silenced Node's `DEP0190` deprecation warning.** Under `shell: true`
+  with an args array, Node concatenates args without quoting — unsafe
+  if any arg contains shell metacharacters. We now build a quoted
+  command line ourselves (command bare so PATH lookup works, args
+  platform-quoted) and pass it as a single string. No more warning on
+  `--mcp` runs.
+
+### Added
+
+- **`StdioTransportOptions.shell?: boolean`** — explicit opt-in/out of
+  shell-mode spawning. Platform default still wins when omitted.
+- **Second reference transcript** —
+  `benchmarks/tau-bench/transcripts/mcp-filesystem.jsonl`. Live run
+  through `@modelcontextprotocol/server-filesystem` (14 external tools,
+  code we don't control): **5 turns, 4 tool calls, cache 96.7%,
+  cost $0.00124, 97% cheaper than Claude** at equivalent tokens. The
+  run includes a deliberate permission-denied recovery to show
+  cache-first holds under realistic agent messiness.
+- README table now shows both MCP data points side-by-side (bundled
+  demo vs official external server).
+
+### Tests
+
+- Integration tests explicitly set `shell: false` (they spawn `node.exe`
+  by absolute path — no shim needed). Suite still 224/224.
+
+---
+
 ## [0.3.0-alpha.1] — 2026-04-22
 
 **Headline:** MCP client lands. Any
@@ -257,6 +297,7 @@ branching, and session persistence. They're not reflected as individual
 entries above because the `0.1.0` bench harness is what first produced
 *externally verifiable* evidence for their value.
 
+[0.3.0-alpha.2]: https://github.com/esengine/reasonix/releases/tag/v0.3.0-alpha.2
 [0.3.0-alpha.1]: https://github.com/esengine/reasonix/releases/tag/v0.3.0-alpha.1
 [0.2.2]: https://github.com/esengine/reasonix/releases/tag/v0.2.2
 [0.2.1]: https://github.com/esengine/reasonix/releases/tag/v0.2.1
