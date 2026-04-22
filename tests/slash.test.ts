@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SLASH_COMMANDS,
   handleSlash,
@@ -459,6 +462,7 @@ describe("handleSlash", () => {
       "branch",
       "mcp",
       "tool",
+      "memory",
       "think",
       "retry",
       "compact",
@@ -577,5 +581,55 @@ describe("handleSlash", () => {
     expect(loop.sessionName).toBeNull();
     const r = handleSlash("forget", [], loop);
     expect(r.info).toMatch(/nothing to forget/);
+  });
+
+  describe("/memory", () => {
+    let root: string;
+    const originalEnv = process.env.REASONIX_MEMORY;
+
+    beforeEach(() => {
+      root = mkdtempSync(join(tmpdir(), "reasonix-mem-slash-"));
+      // biome-ignore lint/performance/noDelete: avoid "undefined" in env
+      delete process.env.REASONIX_MEMORY;
+    });
+    afterEach(() => {
+      rmSync(root, { recursive: true, force: true });
+      if (originalEnv === undefined) {
+        // biome-ignore lint/performance/noDelete: same reason
+        delete process.env.REASONIX_MEMORY;
+      } else {
+        process.env.REASONIX_MEMORY = originalEnv;
+      }
+    });
+
+    it("prints a how-to when no REASONIX.md exists", () => {
+      const r = handleSlash("memory", [], makeLoop(), { memoryRoot: root });
+      expect(r.info).toMatch(/no REASONIX\.md in/);
+      expect(r.info).toMatch(/pin notes/);
+    });
+
+    it("prints the file contents + path when present", () => {
+      writeFileSync(
+        join(root, "REASONIX.md"),
+        "# House rules\nSnake case only in this repo.\n",
+        "utf8",
+      );
+      const r = handleSlash("memory", [], makeLoop(), { memoryRoot: root });
+      expect(r.info).toMatch(/▸ project memory:/);
+      expect(r.info).toContain("Snake case only");
+      expect(r.info).toMatch(/chars/);
+    });
+
+    it("says memory is disabled when REASONIX_MEMORY=off, even with a file present", () => {
+      writeFileSync(join(root, "REASONIX.md"), "content", "utf8");
+      process.env.REASONIX_MEMORY = "off";
+      const r = handleSlash("memory", [], makeLoop(), { memoryRoot: root });
+      expect(r.info).toMatch(/project memory is disabled/);
+    });
+
+    it("refuses to guess a root when memoryRoot is absent", () => {
+      const r = handleSlash("memory", [], makeLoop());
+      expect(r.info).toMatch(/no project root/);
+    });
   });
 });

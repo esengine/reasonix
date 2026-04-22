@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { applyProjectMemory } from "../project-memory.js";
 
 export const CODE_SYSTEM_PROMPT = `You are Reasonix Code, a coding assistant. You have filesystem tools (read_file, write_file, list_directory, search_files, etc.) rooted at the user's working directory.
 
@@ -70,23 +71,25 @@ Rules:
  * the file — we hand it to the model as-is. Truncate long ones so we
  * don't eat context budget on huge generated ignore lists.
  *
- * Missing or unreadable .gitignore → returns the base prompt unchanged.
+ * Stacking order (stable for cache prefix):
+ *   base prompt → project memory (REASONIX.md) → .gitignore block
  */
 export function codeSystemPrompt(rootDir: string): string {
+  const withMemory = applyProjectMemory(CODE_SYSTEM_PROMPT, rootDir);
   const gitignorePath = join(rootDir, ".gitignore");
-  if (!existsSync(gitignorePath)) return CODE_SYSTEM_PROMPT;
+  if (!existsSync(gitignorePath)) return withMemory;
   let content: string;
   try {
     content = readFileSync(gitignorePath, "utf8");
   } catch {
-    return CODE_SYSTEM_PROMPT;
+    return withMemory;
   }
   const MAX = 2000;
   const truncated =
     content.length > MAX
       ? `${content.slice(0, MAX)}\n… (truncated ${content.length - MAX} chars)`
       : content;
-  return `${CODE_SYSTEM_PROMPT}
+  return `${withMemory}
 
 # Project .gitignore
 

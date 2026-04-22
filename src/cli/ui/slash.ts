@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import type { CacheFirstLoop } from "../../loop.js";
 import type { InspectionReport } from "../../mcp/inspect.js";
+import { PROJECT_MEMORY_FILE, memoryEnabled, readProjectMemory } from "../../project-memory.js";
 import { deleteSession, listSessions } from "../../session.js";
 import { DEEPSEEK_CONTEXT_TOKENS, DEFAULT_CONTEXT_TOKENS } from "../../telemetry.js";
 
@@ -78,6 +79,14 @@ export interface SlashContext {
    * handler support.
    */
   mcpServers?: McpServerSummary[];
+  /**
+   * Directory `/memory` should resolve `REASONIX.md` from. In code
+   * mode this is the rootDir the filesystem tools are pinned to; in
+   * plain chat this is `process.cwd()` at launch time. Absent → the
+   * TUI is running in some non-cwd context (tests) and `/memory`
+   * replies "root unknown" instead of silently reading a different dir.
+   */
+  memoryRoot?: string;
 }
 
 export interface McpServerSummary {
@@ -122,6 +131,7 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   { cmd: "branch", argsHint: "<N|off>", summary: "run N parallel samples per turn (N>=2)" },
   { cmd: "mcp", summary: "list MCP servers + tools attached to this session" },
   { cmd: "tool", argsHint: "[N]", summary: "dump full output of the Nth tool call (1=latest)" },
+  { cmd: "memory", summary: "show the project's REASONIX.md (pinned into the system prompt)" },
   { cmd: "think", summary: "dump the last turn's full R1 reasoning (reasoner only)" },
   { cmd: "retry", summary: "truncate & resend your last message (fresh sample)" },
   { cmd: "compact", argsHint: "[cap]", summary: "shrink oversized tool results in the log" },
@@ -209,6 +219,7 @@ export function handleSlash(
           "  /compact [cap]           shrink large tool results in history (default 4k/result)",
           "  /think                   dump the most recent turn's full R1 reasoning (reasoner only)",
           "  /tool [N]                list tool calls (or dump full output of #N, 1=most recent)",
+          "  /memory                  show the project's REASONIX.md (pinned into the system prompt)",
           "  /retry                   truncate & resend your last message (fresh sample from the model)",
           "  /apply                   (code mode) commit the pending edit blocks to disk",
           "  /discard                 (code mode) drop pending edits without writing",
@@ -298,6 +309,48 @@ export function handleSlash(
       return {
         info: `▸ retrying: "${preview}"`,
         resubmit: prev,
+      };
+    }
+
+    case "memory": {
+      if (!memoryEnabled()) {
+        return {
+          info: "project memory is disabled (REASONIX_MEMORY=off in env). Unset the var to re-enable; no REASONIX.md will be pinned in the meantime.",
+        };
+      }
+      if (!ctx.memoryRoot) {
+        return {
+          info: "no project root on this session — `/memory` needs a working directory to resolve REASONIX.md from.",
+        };
+      }
+      const mem = readProjectMemory(ctx.memoryRoot);
+      if (!mem) {
+        return {
+          info: [
+            `no ${PROJECT_MEMORY_FILE} in ${ctx.memoryRoot}.`,
+            "",
+            "Project memory is an optional file you pin notes into — project conventions,",
+            "things the model keeps forgetting, domain glossary, setup gotchas. When present,",
+            "its contents are appended to the system prompt (the immutable-prefix region)",
+            "so every turn sees it without eating per-turn context, and the prefix cache stays",
+            "warm as long as the file is stable.",
+            "",
+            `Create it with:  echo "# Project notes for Reasonix" > ${PROJECT_MEMORY_FILE}`,
+            "Re-launch (or `/new`) to pick up changes — the prefix is hashed at session start.",
+          ].join("\n"),
+        };
+      }
+      const header = mem.truncated
+        ? `▸ project memory: ${mem.path} (${mem.originalChars.toLocaleString()} chars, truncated for the prefix)`
+        : `▸ project memory: ${mem.path} (${mem.originalChars.toLocaleString()} chars)`;
+      return {
+        info: [
+          header,
+          "",
+          mem.content,
+          "",
+          "Changes take effect on the next launch or `/new` — the system prompt is hashed once per session to keep the prefix cache warm.",
+        ].join("\n"),
       };
     }
 

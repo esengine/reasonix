@@ -29,6 +29,15 @@ export type {
 export { ImmutablePrefix, AppendOnlyLog, VolatileScratch } from "./memory.js";
 export type { ImmutablePrefixOptions } from "./memory.js";
 
+export {
+  PROJECT_MEMORY_FILE,
+  PROJECT_MEMORY_MAX_CHARS,
+  applyProjectMemory,
+  memoryEnabled,
+  readProjectMemory,
+} from "./project-memory.js";
+export type { ProjectMemory } from "./project-memory.js";
+
 export { ToolRegistry } from "./tools.js";
 export type { ToolDefinition, ToolCallContext } from "./tools.js";
 export { registerFilesystemTools } from "./tools/filesystem.js";
@@ -210,4 +219,4 @@ export type {
   JSONSchema,
 } from "./types.js";
 
-export const VERSION = "0.4.16";
+export const VERSION = "0.4.17";

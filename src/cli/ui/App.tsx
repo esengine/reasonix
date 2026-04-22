@@ -478,6 +478,7 @@ export function App({
           codeRoot: codeMode?.rootDir,
           pendingEditCount: codeMode ? pendingEdits.current.length : undefined,
           toolHistory: () => toolHistoryRef.current,
+          memoryRoot: codeMode?.rootDir ?? process.cwd(),
         });
         if (result.exit) {
           transcriptRef.current?.end();

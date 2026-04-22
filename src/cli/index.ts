@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { readConfig } from "../config.js";
 import { VERSION } from "../index.js";
+import { applyProjectMemory } from "../project-memory.js";
 import { chatCommand } from "./commands/chat.js";
 import { codeCommand } from "./commands/code.js";
 import { diffCommand } from "./commands/diff.js";
@@ -37,7 +38,7 @@ program.action(async () => {
   const defaults = resolveDefaults({});
   await chatCommand({
     model: defaults.model,
-    system: DEFAULT_SYSTEM,
+    system: applyProjectMemory(DEFAULT_SYSTEM, process.cwd()),
     harvest: defaults.harvest,
     branch: defaults.branch,
     session: defaults.session,
@@ -119,7 +120,7 @@ program
     });
     await chatCommand({
       model: defaults.model,
-      system: opts.system,
+      system: applyProjectMemory(opts.system, process.cwd()),
       transcript: opts.transcript,
       harvest: defaults.harvest,
       branch: defaults.branch,
@@ -167,7 +168,7 @@ program
     await runCommand({
       task,
       model: defaults.model,
-      system: opts.system,
+      system: applyProjectMemory(opts.system, process.cwd()),
       harvest: defaults.harvest,
       branch: defaults.branch,
       transcript: opts.transcript,

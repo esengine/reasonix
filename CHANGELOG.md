@@ -3,6 +3,55 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.17] — 2026-04-22
+
+**Headline:** Project memory — drop a `REASONIX.md` in your project
+root and its contents are pinned into the immutable-prefix system
+prompt for every session in that directory. Persistent project
+context (house conventions, domain glossary, gotchas the model keeps
+forgetting) without eating per-turn context budget, and the prefix
+cache stays warm as long as the file is stable.
+
+### Added
+
+- **`src/project-memory.ts`** — `readProjectMemory(rootDir)`,
+  `applyProjectMemory(basePrompt, rootDir)`, `memoryEnabled()`. One
+  source, one mental model: `REASONIX.md` at the project root, read
+  once at session start, appended as a fenced "# Project memory"
+  block after the base system prompt. Truncates at 8 000 chars
+  (≈ 2k tokens) with a visible marker; `.gitignore` gets 2 000
+  because it's a constraint dump, memory gets more headroom because
+  it's deliberate instructions. Re-exported from `src/index.ts` for
+  library consumers.
+- **Auto-applied at every CLI entry** — top-level `reasonix`,
+  `reasonix chat`, `reasonix run`, and `reasonix code` all honor
+  the file. `code` resolves it against the rooted directory; the
+  others against `process.cwd()` at launch.
+- **`/memory` slash command** — prints the resolved file path +
+  full contents (or a how-to stub when absent), so you can verify
+  what the model is actually seeing without reading the system
+  prompt blob. Reminds you changes take effect on the next launch
+  or `/new`; the system prompt is hashed once per session to keep
+  the prefix cache warm.
+- **`REASONIX_MEMORY=off|false|0` env opt-out** — for CI or
+  intentional offline reproducibility. `rm REASONIX.md` is the
+  other opt-out.
+
+### Tests (+25, suite 517→542)
+
+- `tests/project-memory.test.ts` (+15) — absent / empty /
+  whitespace-only / normal / oversized file paths;
+  `memoryEnabled` env-value matrix; `applyProjectMemory` no-ops on
+  missing/disabled; determinism (identical input ⇒ identical
+  output, cache-prefix-safe); `codeSystemPrompt` stacks base →
+  memory → .gitignore in the right order when all three exist.
+- `tests/slash.test.ts` (+4) — `/memory` prints the how-to when no
+  file, contents when present, "disabled" when env-off, "no root"
+  when `memoryRoot` is absent from the SlashContext. Registry
+  check updated to require `/memory`.
+
+---
+
 ## [0.4.16] — 2026-04-22
 
 **Headline:** Native `run_command` shell tool so the model can run

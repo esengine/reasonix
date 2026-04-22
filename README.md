@@ -143,10 +143,32 @@ worse than visible rejections.
   inline clip isn't enough).
 - `/think` — see the model's full R1 reasoning for the last turn
   (reasoner preset only).
+- `/memory` — show the project's `REASONIX.md` (see below).
 - `/undo` — roll back the last applied edit batch.
 - `/new` — start fresh in the same directory without losing the
   session file.
 - Drop `--no-session` for an ephemeral session that doesn't persist.
+
+### Project memory — `REASONIX.md`
+
+Drop a `REASONIX.md` in the project root and its contents are pinned
+into the immutable-prefix system prompt every time you launch
+`reasonix` in that directory. Good for house conventions, domain
+glossary, or things the model keeps forgetting:
+
+```bash
+cat > REASONIX.md <<'EOF'
+# Notes for Reasonix
+- Use snake_case for new Python modules; legacy camelCase modules keep their style.
+- `cargo check` is in the auto-run allowlist; full `cargo test` needs confirmation.
+- The `api/` dir mirrors `backend/` — keep schemas in sync.
+EOF
+```
+
+Re-launch (or `/new`) to pick it up; the prefix is hashed once per
+session to keep the DeepSeek cache warm. `/memory` prints what's
+currently pinned. `REASONIX_MEMORY=off` disables the lookup for CI /
+offline repro.
 
 ```bash
 npx reasonix code src/           # narrower sandbox (only src/ is writable)
