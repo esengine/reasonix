@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleSlash, parseSlash } from "../src/cli/ui/slash.js";
+import {
+  SLASH_COMMANDS,
+  handleSlash,
+  parseSlash,
+  suggestSlashCommands,
+} from "../src/cli/ui/slash.js";
 import { DeepSeekClient, Usage } from "../src/client.js";
 import { CacheFirstLoop } from "../src/loop.js";
 import { ImmutablePrefix } from "../src/memory.js";
@@ -406,6 +411,93 @@ describe("handleSlash", () => {
   it("/help mentions /tool", () => {
     const r = handleSlash("help", [], makeLoop());
     expect(r.info).toMatch(/\/tool/);
+  });
+
+  it("SLASH_COMMANDS registry contains every handler switch case", () => {
+    // Spot-check a handful so the registry doesn't silently drift
+    // from `handleSlash`. If a new case lands in handleSlash, it
+    // should also show up in suggestions — bump this list when
+    // adding.
+    const names = SLASH_COMMANDS.map((s) => s.cmd);
+    for (const required of [
+      "help",
+      "status",
+      "preset",
+      "model",
+      "branch",
+      "mcp",
+      "tool",
+      "think",
+      "retry",
+      "compact",
+      "sessions",
+      "clear",
+      "exit",
+      "apply",
+      "discard",
+      "undo",
+      "commit",
+    ]) {
+      expect(names, `registry missing /${required}`).toContain(required);
+    }
+  });
+
+  it("suggestSlashCommands filters by prefix", () => {
+    expect(suggestSlashCommands("h").map((s) => s.cmd)).toEqual(["help", "harvest"]);
+    // Case-insensitive.
+    expect(suggestSlashCommands("HE").map((s) => s.cmd)).toEqual(["help"]);
+    // Empty prefix returns everything (non-contextual).
+    expect(suggestSlashCommands("").length).toBeGreaterThan(5);
+  });
+
+  it("suggestSlashCommands hides code-mode-only entries when codeMode=false", () => {
+    const names = suggestSlashCommands("", false).map((s) => s.cmd);
+    expect(names).not.toContain("apply");
+    expect(names).not.toContain("undo");
+  });
+
+  it("suggestSlashCommands shows code-mode-only entries when codeMode=true", () => {
+    const names = suggestSlashCommands("", true).map((s) => s.cmd);
+    expect(names).toContain("apply");
+    expect(names).toContain("undo");
+  });
+
+  it("/mcp with mcpServers renders per-server tools+resources+prompts", () => {
+    const r = handleSlash("mcp", [], makeLoop(), {
+      mcpServers: [
+        {
+          label: "fs",
+          spec: "fs=npx -y @scope/fs /tmp",
+          toolCount: 4,
+          report: {
+            protocolVersion: "2024-11-05",
+            serverInfo: { name: "fs-server", version: "1.0.0" },
+            capabilities: { tools: {}, resources: {} },
+            tools: { supported: true, items: [] },
+            resources: {
+              supported: true,
+              items: [
+                { uri: "file:///a", name: "docs" },
+                { uri: "file:///b", name: "readme" },
+              ],
+            },
+            prompts: { supported: false, reason: "method not found (-32601)" },
+          },
+        },
+      ],
+    });
+    expect(r.info).toMatch(/\[fs\].*fs-server v1\.0\.0/);
+    expect(r.info).toMatch(/tools\s+4/);
+    expect(r.info).toMatch(/resources\s+2\s+\[docs, readme\]/);
+    expect(r.info).toMatch(/prompts\s+\(not supported\)/);
+  });
+
+  it("/mcp falls back to the spec-only list when mcpServers is absent", () => {
+    const r = handleSlash("mcp", [], makeLoop(), {
+      mcpSpecs: ["filesystem=npx -y @scope/fs /tmp"],
+    });
+    expect(r.info).toMatch(/MCP servers \(1\)/);
+    expect(r.info).toMatch(/server-filesystem|fs/);
   });
 
   it("/status shows ctx / session / mcp / pending lines with rich detail", () => {

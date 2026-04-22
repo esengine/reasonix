@@ -50,6 +50,9 @@ export class McpClient {
   private readerStarted = false;
   private initialized = false;
   private _serverCapabilities: InitializeResult["capabilities"] = {};
+  private _serverInfo: InitializeResult["serverInfo"] = { name: "", version: "" };
+  private _protocolVersion = "";
+  private _instructions: string | undefined;
 
   constructor(opts: McpClientOptions) {
     this.transport = opts.transport;
@@ -60,6 +63,21 @@ export class McpClient {
   /** Server's advertised capabilities, available after initialize(). */
   get serverCapabilities(): InitializeResult["capabilities"] {
     return this._serverCapabilities;
+  }
+
+  /** Server's self-reported name + version, available after initialize(). */
+  get serverInfo(): InitializeResult["serverInfo"] {
+    return this._serverInfo;
+  }
+
+  /** Protocol version the server agreed to during the handshake. */
+  get protocolVersion(): string {
+    return this._protocolVersion;
+  }
+
+  /** Optional free-form instructions the server provides at handshake. */
+  get serverInstructions(): string | undefined {
+    return this._instructions;
   }
 
   /**
@@ -80,6 +98,9 @@ export class McpClient {
       clientInfo: this.clientInfo,
     } satisfies InitializeParams);
     this._serverCapabilities = result.capabilities ?? {};
+    this._serverInfo = result.serverInfo ?? { name: "", version: "" };
+    this._protocolVersion = result.protocolVersion ?? "";
+    this._instructions = result.instructions;
     // Per spec: client sends notifications/initialized after receiving the
     // initialize response. Only then is the connection live for other
     // methods.

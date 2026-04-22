@@ -4,6 +4,7 @@ import { VERSION } from "../index.js";
 import { chatCommand } from "./commands/chat.js";
 import { codeCommand } from "./commands/code.js";
 import { diffCommand } from "./commands/diff.js";
+import { mcpInspectCommand } from "./commands/mcp-inspect.js";
 import { mcpListCommand } from "./commands/mcp.js";
 import { replayCommand } from "./commands/replay.js";
 import { runCommand } from "./commands/run.js";
@@ -231,6 +232,21 @@ mcp
   .option("--json", "Emit the catalog as JSON instead of the human-readable table")
   .action((opts) => {
     mcpListCommand({ json: !!opts.json });
+  });
+
+mcp
+  .command("inspect <spec>")
+  .description(
+    'Connect to one MCP server and print its server info + tools/resources/prompts. <spec> takes the same forms as --mcp ("name=cmd args", "cmd args", or an SSE URL).',
+  )
+  .option("--json", "Emit the full inspection report as JSON instead of the human-readable summary")
+  .action(async (spec: string, opts) => {
+    try {
+      await mcpInspectCommand({ spec, json: !!opts.json });
+    } catch (err) {
+      process.stderr.write(`mcp inspect failed: ${(err as Error).message}\n`);
+      process.exit(1);
+    }
   });
 
 program.command("version").description("Print Reasonix version.").action(versionCommand);

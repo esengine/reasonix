@@ -3,6 +3,65 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] — 2026-04-21
+
+**Headline:** Slash-command UX overhaul + MCP discovery closes in
+two places. Typing `/` now pops an IntelliSense-style suggestion
+list you can walk with ↑/↓ and pick with Enter or Tab — no more
+memorizing commands or reading a cluttered footer. The footer is
+gone. `/mcp` inside chat now shows each server's tools + resources
++ prompts in one grouped view. For scripting/CI there's a new
+`reasonix mcp inspect <spec>` CLI doing the same.
+
+### Added
+
+- **Slash autocomplete popup.** When the input starts with `/` and
+  matches exist, a floating panel lists commands (name + args hint
+  + one-line summary). ↑/↓ navigate the list; Tab inserts the
+  highlighted name into the input; Enter runs it directly. Leaves
+  slash mode the moment you type a space — then ↑/↓ goes back to
+  shell-style prompt history as before. Registry lives in
+  `SLASH_COMMANDS` and gates code-mode-only entries (`/apply`,
+  `/discard`, `/undo`, `/commit`) behind the TUI's `codeMode` flag.
+- **`/mcp` is now the discovery view.** Rich output per connected
+  server: name + version + spec, tool count, resources list, prompts
+  list. Unsupported sections collapse to `(not supported)` so a
+  tools-only server still reads clean. Inspection happens once at
+  chat startup and flows through `SlashContext.mcpServers` — the
+  slash handler stays sync.
+- **`reasonix mcp inspect <spec>`**. CLI counterpart to `/mcp`, for
+  running outside chat (CI, scripting, "does this server even
+  work?"). Same spec grammar as `--mcp`; `--json` emits the full
+  report.
+- **`inspectMcpServer(client)`** public API in `src/mcp/inspect.ts`.
+  Pure function — testable against any `McpClient` instance; returns
+  an `InspectionReport` with per-section `{supported, items}` or
+  `{supported: false, reason}`. Re-exported from `src/index.ts`.
+- **`McpClient.serverInfo` + `.protocolVersion` + `.serverInstructions`**.
+  The full initialize handshake result is now exposed, not just
+  `.serverCapabilities`. Needed by any UI that wants to surface
+  "connected to X v1.2.3".
+
+### Removed
+
+- **Static command-strip footer under the input.** Took 3-4 dimmed
+  lines listing a random subset of commands; superseded by the
+  on-demand slash popup that only surfaces when the user asks for
+  it (by typing `/`).
+
+### Tests (+11, suite 353→364)
+
+- `tests/mcp-inspect.test.ts` (new, +5) — full-support server,
+  -32601 → `supported: false`, non-32601 forwarded as the section
+  reason, serverInfo/protocolVersion/instructions accessors,
+  undefined-instructions fallback.
+- `tests/slash.test.ts` (+6) — `SLASH_COMMANDS` contains every
+  handler case, `suggestSlashCommands` prefix + case + empty-string
+  behavior, code-mode gating, `/mcp` rich view renders tools +
+  resources + prompts grouped per server, `/mcp` spec-only fallback.
+
+---
+
 ## [0.4.5] — 2026-04-21
 
 **Headline:** Two protocol-level completions bundled together. (1)

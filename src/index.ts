@@ -106,6 +106,8 @@ export {
 export type { BridgeOptions, BridgeResult, FlattenOptions } from "./mcp/registry.js";
 export { parseMcpSpec } from "./mcp/spec.js";
 export type { McpSpec, StdioMcpSpec, SseMcpSpec } from "./mcp/spec.js";
+export { inspectMcpServer } from "./mcp/inspect.js";
+export type { InspectionReport, SectionResult } from "./mcp/inspect.js";
 
 // ---------- code mode (v0.3 — `reasonix code`) ----------
 export {

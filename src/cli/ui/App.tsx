@@ -17,8 +17,9 @@ import type { ToolRegistry } from "../../tools.js";
 import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../transcript.js";
 import { type DisplayEvent, EventRow } from "./EventLog.js";
 import { PromptInput } from "./PromptInput.js";
+import { SlashSuggestions } from "./SlashSuggestions.js";
 import { StatsPanel } from "./StatsPanel.js";
-import { handleSlash, parseSlash } from "./slash.js";
+import { type McpServerSummary, handleSlash, parseSlash, suggestSlashCommands } from "./slash.js";
 
 export interface AppProps {
   model: string;
@@ -35,6 +36,12 @@ export interface AppProps {
   tools?: ToolRegistry;
   /** Raw `--mcp` / config-derived spec strings, for `/mcp` slash display. */
   mcpSpecs?: string[];
+  /**
+   * Pre-captured inspection reports for each connected MCP server,
+   * collected once at chat startup. Drives the rich `/mcp` slash view
+   * (tools + resources + prompts per server).
+   */
+  mcpServers?: McpServerSummary[];
   /**
    * When set, parse SEARCH/REPLACE blocks from assistant responses and
    * apply them to disk under `rootDir`. Set by `reasonix code`.
@@ -64,6 +71,7 @@ export function App({
   session,
   tools,
   mcpSpecs,
+  mcpServers,
   codeMode,
 }: AppProps) {
   const { exit } = useApp();
@@ -105,6 +113,9 @@ export function App({
   // because the user wouldn't expect `/tool` to reach back across
   // process boundaries.
   const toolHistoryRef = useRef<Array<{ toolName: string; text: string }>>([]);
+  // Highlighted suggestion index. ↑/↓ move within the current match
+  // set while the user is typing a `/…` prefix; Enter or Tab pick.
+  const [slashSelected, setSlashSelected] = useState(0);
   const [summary, setSummary] = useState<SessionSummary>({
     turns: 0,
     totalCostUsd: 0,
@@ -128,6 +139,25 @@ export function App({
       transcriptRef.current?.end();
     };
   }, []);
+
+  // The currently matching slash suggestions, or `null` when the
+  // user isn't in slash-prefix mode. Shared between the useInput
+  // handler (navigation + Tab-complete) and SlashSuggestions
+  // (rendering + highlight) so both stay in sync.
+  const slashMatches = useMemo(() => {
+    if (!input.startsWith("/") || input.includes(" ")) return null;
+    return suggestSlashCommands(input.slice(1), !!codeMode);
+  }, [input, codeMode]);
+  useEffect(() => {
+    // Keep selection in range whenever the match set shrinks. Reset
+    // to 0 whenever we re-enter slash mode (matches goes null → array
+    // triggers the useEffect too).
+    setSlashSelected((prev) => {
+      if (!slashMatches || slashMatches.length === 0) return 0;
+      if (prev >= slashMatches.length) return slashMatches.length - 1;
+      return prev;
+    });
+  }, [slashMatches]);
 
   const loopRef = useRef<CacheFirstLoop | null>(null);
   const loop = useMemo(() => {
@@ -194,6 +224,29 @@ export function App({
       return;
     }
     if (busy) return;
+
+    // Slash-suggestion mode takes priority over history recall.
+    // When the user is typing a `/…` prefix and there are matches,
+    // ↑/↓ walk the suggestion list and Tab snaps the input to the
+    // highlighted command. Enter is handled in `handleSubmit` so
+    // TextInput's onSubmit still fires cleanly.
+    if (slashMatches && slashMatches.length > 0) {
+      if (key.upArrow) {
+        setSlashSelected((i) => Math.max(0, i - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSlashSelected((i) => Math.min(slashMatches.length - 1, i + 1));
+        return;
+      }
+      if (key.tab) {
+        const sel = slashMatches[slashSelected] ?? slashMatches[0];
+        if (sel) setInput(`/${sel.cmd}`);
+        return;
+      }
+    }
+
+    // Outside slash mode: ↑/↓ recall prior prompts.
     const hist = promptHistory.current;
     if (key.upArrow) {
       if (hist.length === 0) return;
@@ -273,6 +326,23 @@ export function App({
     async (raw: string) => {
       let text = raw.trim();
       if (!text || busy) return;
+
+      // Slash auto-complete on Enter. When the user typed a prefix
+      // (e.g. "/he") and the suggestion list is visible, substitute
+      // the highlighted match so Enter runs it — same effect as Tab
+      // + Enter, one keystroke less. Skip substitution if the user
+      // already typed a full, exact command name (respect verbatim
+      // input when they know what they want).
+      if (text.startsWith("/") && !text.includes(" ")) {
+        const typed = text.slice(1).toLowerCase();
+        const matches = suggestSlashCommands(typed, !!codeMode);
+        const exact = matches.find((m) => m.cmd === typed);
+        if (!exact && matches.length > 0) {
+          const chosen = matches[slashSelected] ?? matches[0];
+          if (chosen) text = `/${chosen.cmd}`;
+        }
+      }
+
       setInput("");
       historyCursor.current = -1;
 
@@ -292,6 +362,7 @@ export function App({
       if (slash) {
         const result = handleSlash(slash.cmd, slash.args, loop, {
           mcpSpecs,
+          mcpServers,
           codeUndo: codeMode ? codeUndo : undefined,
           codeApply: codeMode ? codeApply : undefined,
           codeDiscard: codeMode ? codeDiscard : undefined,
@@ -469,7 +540,19 @@ export function App({
         setBusy(false);
       }
     },
-    [busy, codeApply, codeDiscard, codeMode, codeUndo, exit, loop, mcpSpecs, writeTranscript],
+    [
+      busy,
+      codeApply,
+      codeDiscard,
+      codeMode,
+      codeUndo,
+      exit,
+      loop,
+      mcpSpecs,
+      mcpServers,
+      slashSelected,
+      writeTranscript,
+    ],
   );
 
   return (
@@ -489,7 +572,7 @@ export function App({
       ) : null}
       {ongoingTool ? <OngoingToolRow tool={ongoingTool} /> : null}
       <PromptInput value={input} onChange={setInput} onSubmit={handleSubmit} disabled={busy} />
-      <CommandStrip codeMode={!!codeMode} />
+      <SlashSuggestions matches={slashMatches} selectedIndex={slashSelected} />
     </Box>
   );
 }
@@ -591,27 +674,6 @@ function summarizeToolArgs(name: string, args?: string): string {
     return `path: ${path ?? "?"}`;
   }
   return args.length > 80 ? `${args.slice(0, 80)}…` : args;
-}
-
-function CommandStrip({ codeMode }: { codeMode: boolean }) {
-  return (
-    <Box paddingX={2} flexDirection="column">
-      <Text dimColor>
-        /help · /preset {"<fast|smart|max>"} · /mcp · /compact · /sessions · /setup · /clear · /exit
-      </Text>
-      {codeMode ? (
-        <Text dimColor>
-          code mode: /apply (y) · /discard (n) · /undo · /commit "msg" — edits NEVER write without
-          /apply
-        </Text>
-      ) : null}
-      <Text dimColor>
-        ↑/↓ recall prompts · /retry re-send last · /think see R1 reasoning · /tool N full tool
-        output
-      </Text>
-      <Text dimColor>Esc (while thinking) — abort & summarize what was found so far</Text>
-    </Box>
-  );
 }
 
 /**

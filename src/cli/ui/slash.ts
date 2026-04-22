@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type { CacheFirstLoop } from "../../loop.js";
+import type { InspectionReport } from "../../mcp/inspect.js";
 import { deleteSession, listSessions } from "../../session.js";
 import { DEEPSEEK_CONTEXT_TOKENS, DEFAULT_CONTEXT_TOKENS } from "../../telemetry.js";
 
@@ -70,6 +71,88 @@ export interface SlashContext {
    * 400 chars for display. Absent → `/tool` replies "not available".
    */
   toolHistory?: () => Array<{ toolName: string; text: string }>;
+  /**
+   * Pre-captured inspection reports for each connected MCP server.
+   * Populated once at chat startup (chat.tsx) so `/mcp` can render
+   * tools + resources + prompts synchronously without needing async
+   * handler support.
+   */
+  mcpServers?: McpServerSummary[];
+}
+
+export interface McpServerSummary {
+  /** Short label shown in the `/mcp` output (server namespace or "anon"). */
+  label: string;
+  /** Original --mcp spec string. */
+  spec: string;
+  /** Count of tools bridged into the Reasonix registry from this server. */
+  toolCount: number;
+  /** Full inspection snapshot — used for the resources + prompts sections. */
+  report: InspectionReport;
+}
+
+/**
+ * Slash command registry. Drives `/help`, the on-type suggestion
+ * popup (`SlashSuggestions`), and auto-complete. Kept as data rather
+ * than derived from the `handleSlash` switch so summaries can be
+ * user-facing rather than code comments.
+ *
+ * `contextual` gates commands that only make sense in certain modes:
+ *   - `"code"` — only show when the TUI is running `reasonix code`
+ *   - absent → always shown
+ */
+export interface SlashCommandSpec {
+  cmd: string;
+  summary: string;
+  contextual?: "code";
+  /** If the command takes args, hint text shown after the name. */
+  argsHint?: string;
+}
+
+export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
+  { cmd: "help", summary: "show the full command reference" },
+  { cmd: "status", summary: "current model, flags, context, session" },
+  {
+    cmd: "preset",
+    argsHint: "<fast|smart|max>",
+    summary: "one-tap model + harvest + branch bundle",
+  },
+  { cmd: "model", argsHint: "<id>", summary: "switch DeepSeek model id" },
+  { cmd: "harvest", argsHint: "[on|off]", summary: "toggle Pillar-2 plan-state extraction" },
+  { cmd: "branch", argsHint: "<N|off>", summary: "run N parallel samples per turn (N>=2)" },
+  { cmd: "mcp", summary: "list MCP servers + tools attached to this session" },
+  { cmd: "tool", argsHint: "[N]", summary: "dump full output of the Nth tool call (1=latest)" },
+  { cmd: "think", summary: "dump the last turn's full R1 reasoning (reasoner only)" },
+  { cmd: "retry", summary: "truncate & resend your last message (fresh sample)" },
+  { cmd: "compact", argsHint: "[cap]", summary: "shrink oversized tool results in the log" },
+  { cmd: "sessions", summary: "list saved sessions (current marked with ▸)" },
+  { cmd: "forget", summary: "delete the current session from disk" },
+  { cmd: "setup", summary: "reminds you to exit and run `reasonix setup`" },
+  { cmd: "clear", summary: "clear the visible scrollback (log + session kept)" },
+  { cmd: "exit", summary: "quit the TUI" },
+  // Code-mode only
+  { cmd: "apply", summary: "commit pending edit blocks to disk", contextual: "code" },
+  { cmd: "discard", summary: "drop pending edit blocks without writing", contextual: "code" },
+  { cmd: "undo", summary: "roll back the last applied edit batch", contextual: "code" },
+  {
+    cmd: "commit",
+    argsHint: '"msg"',
+    summary: "git add -A && git commit -m ...",
+    contextual: "code",
+  },
+];
+
+/**
+ * Filter the registry by a prefix string (without the leading `/`).
+ * Empty prefix returns the full non-contextual list (plus code-mode
+ * entries when `codeMode` is true). Case-insensitive.
+ */
+export function suggestSlashCommands(prefix: string, codeMode = false): SlashCommandSpec[] {
+  const p = prefix.toLowerCase();
+  return SLASH_COMMANDS.filter((c) => {
+    if (c.contextual === "code" && !codeMode) return false;
+    return c.cmd.startsWith(p);
+  });
 }
 
 export function parseSlash(text: string): { cmd: string; args: string[] } | null {
@@ -132,15 +215,39 @@ export function handleSlash(
       };
 
     case "mcp": {
+      const servers = ctx.mcpServers ?? [];
       const specs = ctx.mcpSpecs ?? [];
       const toolSpecs = loop.prefix.toolSpecs ?? [];
-      if (specs.length === 0 && toolSpecs.length === 0) {
+      if (servers.length === 0 && specs.length === 0 && toolSpecs.length === 0) {
         return {
           info:
             "no MCP servers attached. Run `reasonix setup` to pick some, " +
             'or launch with --mcp "<spec>". `reasonix mcp list` shows the catalog.',
         };
       }
+      // Rich path — we have full inspection reports, so show each
+      // server with its tools / resources / prompts grouped together.
+      if (servers.length > 0) {
+        const lines: string[] = [];
+        for (const s of servers) {
+          const { report } = s;
+          const serverName = report.serverInfo.name || "(unknown)";
+          const serverVer = report.serverInfo.version ? ` v${report.serverInfo.version}` : "";
+          lines.push(`[${s.label}] ${serverName}${serverVer}  —  ${s.spec}`);
+          lines.push(`  tools     ${s.toolCount}`);
+          appendSection(lines, "resources", report.resources);
+          appendSection(lines, "prompts  ", report.prompts);
+          lines.push("");
+        }
+        lines.push(
+          "Chat mode consumes tools today; resources+prompts are surfaced here for awareness.",
+        );
+        lines.push(
+          "Full catalog: `reasonix mcp list` · deeper diagnosis: `reasonix mcp inspect <spec>`.",
+        );
+        return { info: lines.join("\n") };
+      }
+      // Fallback — older path when the TUI hasn't populated `mcpServers`.
       const lines: string[] = [];
       if (specs.length > 0) {
         lines.push(`MCP servers (${specs.length}):`);
@@ -409,6 +516,36 @@ export function handleSlash(
     default:
       return { unknown: true, info: `unknown command: /${cmd}  (try /help)` };
   }
+}
+
+/**
+ * Render a section (resources / prompts) of an MCP inspection into a
+ * compact "name  count  items" form, collapsing when unsupported.
+ * Names-only — descriptions and full metadata live in
+ * `reasonix mcp inspect`, which is purpose-built for the deep view.
+ */
+function appendSection(
+  lines: string[],
+  label: string,
+  section:
+    | { supported: true; items: Array<{ name: string }> }
+    | { supported: false; reason: string }
+    | undefined,
+): void {
+  if (!section || !section.supported) {
+    lines.push(
+      `  ${label.trim()}    ${section?.supported === false ? "(not supported)" : "(none)"}`,
+    );
+    return;
+  }
+  const names = section.items.map((i) => i.name);
+  if (names.length === 0) {
+    lines.push(`  ${label.trim()}    (none)`);
+    return;
+  }
+  const head = names.slice(0, 5).join(", ");
+  const more = names.length > 5 ? ` +${names.length - 5} more` : "";
+  lines.push(`  ${label.trim()}    ${names.length}  [${head}${more}]`);
 }
 
 function formatToolList(history: Array<{ toolName: string; text: string }>): string {

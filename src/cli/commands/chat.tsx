@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { loadApiKey } from "../../config.js";
 import { loadDotenv } from "../../env.js";
 import { McpClient } from "../../mcp/client.js";
+import { type InspectionReport, inspectMcpServer } from "../../mcp/inspect.js";
 import { bridgeMcpTools } from "../../mcp/registry.js";
 import { parseMcpSpec } from "../../mcp/spec.js";
 import { SseTransport } from "../../mcp/sse.js";
@@ -10,6 +11,7 @@ import { type McpTransport, StdioTransport } from "../../mcp/stdio.js";
 import { ToolRegistry } from "../../tools.js";
 import { App } from "../ui/App.js";
 import { Setup } from "../ui/Setup.js";
+import type { McpServerSummary } from "../ui/slash.js";
 
 export interface ChatOptions {
   model: string;
@@ -33,9 +35,10 @@ interface RootProps extends ChatOptions {
   initialKey: string | undefined;
   tools: ToolRegistry | undefined;
   mcpSpecs: string[];
+  mcpServers: McpServerSummary[];
 }
 
-function Root({ initialKey, tools, mcpSpecs, ...appProps }: RootProps) {
+function Root({ initialKey, tools, mcpSpecs, mcpServers, ...appProps }: RootProps) {
   const [key, setKey] = useState<string | undefined>(initialKey);
   if (!key) {
     return (
@@ -58,6 +61,7 @@ function Root({ initialKey, tools, mcpSpecs, ...appProps }: RootProps) {
       session={appProps.session}
       tools={tools}
       mcpSpecs={mcpSpecs}
+      mcpServers={mcpServers}
       codeMode={appProps.codeMode}
     />
   );
@@ -71,6 +75,7 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
   const clients: McpClient[] = [];
   const successfulSpecs: string[] = [];
   const failedSpecs: Array<{ spec: string; reason: string }> = [];
+  const mcpServers: McpServerSummary[] = [];
   let tools: ToolRegistry | undefined;
 
   if (requestedSpecs.length > 0) {
@@ -90,6 +95,26 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
         const mcp = new McpClient({ transport });
         await mcp.initialize();
         const bridge = await bridgeMcpTools(mcp, { registry: tools, namePrefix: prefix });
+        // Collect resources + prompts once at startup so the /mcp
+        // slash can render them synchronously. Servers that don't
+        // support these fall through as `{supported: false}` instead
+        // of throwing — see inspectMcpServer.
+        let report: InspectionReport;
+        try {
+          report = await inspectMcpServer(mcp);
+        } catch {
+          // If the inspect call itself fails (rare — shouldn't happen
+          // since inspectMcpServer swallows -32601), synthesize a
+          // minimal report so `/mcp` still has something to render.
+          report = {
+            protocolVersion: mcp.protocolVersion,
+            serverInfo: mcp.serverInfo,
+            capabilities: mcp.serverCapabilities ?? {},
+            tools: { supported: true, items: [] },
+            resources: { supported: false, reason: "inspect failed" },
+            prompts: { supported: false, reason: "inspect failed" },
+          };
+        }
         const label = spec.name ?? "anon";
         const source =
           spec.transport === "sse" ? spec.url : `${spec.command} ${spec.args.join(" ")}`;
@@ -98,6 +123,12 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
         );
         clients.push(mcp);
         successfulSpecs.push(raw);
+        mcpServers.push({
+          label,
+          spec: raw,
+          toolCount: bridge.registeredNames.length,
+          report,
+        });
       } catch (err) {
         // Per-server failure is non-fatal: one broken server shouldn't
         // kill a chat that has working servers configured. We record
@@ -120,7 +151,13 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
   const mcpSpecs = successfulSpecs;
 
   const { waitUntilExit } = render(
-    <Root initialKey={initialKey} tools={tools} mcpSpecs={mcpSpecs} {...opts} />,
+    <Root
+      initialKey={initialKey}
+      tools={tools}
+      mcpSpecs={mcpSpecs}
+      mcpServers={mcpServers}
+      {...opts}
+    />,
     { exitOnCtrlC: true },
   );
   try {
