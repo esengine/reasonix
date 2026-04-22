@@ -36,6 +36,19 @@ export interface BridgeOptions {
    * legitimately want bigger payloads can raise it explicitly.
    */
   maxResultChars?: number;
+  /**
+   * Callback fired for every `notifications/progress` frame the server
+   * emits during any bridged tool call. Includes the registered
+   * (prefix-applied) tool name so a multi-server UI can attribute
+   * progress correctly. Absent → no `_meta.progressToken` is sent and
+   * the server won't emit progress for these calls.
+   */
+  onProgress?: (info: {
+    toolName: string;
+    progress: number;
+    total?: number;
+    message?: string;
+  }) => void;
 }
 
 /**
@@ -81,7 +94,16 @@ export async function bridgeMcpTools(
       description: mcpTool.description ?? "",
       parameters: mcpTool.inputSchema as JSONSchema,
       fn: async (args: Record<string, unknown>) => {
-        const toolResult = await client.callTool(mcpTool.name, args);
+        const toolResult = await client.callTool(mcpTool.name, args, {
+          // Forward server-side progress frames to the bridge caller,
+          // tagged with the registered name so multi-server UIs can
+          // disambiguate. No-op when `onProgress` isn't configured —
+          // the client then also omits the _meta.progressToken and
+          // the server won't emit progress.
+          onProgress: opts.onProgress
+            ? (info) => opts.onProgress!({ toolName: registeredName, ...info })
+            : undefined,
+        });
         return flattenMcpResult(toolResult, { maxChars: maxResultChars });
       },
     });

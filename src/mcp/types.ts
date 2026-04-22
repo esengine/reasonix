@@ -116,7 +116,37 @@ export interface ListToolsResult {
 export interface CallToolParams {
   name: string;
   arguments?: Record<string, unknown>;
+  /**
+   * MCP's `_meta` envelope carries out-of-band protocol metadata.
+   * Setting `progressToken` here tells the server "send me progress
+   * notifications back using this token"; the server must then emit
+   * `notifications/progress` frames until the response arrives.
+   */
+  _meta?: { progressToken?: string | number };
 }
+
+/**
+ * Server → client notification emitted during a long-running request
+ * that the client subscribed to via `_meta.progressToken`. `progress`
+ * and `total` are typically matched units (files scanned, bytes
+ * processed, etc.); `total` may be missing when the server can't
+ * estimate the upper bound up front.
+ */
+export interface ProgressNotificationParams {
+  progressToken: string | number;
+  progress: number;
+  total?: number;
+  message?: string;
+}
+
+/** Values a `ProgressHandler` receives — `progressToken` is already matched away. */
+export interface McpProgressInfo {
+  progress: number;
+  total?: number;
+  message?: string;
+}
+
+export type McpProgressHandler = (info: McpProgressInfo) => void;
 
 export interface McpContentBlockText {
   type: "text";

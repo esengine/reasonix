@@ -13,6 +13,13 @@ import { App } from "../ui/App.js";
 import { Setup } from "../ui/Setup.js";
 import type { McpServerSummary } from "../ui/slash.js";
 
+export interface ProgressInfo {
+  toolName: string;
+  progress: number;
+  total?: number;
+  message?: string;
+}
+
 export interface ChatOptions {
   model: string;
   system: string;
@@ -36,9 +43,17 @@ interface RootProps extends ChatOptions {
   tools: ToolRegistry | undefined;
   mcpSpecs: string[];
   mcpServers: McpServerSummary[];
+  /**
+   * Shared ref the bridge's `onProgress` callback writes through.
+   * App sets `.current` to its own handler on mount so every
+   * progress frame from any bridged tool lands in the UI's
+   * `OngoingToolRow`. Ref keeps the wire-up synchronous with
+   * React reconciliation (no effect-timing surprises).
+   */
+  progressSink: { current: ((info: ProgressInfo) => void) | null };
 }
 
-function Root({ initialKey, tools, mcpSpecs, mcpServers, ...appProps }: RootProps) {
+function Root({ initialKey, tools, mcpSpecs, mcpServers, progressSink, ...appProps }: RootProps) {
   const [key, setKey] = useState<string | undefined>(initialKey);
   if (!key) {
     return (
@@ -62,6 +77,7 @@ function Root({ initialKey, tools, mcpSpecs, mcpServers, ...appProps }: RootProp
       tools={tools}
       mcpSpecs={mcpSpecs}
       mcpServers={mcpServers}
+      progressSink={progressSink}
       codeMode={appProps.codeMode}
     />
   );
@@ -76,6 +92,11 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
   const successfulSpecs: string[] = [];
   const failedSpecs: Array<{ spec: string; reason: string }> = [];
   const mcpServers: McpServerSummary[] = [];
+  // Shared progress sink: the bridge's onProgress callback writes
+  // through `progressSink.current`, which App.tsx sets to its UI
+  // updater on mount. Started null so early progress frames (before
+  // the App has mounted) are dropped rather than buffered.
+  const progressSink: { current: ((info: ProgressInfo) => void) | null } = { current: null };
   let tools: ToolRegistry | undefined;
 
   if (requestedSpecs.length > 0) {
@@ -94,7 +115,11 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
             : new StdioTransport({ command: spec.command, args: spec.args });
         const mcp = new McpClient({ transport });
         await mcp.initialize();
-        const bridge = await bridgeMcpTools(mcp, { registry: tools, namePrefix: prefix });
+        const bridge = await bridgeMcpTools(mcp, {
+          registry: tools,
+          namePrefix: prefix,
+          onProgress: (info) => progressSink.current?.(info),
+        });
         // Collect resources + prompts once at startup so the /mcp
         // slash can render them synchronously. Servers that don't
         // support these fall through as `{supported: false}` instead
@@ -156,6 +181,7 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
       tools={tools}
       mcpSpecs={mcpSpecs}
       mcpServers={mcpServers}
+      progressSink={progressSink}
       {...opts}
     />,
     { exitOnCtrlC: true },

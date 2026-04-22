@@ -410,6 +410,294 @@ describe("bridgeMcpTools: result-size cap", () => {
   });
 });
 
+describe("McpClient: progress notifications", () => {
+  /**
+   * Build a transport where tools/call takes multiple "ticks" before
+   * responding — each tick emits a notifications/progress frame tied
+   * to the token the client sent in `_meta.progressToken`.
+   */
+  function makeProgressTransport(
+    progressFrames: Array<{ progress: number; total?: number; message?: string }>,
+  ): { transport: McpTransport; received: JsonRpcRequest[] } {
+    const received: JsonRpcRequest[] = [];
+    const queue: JsonRpcMessage[] = [];
+    const waiters: Array<(m: JsonRpcMessage | null) => void> = [];
+    let closed = false;
+    const push = (m: JsonRpcMessage) => {
+      const w = waiters.shift();
+      if (w) w(m);
+      else queue.push(m);
+    };
+    const transport: McpTransport = {
+      async send(msg) {
+        if (closed) throw new Error("closed");
+        if (!("id" in msg) || !("method" in msg)) return;
+        const req = msg as JsonRpcRequest;
+        received.push(req);
+        if (req.method === "initialize") {
+          push({
+            jsonrpc: "2.0",
+            id: req.id,
+            result: {
+              protocolVersion: MCP_PROTOCOL_VERSION,
+              serverInfo: { name: "fake", version: "0" },
+              capabilities: { tools: {} },
+            },
+          });
+          return;
+        }
+        if (req.method === "tools/call") {
+          const token = (req.params as { _meta?: { progressToken?: string | number } })._meta
+            ?.progressToken;
+          // Emit progress frames first (all with the same token), then
+          // the final response.
+          for (const frame of progressFrames) {
+            push({
+              jsonrpc: "2.0",
+              method: "notifications/progress",
+              params: { progressToken: token, ...frame },
+            });
+          }
+          push({
+            jsonrpc: "2.0",
+            id: req.id,
+            result: { content: [{ type: "text" as const, text: "done" }] },
+          });
+          return;
+        }
+        push({
+          jsonrpc: "2.0",
+          id: req.id,
+          error: { code: -32601, message: "method not found" },
+        });
+      },
+      async *messages() {
+        while (true) {
+          if (queue.length > 0) {
+            yield queue.shift()!;
+            continue;
+          }
+          if (closed) return;
+          const next = await new Promise<JsonRpcMessage | null>((resolve) => {
+            waiters.push(resolve);
+          });
+          if (next === null) return;
+          yield next;
+        }
+      },
+      async close() {
+        closed = true;
+        while (waiters.length > 0) waiters.shift()!(null);
+      },
+    };
+    return { transport, received };
+  }
+
+  it("routes progress notifications to the per-call onProgress callback", async () => {
+    const { transport } = makeProgressTransport([
+      { progress: 1, total: 3, message: "reading..." },
+      { progress: 2, total: 3 },
+      { progress: 3, total: 3, message: "done" },
+    ]);
+    const client = new McpClient({ transport });
+    await client.initialize();
+
+    const received: Array<{ progress: number; total?: number; message?: string }> = [];
+    const result = await client.callTool("scan", {}, { onProgress: (info) => received.push(info) });
+    expect(result.content[0]).toEqual({ type: "text", text: "done" });
+    expect(received).toEqual([
+      { progress: 1, total: 3, message: "reading..." },
+      { progress: 2, total: 3, message: undefined },
+      { progress: 3, total: 3, message: "done" },
+    ]);
+    await client.close();
+  });
+
+  it("omits _meta.progressToken when no onProgress callback is provided", async () => {
+    const { transport, received } = makeProgressTransport([]);
+    const client = new McpClient({ transport });
+    await client.initialize();
+    await client.callTool("x", { k: 1 });
+    const callReq = received.find((r) => r.method === "tools/call")!;
+    expect((callReq.params as { _meta?: unknown })._meta).toBeUndefined();
+    await client.close();
+  });
+
+  it("sets a distinct _meta.progressToken when onProgress IS provided", async () => {
+    const { transport, received } = makeProgressTransport([]);
+    const client = new McpClient({ transport });
+    await client.initialize();
+    await client.callTool("x", {}, { onProgress: () => {} });
+    const callReq = received.find((r) => r.method === "tools/call")!;
+    const token = (callReq.params as { _meta?: { progressToken?: number } })._meta?.progressToken;
+    expect(token).toBeTypeOf("number");
+  });
+
+  it("late progress frames after the call resolved are dropped silently", async () => {
+    // Use the handler-transport shape from progress-transport: we
+    // send the final result, THEN push a trailing progress frame.
+    // The client must not throw when the handler map is already empty.
+    const received: JsonRpcRequest[] = [];
+    const queue: JsonRpcMessage[] = [];
+    const waiters: Array<(m: JsonRpcMessage | null) => void> = [];
+    let closed = false;
+    const push = (m: JsonRpcMessage) => {
+      const w = waiters.shift();
+      if (w) w(m);
+      else queue.push(m);
+    };
+    let lastToken: string | number | undefined;
+    const transport: McpTransport = {
+      async send(msg) {
+        if (!("id" in msg) || !("method" in msg)) return;
+        const req = msg as JsonRpcRequest;
+        received.push(req);
+        if (req.method === "initialize") {
+          push({
+            jsonrpc: "2.0",
+            id: req.id,
+            result: {
+              protocolVersion: MCP_PROTOCOL_VERSION,
+              serverInfo: { name: "fake", version: "0" },
+              capabilities: {},
+            },
+          });
+        } else if (req.method === "tools/call") {
+          lastToken = (req.params as { _meta?: { progressToken?: string | number } })._meta
+            ?.progressToken;
+          // Final response first, then a trailing progress — mimics
+          // a race where the server finished but a progress frame
+          // was already in flight.
+          push({
+            jsonrpc: "2.0",
+            id: req.id,
+            result: { content: [] },
+          });
+          push({
+            jsonrpc: "2.0",
+            method: "notifications/progress",
+            params: { progressToken: lastToken, progress: 42 },
+          });
+        }
+      },
+      async *messages() {
+        while (true) {
+          if (queue.length > 0) {
+            yield queue.shift()!;
+            continue;
+          }
+          if (closed) return;
+          const next = await new Promise<JsonRpcMessage | null>((resolve) => {
+            waiters.push(resolve);
+          });
+          if (next === null) return;
+          yield next;
+        }
+      },
+      async close() {
+        closed = true;
+        while (waiters.length > 0) waiters.shift()!(null);
+      },
+    };
+    const client = new McpClient({ transport });
+    await client.initialize();
+    const seen: number[] = [];
+    await client.callTool("x", {}, { onProgress: (i) => seen.push(i.progress) });
+    // Give the reader loop a tick to process the trailing
+    // notification — should be swallowed, not thrown.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(seen).toEqual([]); // the trailing frame was dropped
+    await client.close();
+  });
+});
+
+describe("bridgeMcpTools: progress pass-through", () => {
+  it("threads per-tool progress callbacks with the registered (prefixed) name", async () => {
+    const { transport } = (function makeProgressTransport(
+      frames: Array<{ progress: number; total?: number }>,
+    ) {
+      const queue: JsonRpcMessage[] = [];
+      const waiters: Array<(m: JsonRpcMessage | null) => void> = [];
+      let closed = false;
+      const push = (m: JsonRpcMessage) => {
+        const w = waiters.shift();
+        if (w) w(m);
+        else queue.push(m);
+      };
+      const t: McpTransport = {
+        async send(msg) {
+          if (!("id" in msg) || !("method" in msg)) return;
+          const req = msg as JsonRpcRequest;
+          if (req.method === "initialize") {
+            push({
+              jsonrpc: "2.0",
+              id: req.id,
+              result: {
+                protocolVersion: MCP_PROTOCOL_VERSION,
+                serverInfo: { name: "fs", version: "0" },
+                capabilities: { tools: {} },
+              },
+            });
+          } else if (req.method === "tools/list") {
+            push({
+              jsonrpc: "2.0",
+              id: req.id,
+              result: {
+                tools: [{ name: "scan", description: "", inputSchema: { type: "object" } }],
+              },
+            });
+          } else if (req.method === "tools/call") {
+            const token = (req.params as { _meta?: { progressToken?: string | number } })._meta
+              ?.progressToken;
+            for (const f of frames) {
+              push({
+                jsonrpc: "2.0",
+                method: "notifications/progress",
+                params: { progressToken: token, ...f },
+              });
+            }
+            push({
+              jsonrpc: "2.0",
+              id: req.id,
+              result: { content: [{ type: "text" as const, text: "ok" }] },
+            });
+          }
+        },
+        async *messages() {
+          while (true) {
+            if (queue.length > 0) {
+              yield queue.shift()!;
+              continue;
+            }
+            if (closed) return;
+            const next = await new Promise<JsonRpcMessage | null>((resolve) => {
+              waiters.push(resolve);
+            });
+            if (next === null) return;
+            yield next;
+          }
+        },
+        async close() {
+          closed = true;
+          while (waiters.length > 0) waiters.shift()!(null);
+        },
+      };
+      return { transport: t };
+    })([{ progress: 5, total: 10 }]);
+
+    const client = new McpClient({ transport });
+    await client.initialize();
+    const observed: Array<{ toolName: string; progress: number; total?: number }> = [];
+    const { registry } = await bridgeMcpTools(client, {
+      namePrefix: "fs_",
+      onProgress: ({ toolName, progress, total }) => observed.push({ toolName, progress, total }),
+    });
+    await registry.dispatch("fs_scan", "{}");
+    expect(observed).toEqual([{ toolName: "fs_scan", progress: 5, total: 10 }]);
+    await client.close();
+  });
+});
+
 describe("McpClient: resources", () => {
   it("lists resources and reads one by URI", async () => {
     const transport = new FakeMcpTransport({

@@ -23,6 +23,8 @@ import {
   type ListToolsResult,
   MCP_PROTOCOL_VERSION,
   type McpClientInfo,
+  type McpProgressHandler,
+  type ProgressNotificationParams,
   type ReadResourceParams,
   type ReadResourceResult,
   isJsonRpcError,
@@ -53,6 +55,13 @@ export class McpClient {
   private _serverInfo: InitializeResult["serverInfo"] = { name: "", version: "" };
   private _protocolVersion = "";
   private _instructions: string | undefined;
+  // Progress-token → handler for notifications/progress routing. Tokens
+  // are minted per call when the caller supplies an onProgress
+  // callback; cleared when the final response lands (or the pending
+  // request rejects). No leaks — the `try/finally` in callTool
+  // guarantees cleanup even on timeout.
+  private readonly progressHandlers = new Map<string | number, McpProgressHandler>();
+  private nextProgressToken = 1;
 
   constructor(opts: McpClientOptions) {
     this.transport = opts.transport;
@@ -118,13 +127,31 @@ export class McpClient {
     return this.request<ListToolsResult>("tools/list", {});
   }
 
-  /** Invoke a tool by name. Returns the raw MCP result (caller unwraps content). */
-  async callTool(name: string, args?: Record<string, unknown>): Promise<CallToolResult> {
+  /**
+   * Invoke a tool by name. When `onProgress` is supplied, attaches a
+   * fresh progress token so the server can send incremental updates
+   * via `notifications/progress`; they're routed to the callback until
+   * the final response arrives (or the request times out, in which
+   * case the handler is simply dropped — no extra notification).
+   */
+  async callTool(
+    name: string,
+    args?: Record<string, unknown>,
+    opts: { onProgress?: McpProgressHandler } = {},
+  ): Promise<CallToolResult> {
     this.assertInitialized();
-    return this.request<CallToolResult>("tools/call", {
-      name,
-      arguments: args ?? {},
-    } satisfies CallToolParams);
+    const params: CallToolParams = { name, arguments: args ?? {} };
+    let token: number | undefined;
+    if (opts.onProgress) {
+      token = this.nextProgressToken++;
+      this.progressHandlers.set(token, opts.onProgress);
+      params._meta = { progressToken: token };
+    }
+    try {
+      return await this.request<CallToolResult>("tools/call", params);
+    } finally {
+      if (token !== undefined) this.progressHandlers.delete(token);
+    }
   }
 
   /**
@@ -229,9 +256,20 @@ export class McpClient {
   }
 
   private dispatch(msg: JsonRpcMessage): void {
-    // We only care about responses (have an `id`) for now. Server-initiated
-    // notifications are dropped until we support resources/prompts.
-    if (!("id" in msg) || msg.id === null || msg.id === undefined) return;
+    // Notifications (no `id`): route by method. Progress notifications
+    // go to the per-call handler if one was registered; everything
+    // else is dropped silently (we don't yet handle tools/list_changed
+    // or resources/list_changed).
+    if (!("id" in msg) || msg.id === null || msg.id === undefined) {
+      if ("method" in msg && msg.method === "notifications/progress") {
+        const p = msg.params as ProgressNotificationParams | undefined;
+        if (!p || p.progressToken === undefined) return;
+        const handler = this.progressHandlers.get(p.progressToken);
+        if (!handler) return; // late notification after the call resolved
+        handler({ progress: p.progress, total: p.total, message: p.message });
+      }
+      return;
+    }
     if (!("result" in msg) && !("error" in msg)) return; // it's a request from server
     const pending = this.pending.get(msg.id);
     if (!pending) return; // late response after timeout; drop

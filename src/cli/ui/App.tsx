@@ -43,6 +43,17 @@ export interface AppProps {
    */
   mcpServers?: McpServerSummary[];
   /**
+   * Shared ref the MCP bridge's onProgress callback writes through.
+   * We attach our updater to `progressSink.current` on mount so any
+   * `notifications/progress` frame from any bridged tool flows into
+   * the UI. `null` allowed — chat mode without MCP leaves it unset.
+   */
+  progressSink?: {
+    current:
+      | ((info: { toolName: string; progress: number; total?: number; message?: string }) => void)
+      | null;
+  };
+  /**
    * When set, parse SEARCH/REPLACE blocks from assistant responses and
    * apply them to disk under `rootDir`. Set by `reasonix code`.
    */
@@ -72,6 +83,7 @@ export function App({
   tools,
   mcpSpecs,
   mcpServers,
+  progressSink,
   codeMode,
 }: AppProps) {
   const { exit } = useApp();
@@ -88,6 +100,15 @@ export function App({
   // "▸ tool<X> running…" pulse-spinner row so long tool calls don't
   // look like the app hung.
   const [ongoingTool, setOngoingTool] = useState<{ name: string; args?: string } | null>(null);
+  // Latest progress frame for the currently-running tool (MCP
+  // `notifications/progress`). `null` when no progress has been
+  // reported for this tool call — OngoingToolRow still spins, just
+  // without a progress number.
+  const [toolProgress, setToolProgress] = useState<{
+    progress: number;
+    total?: number;
+    message?: string;
+  } | null>(null);
   // Snapshots of every file the *last* edit batch touched, keyed by
   // nothing more than "most recent". `/undo` restores from this ref
   // and nulls it out — one level of undo, Aider-style. Multi-step
@@ -171,6 +192,24 @@ export function App({
     loopRef.current = l;
     return l;
   }, [model, system, harvest, branch, session, tools]);
+
+  // Wire the shared progressSink so the bridge's onProgress → us.
+  // Only updates progress when the frame belongs to the currently-
+  // running tool: late frames from a previous call shouldn't overwrite
+  // the spinner of whatever's running next.
+  useEffect(() => {
+    if (!progressSink) return;
+    progressSink.current = (info) => {
+      setToolProgress({
+        progress: info.progress,
+        total: info.total,
+        message: info.message,
+      });
+    };
+    return () => {
+      if (progressSink.current) progressSink.current = null;
+    };
+  }, [progressSink]);
 
   // Surface a one-time banner about session state on first mount.
   const sessionBannerShown = useRef(false);
@@ -502,10 +541,14 @@ export function App({
           } else if (ev.role === "tool_start") {
             // Kick off the visual indicator. Cleared when `tool`
             // (result) or `error` arrives, or on the finally below.
+            // Also reset any lingering progress from a prior call so
+            // the new spinner starts clean.
             setOngoingTool({ name: ev.toolName ?? "?", args: ev.toolArgs });
+            setToolProgress(null);
           } else if (ev.role === "tool") {
             flush();
             setOngoingTool(null);
+            setToolProgress(null);
             toolHistoryRef.current.push({
               toolName: ev.toolName ?? "?",
               text: ev.content,
@@ -536,6 +579,7 @@ export function App({
         clearInterval(timer);
         setStreaming(null);
         setOngoingTool(null);
+        setToolProgress(null);
         setSummary(loop.stats.summary());
         setBusy(false);
       }
@@ -570,7 +614,7 @@ export function App({
           <EventRow event={streaming} />
         </Box>
       ) : null}
-      {ongoingTool ? <OngoingToolRow tool={ongoingTool} /> : null}
+      {ongoingTool ? <OngoingToolRow tool={ongoingTool} progress={toolProgress} /> : null}
       <PromptInput value={input} onChange={setInput} onSubmit={handleSubmit} disabled={busy} />
       <SlashSuggestions matches={slashMatches} selectedIndex={slashSelected} />
     </Box>
@@ -588,11 +632,17 @@ export function App({
  * We show three signals: a braille spinner (liveness), an elapsed
  * timer in seconds (so "long" has a number attached), and a
  * per-tool summary of the most informative argument fields (path,
- * edits count, pattern, etc.). MCP doesn't stream progress today —
- * when it does, this component is where the progress notifications
- * would land.
+ * edits count, pattern, etc.). As of 0.4.8, MCP progress frames
+ * (`notifications/progress`) land here too — bar + "n/N" when the
+ * server reports a total, free-form message when not.
  */
-function OngoingToolRow({ tool }: { tool: { name: string; args?: string } }) {
+function OngoingToolRow({
+  tool,
+  progress,
+}: {
+  tool: { name: string; args?: string };
+  progress: { progress: number; total?: number; message?: string } | null;
+}) {
   const [tick, setTick] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -613,6 +663,11 @@ function OngoingToolRow({ tool }: { tool: { name: string; args?: string } }) {
         <Text color="yellow">{` tool<${tool.name}> running…`}</Text>
         <Text dimColor>{` ${elapsed}s`}</Text>
       </Box>
+      {progress ? (
+        <Box paddingLeft={2}>
+          <Text color="cyan">{renderProgressLine(progress)}</Text>
+        </Box>
+      ) : null}
       {summary ? (
         <Box paddingLeft={2}>
           <Text dimColor>{summary}</Text>
@@ -633,6 +688,25 @@ function OngoingToolRow({ tool }: { tool: { name: string; args?: string } }) {
  * namespace — tools arrive as `filesystem_read_file` in practice but
  * callers might wire up anonymous too.
  */
+/**
+ * Render an MCP progress frame as a single line. When the server
+ * reports `total`, show an ASCII progress bar + "n/total pct%";
+ * otherwise just "progress" + optional message. Width is modest
+ * so the line fits even in a narrow terminal.
+ */
+function renderProgressLine(p: { progress: number; total?: number; message?: string }): string {
+  const msg = p.message ? `  ${p.message}` : "";
+  if (p.total && p.total > 0) {
+    const ratio = Math.max(0, Math.min(1, p.progress / p.total));
+    const width = 20;
+    const filled = Math.round(ratio * width);
+    const bar = "█".repeat(filled) + "░".repeat(width - filled);
+    const pct = (ratio * 100).toFixed(0);
+    return `[${bar}] ${p.progress}/${p.total} ${pct}%${msg}`;
+  }
+  return `progress: ${p.progress}${msg}`;
+}
+
 function summarizeToolArgs(name: string, args?: string): string {
   if (!args || args === "{}") return "";
   let parsed: Record<string, unknown>;

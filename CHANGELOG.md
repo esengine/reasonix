@@ -3,6 +3,46 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] — 2026-04-21
+
+**Headline:** MCP progress notifications — long-running tool calls
+now stream incremental progress into the spinner row instead of
+sitting silent for minutes. "▸ tool\<fs_scan\> running… 42s" grows
+to "[█████░░░░░░░░░░░░░░░] 500/2000 25%  reading src/…"  as the
+server reports.
+
+### Added
+
+- **`McpClient.callTool(name, args, { onProgress })`** — attaches
+  a fresh `_meta.progressToken` per call; server-emitted
+  `notifications/progress` frames are routed to the handler until
+  the final response arrives. Handler is dropped on completion or
+  timeout — no leaks, late frames are silently swallowed.
+- **Dispatch routing for `notifications/progress`** in the client's
+  reader loop. Other server-initiated notifications are still
+  dropped (list_changed frames not implemented yet).
+- **`bridgeMcpTools({ onProgress })`** — pipes the per-call
+  callback through to bridged tools. The info object includes the
+  *registered* (prefix-applied) tool name so multi-server UIs can
+  attribute progress correctly.
+- **Progress bar in `OngoingToolRow`** — when a frame arrives with
+  `total`, renders `[███░░░░░░] n/total pct%  message`. Without
+  `total`, falls back to `progress: n  message`. Resets on each
+  new tool call so stale progress doesn't linger.
+- **Public types in `src/mcp/types.ts`**: `McpProgressHandler`,
+  `McpProgressInfo`, `ProgressNotificationParams`. Re-exported
+  from `src/index.ts` for library consumers.
+
+### Tests (+5, suite 382→387)
+
+- `tests/mcp.test.ts` (+5) — progress frames routed to onProgress
+  in order; `_meta.progressToken` omitted when no callback is
+  given; distinct token when present; late frames after resolution
+  silently swallowed; `bridgeMcpTools` forwards progress with the
+  prefixed tool name.
+
+---
+
 ## [0.4.7] — 2026-04-21
 
 **Headline:** Multi-line input in the chat TUI. Paste a code block

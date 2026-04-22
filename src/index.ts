@@ -150,6 +150,9 @@ export type {
   McpPromptResourceBlock,
   ListPromptsResult,
   GetPromptResult,
+  McpProgressHandler,
+  McpProgressInfo,
+  ProgressNotificationParams,
 } from "./mcp/types.js";
 
 export { fetchWithRetry } from "./retry.js";
