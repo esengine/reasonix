@@ -11,7 +11,8 @@ verify the cache-hit / cost claims *without running the bench*.
 | `t01_address_happy.baseline.r1.jsonl` | Naive cache-hostile agent's record of the run |
 | `t01_address_happy.reasonix.r1.jsonl` | Reasonix's record of the same task |
 | `t01_address_happy.diff.md` | Output of `reasonix diff` on the two above |
-| `mcp-demo.add.jsonl` | End-to-end run through an MCP tool (v0.3 integration). DeepSeek called the `add` tool from the bundled demo server; the second turn hit 96.6% cache, 94% cheaper than Claude at same token counts |
+| `mcp-demo.add.jsonl` | End-to-end run through the bundled demo MCP server. DeepSeek called the `add` tool; the second turn hit 96.6% cache, 94% cheaper than Claude at same token counts |
+| `mcp-filesystem.jsonl` | End-to-end run through the **official external** `@modelcontextprotocol/server-filesystem`. 5 turns, 4 tool calls including a permission-denied recovery. Overall cache 96.7%, 97% cheaper than Claude. Proof that Cache-First generalizes to third-party MCP servers without any code change on our side |
 
 ## Verify for yourself
 

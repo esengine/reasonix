@@ -91,6 +91,39 @@ with your own API key: `npx tsx benchmarks/tau-bench/runner.ts --repeats 3`.
 
 [r]: ./benchmarks/tau-bench/report.md
 
+### Extends to MCP (v0.3-alpha)
+
+Any [MCP](https://spec.modelcontextprotocol.io/) server's tools inherit
+the same Cache-First benefits. Two live runs, two data points:
+
+| server | turns | tool calls | cache hit | cost | vs Claude |
+|---|---:|---:|---:|---:|---:|
+| bundled demo (`add` / `echo` / `get_time`) | 2 | 1 | **96.6%** (turn 2) | $0.000254 | −94.0% |
+| official `@modelcontextprotocol/server-filesystem` | 5 | 4 | **96.7%** overall | $0.001235 | −97.0% |
+
+The second run is the interesting one — it's through an *external*,
+production MCP server (no code we control). Five turns including
+`list_directory`, a permission-denied recovery via
+`list_allowed_directories`, a successful retry, and `read_text_file`.
+Byte-stable prefix held across every turn; cache hit stayed at 96.7%.
+
+**Reproduce without an API key** (replay the committed transcripts):
+
+```bash
+npx reasonix replay benchmarks/tau-bench/transcripts/mcp-demo.add.jsonl
+npx reasonix replay benchmarks/tau-bench/transcripts/mcp-filesystem.jsonl
+```
+
+**Reproduce with your own key** (live, ~$0.002):
+
+```bash
+reasonix chat --mcp "node --import tsx examples/mcp-server-demo.ts"
+# or against the real filesystem server:
+reasonix chat --mcp "npx -y @modelcontextprotocol/server-filesystem /path/to/safe/dir"
+```
+
+[mcp]: ./benchmarks/tau-bench/transcripts/mcp-demo.add.jsonl
+
 ---
 
 ## Usage

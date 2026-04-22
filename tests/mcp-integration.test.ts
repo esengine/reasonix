@@ -36,6 +36,10 @@ describe("MCP integration — real subprocess against bundled demo server", () =
     const transport = new StdioTransport({
       command: NODE_CMD,
       args: DEMO_SERVER_ARGS,
+      // We're spawning node.exe directly — bypass the shell-true default
+      // that exists for .cmd wrappers (npx etc.). Saves a cmd.exe hop
+      // and the quoting concerns that come with it.
+      shell: false,
     });
     client = new McpClient({ transport, requestTimeoutMs: 15_000 });
     const info = await client.initialize();
@@ -59,6 +63,7 @@ describe("MCP integration — real subprocess against bundled demo server", () =
     const transport = new StdioTransport({
       command: NODE_CMD,
       args: DEMO_SERVER_ARGS,
+      shell: false,
     });
     client = new McpClient({ transport, requestTimeoutMs: 15_000 });
     await client.initialize();

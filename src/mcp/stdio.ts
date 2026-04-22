@@ -37,6 +37,13 @@ export interface StdioTransportOptions {
   replaceEnv?: boolean;
   /** CWD for the child. Default: process.cwd(). */
   cwd?: string;
+  /**
+   * Spawn through a shell. Default: true on win32 (needed to resolve
+   * `.cmd` wrappers like `npx.cmd`, `pnpm.cmd`), false elsewhere.
+   * Explicitly pass `false` to opt out on Windows; pass `true` to force
+   * it on POSIX (rarely needed).
+   */
+  shell?: boolean;
 }
 
 /**
@@ -53,11 +60,35 @@ export class StdioTransport implements McpTransport {
 
   constructor(opts: StdioTransportOptions) {
     const env = opts.replaceEnv ? { ...(opts.env ?? {}) } : { ...process.env, ...(opts.env ?? {}) };
-    this.child = spawn(opts.command, opts.args ?? [], {
-      env,
-      cwd: opts.cwd,
-      stdio: ["pipe", "pipe", "inherit"],
-    });
+    // Windows wraps binaries as .cmd/.bat shims (npx.cmd, pnpm.cmd, …).
+    // child_process.spawn without shell:true can't resolve them, which
+    // breaks `--mcp "npx -y some-server"` — the most common MCP setup.
+    // Default shell:true on win32 and leave POSIX alone.
+    const shell = opts.shell ?? process.platform === "win32";
+
+    if (shell) {
+      // Node's shell:true + args[] triggers DEP0190 because it concatenates
+      // with spaces and doesn't quote args — unsafe if an arg contains
+      // shell metacharacters. We build a single command line ourselves,
+      // quoting ONLY the args (command stays bare so the shell's PATH /
+      // PATHEXT lookup finds `npx` → `npx.cmd` on Windows).
+      const line = [
+        opts.command,
+        ...(opts.args ?? []).map((a) => quoteArg(a, process.platform === "win32")),
+      ].join(" ");
+      this.child = spawn(line, [], {
+        env,
+        cwd: opts.cwd,
+        stdio: ["pipe", "pipe", "inherit"],
+        shell: true,
+      });
+    } else {
+      this.child = spawn(opts.command, opts.args ?? [], {
+        env,
+        cwd: opts.cwd,
+        stdio: ["pipe", "pipe", "inherit"],
+      });
+    }
     this.child.stdout!.setEncoding("utf8");
     this.child.stdout!.on("data", (chunk: string) => this.onStdout(chunk));
     this.child.on("close", () => this.onClose());
@@ -143,4 +174,20 @@ export class StdioTransport implements McpTransport {
     if (waiter) waiter(msg);
     else this.queue.push(msg);
   }
+}
+
+/**
+ * Quote a single argument for inclusion in a shell command line.
+ * On Windows (cmd.exe): wrap in double quotes, escape internal `"` as `""`,
+ * leave everything else alone. On POSIX: wrap in single quotes, escape
+ * internal `'` as `'\''`. Both handle spaces, wildcards, pipes, and all
+ * other metacharacters correctly.
+ */
+function quoteArg(s: string, windows: boolean): string {
+  if (!windows) {
+    // POSIX: single-quote, escape single quotes.
+    return `'${s.replace(/'/g, "'\\''")}'`;
+  }
+  // cmd.exe: double-quote, escape internal quotes by doubling.
+  return `"${s.replace(/"/g, '""')}"`;
 }
