@@ -37,9 +37,15 @@ describe("formatLoopError", () => {
 describe("healLoadedMessages", () => {
   it("truncates a giant tool result, leaves user/assistant messages alone", () => {
     const big = "X".repeat(80_000);
+    // Needs a proper assistant.tool_calls + matching tool response so
+    // the 0.4.12+ validator doesn't prune the tool as stray.
     const messages: ChatMessage[] = [
       { role: "user", content: "read the big file" },
-      { role: "assistant", content: "", tool_calls: [] },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: "t1", type: "function", function: { name: "read", arguments: "{}" } }],
+      },
       { role: "tool", tool_call_id: "t1", content: big },
       { role: "assistant", content: "here's what I found" },
     ];
@@ -54,18 +60,30 @@ describe("healLoadedMessages", () => {
     expect(healed[3]).toEqual(messages[3]); // trailing assistant untouched
   });
 
-  it("is a no-op when every message fits", () => {
+  it("is a no-op when every message fits AND pairing is valid", () => {
     const messages: ChatMessage[] = [
       { role: "user", content: "hi" },
-      { role: "tool", tool_call_id: "t1", content: "small result" },
+      { role: "assistant", content: "hi back" },
     ];
     const { messages: healed, healedCount } = healLoadedMessages(messages, 32_000);
     expect(healedCount).toBe(0);
-    expect(healed).toEqual(messages); // structural equality, same strings
+    expect(healed).toEqual(messages);
   });
 
-  it("heals multiple oversized tool messages in one pass", () => {
+  it("heals multiple oversized tool messages in one pass (all properly paired)", () => {
+    // Each oversized tool MUST be the response to a preceding
+    // assistant.tool_calls, otherwise the 0.4.12 validator prunes it.
     const messages: ChatMessage[] = [
+      { role: "user", content: "do three things" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "t1", type: "function", function: { name: "x", arguments: "{}" } },
+          { id: "t2", type: "function", function: { name: "x", arguments: "{}" } },
+          { id: "t3", type: "function", function: { name: "x", arguments: "{}" } },
+        ],
+      },
       { role: "tool", tool_call_id: "t1", content: "A".repeat(40_000) },
       { role: "tool", tool_call_id: "t2", content: "B".repeat(50_000) },
       { role: "tool", tool_call_id: "t3", content: "small" },
@@ -73,6 +91,98 @@ describe("healLoadedMessages", () => {
     const { healedCount, healedFrom } = healLoadedMessages(messages, 32_000);
     expect(healedCount).toBe(2);
     expect(healedFrom).toBe(90_000);
+  });
+
+  it("drops stray tool messages that have no preceding assistant.tool_calls", () => {
+    // This is the shape that triggered the "tool must be a response
+    // to a preceding tool_calls" 400 — a tool entry with no opener.
+    const messages: ChatMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "tool", tool_call_id: "stray", content: "orphan result" },
+      { role: "assistant", content: "sure" },
+    ];
+    const { messages: healed, healedCount } = healLoadedMessages(messages, 32_000);
+    expect(healedCount).toBe(1);
+    expect(healed.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("drops an assistant.tool_calls whose response set is incomplete", () => {
+    // tool_calls declares [a, b], but only tool[a] follows. The
+    // validator can't deliver this to DeepSeek — drops the pair.
+    const messages: ChatMessage[] = [
+      { role: "user", content: "hi" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "a", type: "function", function: { name: "x", arguments: "{}" } },
+          { id: "b", type: "function", function: { name: "x", arguments: "{}" } },
+        ],
+      },
+      { role: "tool", tool_call_id: "a", content: "partial" },
+      { role: "assistant", content: "trailing note" },
+    ];
+    const { messages: healed, healedCount } = healLoadedMessages(messages, 32_000);
+    expect(healedCount).toBeGreaterThan(0);
+    // Assistant.tool_calls and its partial tool response both dropped;
+    // the trailing plain assistant note survives.
+    expect(healed.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(healed[1]!.content).toBe("trailing note");
+  });
+
+  it("strips a dangling assistant-with-tool_calls tail (pre-0.4.12 session files)", () => {
+    const messages: ChatMessage[] = [
+      { role: "user", content: "analyze" },
+      { role: "assistant", content: "sure" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: "t1", type: "function", function: { name: "probe", arguments: "{}" } }],
+      },
+      // NO tool response follows — this is the corrupted shape that
+      // DeepSeek 400s on the next user message. Heal must drop it.
+    ];
+    const { messages: healed, healedCount } = healLoadedMessages(messages, 32_000);
+    expect(healedCount).toBe(1);
+    expect(healed).toHaveLength(2);
+    expect(healed[healed.length - 1]!.role).toBe("assistant");
+    expect(healed[healed.length - 1]!.content).toBe("sure");
+  });
+
+  it("strips MULTIPLE trailing assistant-with-tool_calls entries (stacked corruption)", () => {
+    const messages: ChatMessage[] = [
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: "a", type: "function", function: { name: "x", arguments: "{}" } }],
+      },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: "b", type: "function", function: { name: "x", arguments: "{}" } }],
+      },
+    ];
+    const { messages: healed, healedCount } = healLoadedMessages(messages, 32_000);
+    // Both dangling assistant entries trimmed; user message survives.
+    expect(healedCount).toBe(2);
+    expect(healed).toHaveLength(1);
+    expect(healed[0]!.role).toBe("user");
+  });
+
+  it("keeps a PAIRED assistant.tool_calls + tool response intact", () => {
+    const messages: ChatMessage[] = [
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: "t1", type: "function", function: { name: "x", arguments: "{}" } }],
+      },
+      { role: "tool", tool_call_id: "t1", content: "ok" },
+    ];
+    const { messages: healed, healedCount } = healLoadedMessages(messages, 32_000);
+    expect(healedCount).toBe(0);
+    expect(healed).toEqual(messages);
   });
 });
 

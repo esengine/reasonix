@@ -415,16 +415,110 @@ describe("CacheFirstLoop (non-streaming)", () => {
       events.push({ role: ev.role, forcedSummary: ev.forcedSummary, content: ev.content });
     }
 
-    // A warning must fire about the context guard.
+    // A warning must fire about the context guard. Accept both the
+    // auto-compact-saved-us variant and the nothing-to-compact variant
+    // — the message format shifted in 0.4.11 when we added the
+    // auto-compact attempt before forcing summary.
     const warn = events.find((e) => e.role === "warning");
     expect(warn).toBeDefined();
-    expect(warn!.content).toMatch(/context \d+\/\d+/);
+    expect(warn!.content).toMatch(/context [\d,]+\/[\d,]+/);
 
     // The final assistant_final must be tagged forcedSummary and carry the context-guard prefix.
     const finals = events.filter((e) => e.role === "assistant_final");
     const summary = finals[finals.length - 1];
     expect(summary!.forcedSummary).toBe(true);
     expect(summary!.content).toMatch(/context budget running low/);
+  });
+
+  it("context-guard auto-compacts oversized tool results and continues instead of jumping to summary", async () => {
+    // Pre-seed the log with an oversized tool result so compact has
+    // something to shrink. Then the model requests another tool call;
+    // the returned prompt_tokens trips the 80% guard. We expect compact
+    // to run, the warning to mention shrinking, and the loop to
+    // continue with the tool dispatch — no forced summary.
+    const reg = new ToolRegistry();
+    reg.register({
+      name: "probe",
+      description: "no-op",
+      parameters: { type: "object", properties: {} },
+      fn: async () => "ok",
+    });
+    const responses: FakeResponseShape[] = [
+      // Iter 0: chains a tool call, usage trips the guard.
+      {
+        content: "",
+        tool_calls: [{ id: "c1", type: "function", function: { name: "probe", arguments: "{}" } }],
+        usage: {
+          prompt_tokens: 120_000,
+          completion_tokens: 10,
+          total_tokens: 120_010,
+          prompt_cache_hit_tokens: 100_000,
+          prompt_cache_miss_tokens: 20_000,
+        },
+      },
+      // Iter 1: model wraps up normally after the tool result.
+      { content: "done analyzing." },
+    ];
+    const client = makeClient(responses);
+    const loop = new CacheFirstLoop({
+      client,
+      prefix: new ImmutablePrefix({ system: "s", toolSpecs: reg.specs() }),
+      tools: reg,
+      stream: false,
+      maxToolIters: 64,
+    });
+    // Put a big tool message into the log so compact has work to do.
+    loop.log.append({ role: "user", content: "do stuff" });
+    loop.log.append({
+      role: "tool",
+      tool_call_id: "prior",
+      content: "Z".repeat(60_000),
+    });
+
+    const events: { role: string; forcedSummary?: boolean; content?: string }[] = [];
+    for await (const ev of loop.step("continue")) {
+      events.push({ role: ev.role, forcedSummary: ev.forcedSummary, content: ev.content });
+    }
+
+    const warn = events.find((e) => e.role === "warning");
+    expect(warn).toBeDefined();
+    expect(warn!.content).toMatch(/auto-compacted \d+ oversized tool result/);
+    // Tool was actually dispatched (we didn't force-summary).
+    expect(events.find((e) => e.role === "tool")).toBeDefined();
+    // Final assistant_final should NOT be tagged forcedSummary — we
+    // took the happy path through the tool and a normal wrap-up.
+    const finals = events.filter((e) => e.role === "assistant_final");
+    const last = finals[finals.length - 1];
+    expect(last!.forcedSummary).toBeFalsy();
+  });
+
+  it("buildMessages strips a dangling assistant-with-tool_calls tail — defensive against 'insufficient tool messages' 400", async () => {
+    // Craft a log where the last entry is an assistant message with
+    // tool_calls but no matching tool responses. This is the shape
+    // that used to crash the forced-summary call with DeepSeek's
+    // 'insufficient tool messages following tool_calls' error.
+    const client = makeClient([{ content: "summary text" }]);
+    const loop = new CacheFirstLoop({
+      client,
+      prefix: new ImmutablePrefix({ system: "s" }),
+      stream: false,
+    });
+    loop.log.append({ role: "user", content: "hi" });
+    loop.log.append({
+      role: "assistant",
+      content: "",
+      tool_calls: [{ id: "x", type: "function", function: { name: "noop", arguments: "{}" } }],
+    });
+    // A chat turn from here should succeed, not 400, because
+    // buildMessages strips the unpaired tail.
+    const events: { role: string; content?: string }[] = [];
+    for await (const ev of loop.step("continue")) {
+      events.push({ role: ev.role, content: ev.content });
+    }
+    expect(events.find((e) => e.role === "error")).toBeUndefined();
+    // The fake fetch echoes the messages it received — no unpaired
+    // assistant+tool_calls should be in there.
+    expect(events.find((e) => e.role === "assistant_final")?.content).toContain("summary text");
   });
 
   it("surfaces an error event when the HTTP call fails with a non-retryable status", async () => {

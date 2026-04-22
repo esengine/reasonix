@@ -232,8 +232,18 @@ export class CacheFirstLoop {
       for (const msg of messages) this.log.append(msg);
       this.resumedMessageCount = messages.length;
       if (healedCount > 0) {
+        // Persist the healed log back to disk so the damage doesn't
+        // re-surface on the next session load — otherwise `heal →
+        // append → resume → heal → …` would keep noticing the same
+        // broken tail every restart. Non-fatal on I/O error: the
+        // in-memory log is already healed so this session still works.
+        try {
+          rewriteSession(this.sessionName, messages);
+        } catch {
+          /* disk full / perms — skip, in-memory heal still applies */
+        }
         process.stderr.write(
-          `▸ session "${this.sessionName}": healed ${healedCount} oversized tool result(s) (was ${healedFrom.toLocaleString()} chars total). Old payloads were truncated to fit DeepSeek's context window; the conversation is preserved.\n`,
+          `▸ session "${this.sessionName}": healed ${healedCount} entr${healedCount === 1 ? "y" : "ies"}${healedFrom > 0 ? ` (was ${healedFrom.toLocaleString()} chars oversized)` : " (dropped dangling tool_calls tail)"}. Rewrote session file.\n`,
         );
       }
     } else {
@@ -254,7 +264,13 @@ export class CacheFirstLoop {
    */
   compact(tightCapChars = 4000): { healedCount: number; charsSaved: number } {
     const before = this.log.toMessages();
-    const { messages, healedCount, healedFrom } = healLoadedMessages(before, tightCapChars);
+    // Use `shrinkOversizedToolResults` (not `healLoadedMessages`) — the
+    // full heal would also strip a dangling `assistant.tool_calls` tail,
+    // which during an active turn is legitimate state we still need
+    // (tools haven't been dispatched yet). Structural healing is only
+    // appropriate at session LOAD; mid-session `/compact` is strictly
+    // about shrinking oversized tool payloads.
+    const { messages, healedCount, healedFrom } = shrinkOversizedToolResults(before, tightCapChars);
     const afterBytes = messages
       .filter((m) => m.role === "tool")
       .reduce((s, m) => s + (typeof m.content === "string" ? m.content.length : 0), 0);
@@ -346,7 +362,16 @@ export class CacheFirstLoop {
   }
 
   private buildMessages(pendingUser: string | null): ChatMessage[] {
-    const msgs: ChatMessage[] = [...this.prefix.toMessages(), ...this.log.toMessages()];
+    // Full tool_calls ↔ tool pairing validation. DeepSeek 400s on
+    // both sides of this contract — unpaired assistant.tool_calls
+    // ("insufficient tool messages following") OR stray tool entries
+    // ("tool must be a response to a preceding tool_calls"). A corrupted
+    // session from an earlier build can have either. Rather than
+    // applying a bunch of narrow tail-trim heuristics, rebuild the
+    // message stream through the same validator used at load time so
+    // the payload we hand to the API is well-formed by construction.
+    const healed = healLoadedMessages(this.log.toMessages(), DEFAULT_MAX_RESULT_CHARS);
+    const msgs: ChatMessage[] = [...this.prefix.toMessages(), ...healed.messages];
     if (pendingUser !== null) msgs.push({ role: "user", content: pendingUser });
     return msgs;
   }
@@ -697,20 +722,70 @@ export class CacheFirstLoop {
       // already is to DeepSeek's 131k context. If we're over 80%, the
       // NEXT call (with the just-executed tools' results stuffed into
       // history) will be worse, and fairly soon it'll 400 with
-      // "maximum context length". Divert to summary instead — same
-      // path as iter-cap and Esc-abort, just triggered by a different
-      // signal so the user sees *why* it happened.
+      // "maximum context length".
+      //
+      // Strategy, in order:
+      //   1. Try auto-compacting the log (shrink oversized tool
+      //      results). If that gets us back under 80% we keep going —
+      //      the user doesn't lose their turn to a premature summary.
+      //   2. If still over after compact, divert to the forced-summary
+      //      path. BUT first drop the trailing assistant-with-tool_calls
+      //      that we just appended — we haven't executed the tools yet,
+      //      so sending this to the summary call with no matching tool
+      //      responses would 400 ("insufficient tool messages following
+      //      tool_calls"). The summary is about what was LEARNED so far,
+      //      not what we intended to do next.
       const ctxMax = DEEPSEEK_CONTEXT_TOKENS[this.model] ?? DEFAULT_CONTEXT_TOKENS;
       if (usage && usage.promptTokens / ctxMax > 0.8) {
-        yield {
-          turn: this._turn,
-          role: "warning",
-          content: `context ${usage.promptTokens}/${ctxMax} (${Math.round(
-            (usage.promptTokens / ctxMax) * 100,
-          )}%) — more tools would overflow. Forcing summary from what was gathered.`,
-        };
-        yield* this.forceSummaryAfterIterLimit({ reason: "context-guard" });
-        return;
+        const before = usage.promptTokens;
+        const compactResult = this.compact(4000);
+        if (compactResult.healedCount > 0) {
+          // Rough estimate: 4 chars per token. Good enough to decide
+          // whether compaction pushed us back under the threshold; the
+          // exact number comes back from the NEXT API response's usage.
+          const approxSaved = Math.round(compactResult.charsSaved / 4);
+          const after = before - approxSaved;
+          yield {
+            turn: this._turn,
+            role: "warning",
+            content: `context ${before.toLocaleString()}/${ctxMax.toLocaleString()} — auto-compacted ${compactResult.healedCount} oversized tool result(s), saved ~${approxSaved.toLocaleString()} tokens (now ~${after.toLocaleString()}). Continuing.`,
+          };
+          // Intentionally don't re-check the threshold here: even if
+          // compaction didn't fully clear us under 80%, one more tool
+          // call's overhead isn't going to overflow, and the NEXT
+          // iter's fresh `usage` from the API will catch real danger.
+        } else {
+          yield {
+            turn: this._turn,
+            role: "warning",
+            content: `context ${before.toLocaleString()}/${ctxMax.toLocaleString()} (${Math.round(
+              (before / ctxMax) * 100,
+            )}%) — nothing to auto-compact. Forcing summary from what was gathered.`,
+          };
+          // Drop the trailing assistant-with-tool_calls we just
+          // appended. The forced-summary call would otherwise trip
+          // DeepSeek's "insufficient tool messages following tool_calls"
+          // validator, since we bail BEFORE dispatching the tools.
+          const tail = this.log.entries[this.log.entries.length - 1];
+          if (
+            tail &&
+            tail.role === "assistant" &&
+            Array.isArray(tail.tool_calls) &&
+            tail.tool_calls.length > 0
+          ) {
+            const kept = this.log.entries.slice(0, -1);
+            this.log.compactInPlace([...kept]);
+            if (this.sessionName) {
+              try {
+                rewriteSession(this.sessionName, kept);
+              } catch {
+                /* disk issue shouldn't block the summary path */
+              }
+            }
+          }
+          yield* this.forceSummaryAfterIterLimit({ reason: "context-guard" });
+          return;
+        }
       }
 
       for (const call of repairedCalls) {
@@ -883,7 +958,13 @@ function summarizeBranch(chosen: BranchSample, samples: BranchSample[]): BranchS
  * always small, (b) truncating user prompts would corrupt conversational
  * intent in a way the user didn't author. Exported for tests.
  */
-export function healLoadedMessages(
+/**
+ * Shrink oversized tool results only — the original compact concern.
+ * Separated from `healLoadedMessages` so `/compact` (live, mid-session)
+ * doesn't accidentally strip structural tail that belongs in the
+ * current turn's state.
+ */
+export function shrinkOversizedToolResults(
   messages: ChatMessage[],
   maxChars: number,
 ): { messages: ChatMessage[]; healedCount: number; healedFrom: number } {
@@ -898,6 +979,79 @@ export function healLoadedMessages(
     return { ...msg, content: truncateForModel(content, maxChars) };
   });
   return { messages: out, healedCount, healedFrom };
+}
+
+export function healLoadedMessages(
+  messages: ChatMessage[],
+  maxChars: number,
+): { messages: ChatMessage[]; healedCount: number; healedFrom: number } {
+  // Pass 1: shrink oversized tool results (original heal purpose).
+  const shrunk = shrinkOversizedToolResults(messages, maxChars);
+  let healedCount = shrunk.healedCount;
+  // Pass 2: enforce tool_calls ↔ tool pairing across the full log.
+  //
+  // DeepSeek rejects two shapes at the API boundary:
+  //   (a) assistant with tool_calls not followed by matching tool
+  //       responses ("insufficient tool messages following tool_calls")
+  //   (b) tool message without a preceding assistant.tool_calls with
+  //       the matching tool_call_id ("must be a response to a preceding
+  //       message with 'tool_calls'")
+  //
+  // Corrupted session files from earlier builds have hit both. Rebuild
+  // the message stream so only well-formed (assistant.tool_calls + all
+  // matching responses) groups survive. Plain user/assistant messages
+  // (no tool_calls) always pass through.
+  const out: ChatMessage[] = [];
+  const openCallIds = new Set<string>();
+  let droppedAssistantCalls = 0;
+  let droppedStrayTools = 0;
+  for (let i = 0; i < shrunk.messages.length; i++) {
+    const msg = shrunk.messages[i]!;
+    if (msg.role === "assistant" && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      // Look ahead for tool responses matching every id in this
+      // assistant's tool_calls. If all present (in any order, but
+      // contiguous after this message), include the whole group.
+      const needed = new Set<string>();
+      for (const call of msg.tool_calls) {
+        if (call?.id) needed.add(call.id);
+      }
+      const candidates: ChatMessage[] = [];
+      let j = i + 1;
+      while (j < shrunk.messages.length && needed.size > 0) {
+        const nxt = shrunk.messages[j]!;
+        if (nxt.role !== "tool") break;
+        const id = nxt.tool_call_id ?? "";
+        if (!needed.has(id)) break;
+        needed.delete(id);
+        candidates.push(nxt);
+        j++;
+      }
+      if (needed.size === 0) {
+        // Every call has a response — emit the whole group.
+        out.push(msg);
+        for (const r of candidates) out.push(r);
+        i = j - 1; // for-loop ++ will advance past the last response
+      } else {
+        // Drop the assistant entry and anything that was speculatively
+        // its responses — they'd become stray tool messages.
+        droppedAssistantCalls += 1;
+        droppedStrayTools += candidates.length;
+        i = j - 1;
+      }
+      continue;
+    }
+    if (msg.role === "tool") {
+      // Any tool message that reaches here did NOT get consumed by
+      // the assistant-with-tool_calls branch above, so it's stray.
+      // Drop it — surfacing it would 400 the next API call.
+      droppedStrayTools += 1;
+      continue;
+    }
+    // Plain user/assistant/system message — pass through.
+    out.push(msg);
+  }
+  healedCount += droppedAssistantCalls + droppedStrayTools;
+  return { messages: out, healedCount, healedFrom: shrunk.healedFrom };
 }
 
 /**

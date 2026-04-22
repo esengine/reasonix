@@ -3,6 +3,64 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.12] — 2026-04-22
+
+**Headline:** Bulletproof tool_calls ↔ tool pairing so corrupted
+session files can't keep 400ing forever. Auto-compact attempt
+before forcing summary on context-guard so a single oversized
+turn doesn't eat your entire session.
+
+### Fixed
+
+- **DeepSeek 400 "insufficient tool messages following tool_calls"**
+  after a forced-summary on context-guard. Root cause: the loop
+  appended `assistant.tool_calls` and then bailed to summary BEFORE
+  dispatching the tools, leaving the log in a shape DeepSeek's API
+  validator rejects. Fix: strip the dangling tail before calling
+  summary, and defensively validate at every `buildMessages` call.
+- **DeepSeek 400 "tool must be a response to a preceding tool_calls"**
+  when typing anything after the above error. Root cause: partial
+  fixes left stray tool messages or half-matched tool_calls in the
+  log. Fix: `healLoadedMessages` now runs a full pairing validator
+  — any `assistant.tool_calls` whose response set is incomplete is
+  dropped along with its partial responses; any stray tool message
+  is dropped. Runs on session load (with disk rewrite to persist the
+  heal) AND on every outgoing API call (defensive).
+- **Auto-compact before forcing summary** on context-guard trip.
+  Previously the loop immediately forced a summary at 80% context —
+  users lost a full turn of work. Now it first tries shrinking
+  oversized tool results; if that drops enough tokens, the turn
+  continues normally and the user can keep asking. Falls back to
+  forced summary only when compaction has nothing to shrink.
+- **`CacheFirstLoop.compact()` no longer strips structural tail** —
+  split the "shrink oversized tool payloads" concern out from the
+  full load-time heal. `/compact` during a live session only
+  shrinks, never touches tool_calls/tool pairing (those edges are
+  legitimate mid-turn state).
+
+### Internals
+
+- New exported `shrinkOversizedToolResults(messages, cap)` for the
+  shrink-only concern. `healLoadedMessages` now composes
+  `shrinkOversizedToolResults` + the full pairing validator.
+- Session load heal now rewrites the session file on disk when
+  anything was healed, so the damage doesn't re-surface every
+  restart.
+
+### Tests (+5, 4 reshaped, suite 436→443)
+
+- `tests/loop-error.test.ts` (+5) — `healLoadedMessages` drops a
+  stray tool without preceding tool_calls; drops an
+  assistant.tool_calls whose response set is incomplete; 4 existing
+  tests reshaped to use valid tool_call pairings (stray tools now
+  correctly get pruned by the validator).
+- `tests/loop.test.ts` (+2) — context-guard auto-compacts oversized
+  tool results and continues instead of forcing summary; dangling
+  assistant-with-tool_calls tail stripped defensively at
+  buildMessages time.
+
+---
+
 ## [0.4.11] — 2026-04-22
 
 **Headline:** Real git-diff-style output for `edit_file`, `/new`
