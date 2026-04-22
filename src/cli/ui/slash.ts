@@ -128,7 +128,8 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   { cmd: "sessions", summary: "list saved sessions (current marked with ▸)" },
   { cmd: "forget", summary: "delete the current session from disk" },
   { cmd: "setup", summary: "reminds you to exit and run `reasonix setup`" },
-  { cmd: "clear", summary: "clear the visible scrollback (log + session kept)" },
+  { cmd: "clear", summary: "clear visible scrollback only (log/context kept)" },
+  { cmd: "new", summary: "start a fresh conversation (clear context + scrollback)" },
   { cmd: "exit", summary: "quit the TUI" },
   // Code-mode only
   { cmd: "apply", summary: "commit pending edit blocks to disk", contextual: "code" },
@@ -175,7 +176,22 @@ export function handleSlash(
       return { exit: true };
 
     case "clear":
-      return { clear: true };
+      return {
+        clear: true,
+        info: "▸ cleared visible scrollback only. Context (message log) is intact — next turn still sees everything. Use /new to start fresh, or /forget to delete the session entirely.",
+      };
+
+    case "new":
+    case "reset": {
+      // Actually drop the in-memory log + rewrite the session file
+      // so the NEXT call has no prior context. Keeps session name,
+      // model, and other config — just the conversation is reset.
+      const { dropped } = loop.clearLog();
+      return {
+        clear: true,
+        info: `▸ new conversation — dropped ${dropped} message(s) from context. Same session, fresh slate.`,
+      };
+    }
 
     case "help":
     case "?":
@@ -200,7 +216,8 @@ export function handleSlash(
           '  /commit "msg"            (code mode) git add -A && git commit -m "msg"',
           "  /sessions                list saved sessions (current is marked with ▸)",
           "  /forget                  delete the current session from disk",
-          "  /clear                   clear displayed history (log + session kept)",
+          "  /new                     start fresh: drop all context + clear scrollback",
+          "  /clear                   clear displayed scrollback only (context kept — model still sees it)",
           "  /exit                    quit",
           "",
           "Presets:",

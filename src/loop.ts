@@ -284,6 +284,31 @@ export class CacheFirstLoop {
   }
 
   /**
+   * Start a fresh conversation WITHOUT exiting. Drops every message
+   * in the in-memory log AND rewrites the session file to empty so
+   * a resume won't re-hydrate the old turns. Unlike `/forget`, which
+   * deletes the session entirely, this keeps the session name and
+   * config intact — it's the "new chat" button.
+   *
+   * The immutable prefix (system prompt + tool specs) is preserved
+   * — that's the cache-first invariant, not part of the conversation.
+   * Returns the number of messages dropped so the UI can show it.
+   */
+  clearLog(): { dropped: number } {
+    const dropped = this.log.length;
+    this.log.compactInPlace([]);
+    if (this.sessionName) {
+      try {
+        rewriteSession(this.sessionName, []);
+      } catch {
+        /* disk issue shouldn't block the in-memory clear */
+      }
+    }
+    this.scratch.reset();
+    return { dropped };
+  }
+
+  /**
    * Reconfigure model/harvest/branch/stream mid-session. The loop's log,
    * scratch, and stats are preserved — only the per-turn behavior changes.
    * Used by the TUI's slash commands and by library callers who want to

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ToolRegistry } from "../src/tools.js";
-import { registerFilesystemTools } from "../src/tools/filesystem.js";
+import { lineDiff, registerFilesystemTools } from "../src/tools/filesystem.js";
 
 describe("filesystem tools (built-in, sandbox-enforced)", () => {
   let root: string;
@@ -165,29 +165,47 @@ describe("filesystem tools (built-in, sandbox-enforced)", () => {
       expect(disk).toBe("foo QUX baz");
     });
 
-    it("returns an inline unified diff (- search, + replace)", async () => {
-      await fs.writeFile(join(root, "a.txt"), "keep\nold line\nkeep");
+    it("includes a git-style @@ -N,M +N,M @@ hunk header with the real starting line", async () => {
+      // File has 4 pre-existing lines; SEARCH starts at line 3.
+      // Expected hunk header: @@ -3,1 +3,2 @@ (1 old line → 2 new).
+      await fs.writeFile(join(root, "a.txt"), "alpha\nbeta\nTARGET\ntail\n");
       const out = await tools.dispatch(
         "edit_file",
-        JSON.stringify({ path: "a.txt", search: "old line", replace: "new line" }),
+        JSON.stringify({ path: "a.txt", search: "TARGET", replace: "TARGET\nextra" }),
       );
-      expect(out).toMatch(/^edited/m);
-      expect(out).toContain("- old line");
-      expect(out).toContain("+ new line");
+      expect(out).toMatch(/@@ -3,1 \+3,2 @@/);
     });
 
-    it("truncates huge search/replace blocks in the displayed diff", async () => {
-      const huge = Array.from({ length: 50 }, (_, i) => `line${i}`).join("\n");
-      const replaced = Array.from({ length: 50 }, (_, i) => `new${i}`).join("\n");
-      await fs.writeFile(join(root, "a.txt"), huge);
+    it("returns a proper LCS diff with context lines, not just - old / + new", async () => {
+      // The user-reported case: SEARCH is a single line, REPLACE keeps
+      // that line and adds three more below it. A naive dump-both-sides
+      // would show "- line\n+ line\n+ new1\n+ new2\n+ new3" (redundant
+      // `-` for the unchanged line). Proper LCS shows the first line
+      // as context (` `) and only the additions as `+`.
+      await fs.writeFile(
+        join(root, "a.txt"),
+        "const a = doc.getElementById('a');\nconst b = doc.getElementById('b');",
+      );
+      const search = "const a = doc.getElementById('a');";
+      const replace = [
+        "const a = doc.getElementById('a');",
+        "const b2 = doc.getElementById('b2');",
+        "const c = doc.getElementById('c');",
+      ].join("\n");
       const out = await tools.dispatch(
         "edit_file",
-        JSON.stringify({ path: "a.txt", search: huge, replace: replaced }),
+        JSON.stringify({ path: "a.txt", search, replace }),
       );
-      // Header still present.
-      expect(out).toMatch(/^edited/m);
-      // Diff truncated with "… (N more lines)" marker.
-      expect(out).toMatch(/more lines/);
+      // The unchanged first line appears as context (space-prefixed),
+      // NOT as a `-` / `+` pair.
+      expect(out).toContain("  const a = doc.getElementById('a');");
+      // The new lines are `+` prefixed.
+      expect(out).toContain("+ const b2 = doc.getElementById('b2');");
+      expect(out).toContain("+ const c = doc.getElementById('c');");
+      // No line should appear as both `-` and `+` for the preserved
+      // one — that was the old broken behavior.
+      const minuses = out.split("\n").filter((l) => l.startsWith("- "));
+      expect(minuses.some((l) => l.includes("getElementById('a')"))).toBe(false);
     });
 
     it("refuses when the search text is not found", async () => {
@@ -263,5 +281,63 @@ describe("filesystem tools (built-in, sandbox-enforced)", () => {
       expect(ro.has("create_directory")).toBe(false);
       expect(ro.has("move_file")).toBe(false);
     });
+  });
+});
+
+describe("lineDiff — LCS line-level diff used by edit_file", () => {
+  it("pure insertion: common prefix as context, new lines as +", () => {
+    const d = lineDiff(["a"], ["a", "b", "c"]);
+    expect(d).toEqual([
+      { op: " ", line: "a" },
+      { op: "+", line: "b" },
+      { op: "+", line: "c" },
+    ]);
+  });
+
+  it("pure deletion: kept lines as context, dropped as -", () => {
+    const d = lineDiff(["a", "b", "c"], ["a"]);
+    expect(d).toEqual([
+      { op: " ", line: "a" },
+      { op: "-", line: "b" },
+      { op: "-", line: "c" },
+    ]);
+  });
+
+  it("substitution: line-in-line-out without touching neighbors", () => {
+    const d = lineDiff(["a", "old", "c"], ["a", "new", "c"]);
+    // "a" and "c" stay as context; "old" → "new" is a -/+ pair.
+    expect(d.map((o) => o.op).join("")).toBe(" -+ ");
+    expect(d.map((o) => o.line)).toEqual(["a", "old", "new", "c"]);
+  });
+
+  it("identical arrays produce pure context (no +/- ops)", () => {
+    const lines = ["a", "b", "c"];
+    const d = lineDiff(lines, lines);
+    expect(d.every((o) => o.op === " ")).toBe(true);
+  });
+
+  it("empty search → all replace lines are added", () => {
+    const d = lineDiff([], ["x", "y"]);
+    expect(d).toEqual([
+      { op: "+", line: "x" },
+      { op: "+", line: "y" },
+    ]);
+  });
+
+  it("handles the user's real case: one-line search → multi-line replace with the line preserved", () => {
+    const search = [
+      "const prestigePointsGainElement = doc.getElementById('prestige-points-gain');",
+    ];
+    const replace = [
+      "const prestigePointsGainElement = doc.getElementById('prestige-points-gain');",
+      "const bonusClickElement = doc.getElementById('bonus-click');",
+      "const bonusCpsElement = doc.getElementById('bonus-cps');",
+    ];
+    const d = lineDiff(search, replace);
+    // First line is context — not a -/+ redundant pair.
+    expect(d[0]!.op).toBe(" ");
+    expect(d[0]!.line).toContain("prestigePointsGainElement");
+    // The rest are pure additions.
+    expect(d.slice(1).every((o) => o.op === "+")).toBe(true);
   });
 });

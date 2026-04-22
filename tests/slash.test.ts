@@ -40,8 +40,40 @@ describe("handleSlash", () => {
     expect(handleSlash("quit", [], loop).exit).toBe(true);
   });
 
-  it("/clear requests history clear", () => {
-    expect(handleSlash("clear", [], makeLoop()).clear).toBe(true);
+  it("/clear requests history clear + surfaces an info line about what it does", () => {
+    const r = handleSlash("clear", [], makeLoop());
+    expect(r.clear).toBe(true);
+    // Clear should also explain that context is NOT dropped — users
+    // keep confusing this with /new.
+    expect(r.info).toMatch(/visible scrollback only/);
+    expect(r.info).toMatch(/\/new/);
+  });
+
+  it("/new drops in-memory context AND clears scrollback", () => {
+    const loop = makeLoop();
+    loop.log.append({ role: "user", content: "message 1" });
+    loop.log.append({ role: "assistant", content: "reply 1" });
+    loop.log.append({ role: "user", content: "message 2" });
+    expect(loop.log.length).toBe(3);
+    const r = handleSlash("new", [], loop);
+    expect(r.clear).toBe(true);
+    expect(r.info).toMatch(/dropped 3/);
+    expect(loop.log.length).toBe(0);
+  });
+
+  it("/reset is an alias for /new (muscle memory)", () => {
+    const loop = makeLoop();
+    loop.log.append({ role: "user", content: "hi" });
+    const r = handleSlash("reset", [], loop);
+    expect(r.clear).toBe(true);
+    expect(loop.log.length).toBe(0);
+  });
+
+  it("/help distinguishes /clear (visual-only) from /new (drops context)", () => {
+    const r = handleSlash("help", [], makeLoop());
+    expect(r.info).toMatch(/\/new/);
+    // Wording explicitly notes context is kept on /clear.
+    expect(r.info).toMatch(/clear displayed scrollback only/);
   });
 
   it("/help returns a multi-line message", () => {

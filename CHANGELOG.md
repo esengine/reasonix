@@ -3,6 +3,66 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.11] — 2026-04-22
+
+**Headline:** Real git-diff-style output for `edit_file`, `/new`
+command that actually drops context (unlike `/clear`), clearer
+phase labels on the streaming row.
+
+### Added
+
+- **LCS line-level diff for `edit_file`** — unchanged lines now
+  render as ` ` context (dim), removed as `-` (red), added as `+`
+  (green). Previously a one-line search with a multi-line replace
+  would show the unchanged line as both `-` and `+`, which was
+  just noise.
+- **Git-style hunk header** (`@@ -42,1 +42,4 @@`) above each
+  `edit_file` diff showing where in the file the change lands and
+  how many lines it affects. Matches the `git diff` convention.
+- **`edit_file` results never truncated** in the EventLog. Other
+  tools keep the 400-char clip + `/tool N` escape, but edit diffs
+  always show the full change so `/apply` decisions are informed.
+- **`/new` slash command** (alias `/reset`) that drops the
+  in-memory message log AND rewrites the session file to empty.
+  Unlike `/forget` (deletes the session), `/new` keeps the session
+  name, model, and config — just starts a fresh conversation.
+  `CacheFirstLoop.clearLog()` is the backing public API.
+- **Clearer streaming-row phase labels** — replaced the cryptic
+  "streaming · 391 + think 4506 chars" with explicit state text:
+  - yellow "request sent · waiting for server" pre-first-byte
+  - cyan "R1 reasoning · N chars of thought" during reasoning-only
+  - green "writing response · N chars · after M chars of reasoning"
+    during content phase. Colored so the eye catches the phase at
+    a glance instead of decoding dim text.
+
+### Changed
+
+- **`/clear` now advertises what it does NOT do** — users kept
+  expecting it to clear context. It still clears only the visible
+  scrollback, but the returned info line now says so explicitly
+  and points at `/new` for context drop.
+- App.tsx now renders the info line from a clear-plus-info slash
+  result (previously `clear: true` short-circuited and ate any
+  accompanying message).
+
+### Tests (+8, suite 427→436 — some existing `/clear` test adjusted for new info output)
+
+- `tests/filesystem-tools.test.ts` (+3) — `edit_file` returns a
+  proper LCS diff with context lines (user's real case of one-line
+  search + multi-line replace no longer double-counts); git-style
+  `@@` hunk header with starting-line number from the original
+  file.
+- `tests/filesystem-tools.test.ts` — dedicated `lineDiff` test
+  block (+5) covering pure insertion, pure deletion, substitution
+  order (-/+ matches git-diff convention), identical-arrays as
+  all-context, empty-search all-additions, the user-reported real
+  case.
+- `tests/slash.test.ts` (+3, 1 changed) — `/new` drops log + clears
+  scrollback; `/reset` alias; `/help` distinguishes `/clear` vs
+  `/new`; `/clear` now surfaces an explanatory info line.
+
+---
+
 ## [0.4.10] — 2026-04-22
 
 **Headline:** Fills the "silent wait" gaps users were hitting —

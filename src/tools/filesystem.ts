@@ -318,11 +318,12 @@ export function registerFilesystemTools(
       await fs.writeFile(abs, after, "utf8");
       const rel = pathMod.relative(rootDir, abs);
       const header = `edited ${rel} (${args.search.length}→${args.replace.length} chars)`;
-      // Render a compact inline diff so users can see WHAT changed
-      // without running `git diff`. Each SEARCH line → `-`, each
-      // REPLACE line → `+`, matching unified-diff convention. Long
-      // blocks are capped; `/tool N` always gives the full text.
-      const diff = renderEditDiff(args.search, args.replace);
+      // Starting line number of the search block in the original
+      // file. `split/length` on the prefix gives a 1-based line
+      // count where the match begins, matching git-diff's @@ -N,M
+      // +N,M @@ header convention.
+      const startLine = before.slice(0, firstIdx).split(/\r?\n/).length;
+      const diff = renderEditDiff(args.search, args.replace, startLine);
       return `${header}\n${diff}`;
     },
   });
@@ -366,27 +367,79 @@ export function registerFilesystemTools(
 }
 
 /**
- * Format an edit_file change as a compact inline diff. Each SEARCH
- * line prefixed with `-`, each REPLACE line prefixed with `+`. When
- * the content is large we keep the head + tail and drop the middle
- * with a marker so the EventLog row is readable but `/tool N` can
- * still show the full untruncated result on demand.
+ * Format an edit_file change as a proper line-level diff, styled
+ * like `git diff`. Starts with a unified-diff hunk header —
+ * `@@ -startLine,oldCount +startLine,newCount @@` — so the user
+ * can tell where in the file the change lands. Body uses LCS
+ * (longest common subsequence) to mark lines as removed (`-`),
+ * added (`+`), or unchanged context (` `). Users were getting
+ * hundreds of `-` followed by hundreds of `+` for tiny changes
+ * because the naive "dump both sides" format can't tell what
+ * actually moved vs. stayed — this fixes that and adds line-
+ * number context on top.
  */
-function renderEditDiff(search: string, replace: string): string {
-  const searchLines = search.split(/\r?\n/);
-  const replaceLines = replace.split(/\r?\n/);
-  const MAX_LINES_SIDE = 12;
-  const clip = (lines: string[]): string[] => {
-    if (lines.length <= MAX_LINES_SIDE) return lines;
-    const headCount = Math.floor(MAX_LINES_SIDE / 2);
-    const tailCount = MAX_LINES_SIDE - headCount - 1;
-    return [
-      ...lines.slice(0, headCount),
-      `  … (${lines.length - headCount - tailCount} more lines)`,
-      ...lines.slice(-tailCount),
-    ];
-  };
-  const minus = clip(searchLines).map((l) => `- ${l}`);
-  const plus = clip(replaceLines).map((l) => `+ ${l}`);
-  return [...minus, ...plus].join("\n");
+function renderEditDiff(search: string, replace: string, startLine: number): string {
+  const a = search.split(/\r?\n/);
+  const b = replace.split(/\r?\n/);
+  const diff = lineDiff(a, b);
+  const hunk = `@@ -${startLine},${a.length} +${startLine},${b.length} @@`;
+  const body = diff.map((d) => `${d.op === " " ? " " : d.op} ${d.line}`).join("\n");
+  return `${hunk}\n${body}`;
+}
+
+/**
+ * Compute a line-level diff via classic LCS dynamic programming.
+ * Good enough for SEARCH/REPLACE blocks where both sides are
+ * typically under a few hundred lines — O(n*m) space + time. For
+ * huge blocks we'd want Myers' algorithm, but the caller already
+ * caps the inline-display size and `/tool N` shows the full result,
+ * so quadratic is fine in practice.
+ *
+ * Exported so tests can exercise the diff logic without spinning
+ * up the full tool dispatch path.
+ */
+export function lineDiff(
+  a: readonly string[],
+  b: readonly string[],
+): Array<{ op: "-" | "+" | " "; line: string }> {
+  const n = a.length;
+  const m = b.length;
+  // dp[i][j] = LCS length of a[0..i) and b[0..j).
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (a[i - 1] === b[j - 1]) dp[i]![j] = dp[i - 1]![j - 1]! + 1;
+      else dp[i]![j] = Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!);
+    }
+  }
+  // Backtrack to recover the op sequence.
+  const out: Array<{ op: "-" | "+" | " "; line: string }> = [];
+  let i = n;
+  let j = m;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) {
+      out.unshift({ op: " ", line: a[i - 1]! });
+      i--;
+      j--;
+    } else if ((dp[i - 1]![j] ?? 0) > (dp[i]![j - 1] ?? 0)) {
+      out.unshift({ op: "-", line: a[i - 1]! });
+      i--;
+    } else {
+      // Tie-break goes here (strictly less or equal): take the
+      // insertion first during backtrack so the final forward order
+      // renders removals BEFORE additions for a substitution —
+      // matches git-diff convention of `- old / + new`.
+      out.unshift({ op: "+", line: b[j - 1]! });
+      j--;
+    }
+  }
+  while (i > 0) {
+    out.unshift({ op: "-", line: a[i - 1]! });
+    i--;
+  }
+  while (j > 0) {
+    out.unshift({ op: "+", line: b[j - 1]! });
+    j--;
+  }
+  return out;
 }

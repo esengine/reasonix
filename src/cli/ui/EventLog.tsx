@@ -62,13 +62,24 @@ export const EventRow = React.memo(function EventRow({ event }: { event: Display
     const isError = event.text.startsWith("ERROR:");
     const color = isError ? "red" : "yellow";
     const marker = isError ? "✗" : "→";
+    // `edit_file` results get a dedicated diff renderer — colored
+    // line-by-line so `-` removals show red, `+` additions show
+    // green, unchanged context lines dim. Always full, never
+    // truncated: users need to see the whole change to trust
+    // /apply. Other tools keep the 400-char clip + /tool N escape.
+    const isEditFile =
+      (event.toolName === "edit_file" || event.toolName?.endsWith("_edit_file")) && !isError;
     return (
       <Box flexDirection="column" marginTop={1}>
         <Text color={color}>{`tool<${event.toolName ?? "?"}>  ${marker}`}</Text>
-        <Text color={isError ? "red" : undefined} dimColor={!isError}>
-          {" "}
-          {truncate(event.text, 400)}
-        </Text>
+        {isEditFile ? (
+          <EditFileDiff text={event.text} />
+        ) : (
+          <Text color={isError ? "red" : undefined} dimColor={!isError}>
+            {" "}
+            {truncate(event.text, 400)}
+          </Text>
+        )}
       </Box>
     );
   }
@@ -103,6 +114,61 @@ export const EventRow = React.memo(function EventRow({ event }: { event: Display
     </Box>
   );
 });
+
+/**
+ * Render the payload of an `edit_file` tool result with proper
+ * diff coloring: first line is the header ("edited X (A→B chars)"),
+ * subsequent lines are prefixed with `-` (removed), `+` (added), or
+ * space (unchanged context). Unchanged lines render dim so the
+ * changed ones pop visually. No truncation — the whole diff is
+ * shown so the user can audit what landed before `/apply` or
+ * `git diff` review.
+ */
+function EditFileDiff({ text }: { text: string }) {
+  const lines = text.split(/\r?\n/);
+  // Line 0 is the status header ("edited X (A→B chars)"), Line 1 is
+  // the unified-diff hunk header ("@@ -N,M +N,M @@"), the rest is
+  // the colored diff body. We style the two headers distinctly so
+  // the hunk marker stands out the way git-diff's cyan `@@` does in
+  // most terminals.
+  const [statusHeader, hunkHeader, ...body] = lines;
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>{` ${statusHeader ?? ""}`}</Text>
+      {hunkHeader !== undefined ? (
+        <Text color="cyan" bold>
+          {hunkHeader}
+        </Text>
+      ) : null}
+      {body.map((line, i) => {
+        // Key includes the line content slice so React isn't forced
+        // to treat purely-positional identity; lines in the same
+        // diff don't reorder but could repeat (e.g. blank lines).
+        const key = `${i}-${line.slice(0, 32)}`;
+        if (line.startsWith("- ")) {
+          return (
+            <Text key={key} color="red">
+              {line}
+            </Text>
+          );
+        }
+        if (line.startsWith("+ ")) {
+          return (
+            <Text key={key} color="green">
+              {line}
+            </Text>
+          );
+        }
+        // Context line (starts with "  ") or unknown — dim.
+        return (
+          <Text key={key} dimColor>
+            {line}
+          </Text>
+        );
+      })}
+    </Box>
+  );
+}
 
 function BranchBlock({ branch }: { branch: BranchSummary }) {
   const per = branch.uncertainties
@@ -208,20 +274,34 @@ function StreamingAssistant({ event }: { event: DisplayEvent }) {
 
   const tail = lastLine(event.text, 140);
   const reasoningTail = event.reasoning ? lastLine(event.reasoning, 120) : "";
-  // R1 ("deepseek-reasoner") generates reasoning_content first, then
-  // content. While reasoning is streaming but content is still empty,
-  // we were showing "(waiting for first token…)" — which looked like a
-  // hang. The data is flowing, it's just landing in the thinking
-  // channel. Reflect that honestly.
-  const reasoningOnly = !event.text && !!event.reasoning;
-  // Pre-first-byte: the request is sent, the connection is open, the
-  // server just hasn't started emitting yet. Call this out explicitly —
-  // previously the display read "streaming · 0 chars" which reads
-  // like a hang.
+  // Four distinct phases a turn can be in — label them plainly so
+  // the user doesn't have to decode "streaming · 391 + think 4506
+  // chars" to figure out what's happening:
+  //   pre-first-byte: request in flight, no bytes back yet
+  //   reasoning-only: R1 thinking, no visible content yet
+  //   writing: content streaming (R1 has already produced its thought)
+  //   both: rare — content present AND reasoning still growing
+  // We can't cheaply distinguish "reasoning still growing" from
+  // "reasoning finished but we already saw it", so when content is
+  // present we just say "writing response" and surface both counts.
   const preFirstByte = !event.text && !event.reasoning;
-  const headerText = preFirstByte
-    ? "request sent · waiting for server"
-    : `${reasoningOnly ? "reasoning" : "streaming"} · ${event.text.length}${event.reasoning ? ` + think ${event.reasoning.length}` : ""} chars`;
+  const reasoningOnly = !event.text && !!event.reasoning;
+  let label: string;
+  let labelColor: "yellow" | "cyan" | "green" | undefined;
+  if (preFirstByte) {
+    label = "request sent · waiting for server";
+    labelColor = "yellow";
+  } else if (reasoningOnly) {
+    label = `R1 reasoning · ${event.reasoning?.length ?? 0} chars of thought`;
+    labelColor = "cyan";
+  } else {
+    // Content phase. If reasoning is non-empty we include its size
+    // so the user knows R1 did a thinking pass before speaking.
+    label = event.reasoning
+      ? `writing response · ${event.text.length} chars · after ${event.reasoning.length} chars of reasoning`
+      : `writing response · ${event.text.length} chars`;
+    labelColor = "green";
+  }
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
@@ -229,11 +309,7 @@ function StreamingAssistant({ event }: { event: DisplayEvent }) {
           assistant{" "}
         </Text>
         <Pulse />
-        <Text dimColor>
-          {" ("}
-          {headerText}
-          {") "}
-        </Text>
+        <Text color={labelColor}>{` ${label} `}</Text>
         <Elapsed />
       </Box>
       {reasoningTail ? (

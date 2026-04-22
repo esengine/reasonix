@@ -443,6 +443,20 @@ export function App({
           exit();
           return;
         }
+        if (result.clear && result.info) {
+          // Clear + message: wipe scrollback, then seed the new view
+          // with the explanatory info line so the user sees *what
+          // happened*. Previously clear alone left them staring at
+          // an empty screen with no confirmation.
+          setHistorical([
+            {
+              id: `sys-${Date.now()}`,
+              role: "info",
+              text: result.info,
+            },
+          ]);
+          return;
+        }
         if (result.clear) {
           setHistorical([]);
           return;
