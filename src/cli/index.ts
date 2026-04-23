@@ -68,13 +68,17 @@ program
 program
   .command("code [dir]")
   .description(
-    "Code-editing chat — filesystem MCP auto-bridged at <dir> (default: cwd), coding system prompt, smart preset. Model proposes SEARCH/REPLACE blocks; Reasonix applies them to disk.",
+    "Code-editing chat — filesystem tools rooted at <dir> (default: cwd), coding system prompt, deepseek-reasoner. Model proposes SEARCH/REPLACE blocks; Reasonix applies them to disk.",
   )
   .option("-m, --model <id>", "Override default reasoner model")
   .option("--no-session", "Disable session persistence for this run")
   .option("-r, --resume", "Skip the session picker — always continue prior messages")
   .option("-n, --new", "Skip the session picker — always wipe prior messages and start fresh")
   .option("--transcript <path>", "Write a JSONL transcript to this path")
+  .option(
+    "--harvest",
+    "Extract typed plan state from R1 reasoning (Pillar 2). Adds ~10-15% cost per turn. Off by default in code mode.",
+  )
   .action(async (dir: string | undefined, opts) => {
     await codeCommand({
       dir,
@@ -83,6 +87,7 @@ program
       transcript: opts.transcript,
       forceResume: !!opts.resume,
       forceNew: !!opts.new,
+      harvest: !!opts.harvest,
     });
   });
 

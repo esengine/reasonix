@@ -41,6 +41,15 @@ export interface CodeOptions {
   forceResume?: boolean;
   /** Skip the session picker — always wipe prior messages and start fresh. */
   forceNew?: boolean;
+  /**
+   * Opt into Pillar 2 harvesting (extracts a typed plan state from R1
+   * reasoning via an extra V3 call). Default OFF in code mode — the
+   * displayed subgoals/hypotheses/rejectedPaths have no programmatic
+   * consumer, only `uncertainties.length` feeds branching, and the
+   * extra V3 call adds ~10-15% per-turn cost. Users who want the
+   * reasoning surfaced explicitly can pass `--harvest`.
+   */
+  harvest?: boolean;
 }
 
 export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
@@ -87,7 +96,7 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
 
   await chatCommand({
     model: opts.model ?? "deepseek-reasoner",
-    harvest: true, // smart preset's harvest setting, always on for code
+    harvest: opts.harvest ?? false,
     system: codeSystemPrompt(rootDir),
     transcript: opts.transcript,
     session,
