@@ -17,6 +17,7 @@ import type { SessionSummary } from "../../telemetry.js";
 import type { ToolRegistry } from "../../tools.js";
 import { formatCommandResult, runCommand } from "../../tools/shell.js";
 import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../transcript.js";
+import { VERSION, compareVersions, getLatestVersion } from "../../version.js";
 import { type DisplayEvent, EventRow } from "./EventLog.js";
 import { PlanConfirm, type PlanConfirmChoice } from "./PlanConfirm.js";
 import { PlanRefineInput } from "./PlanRefineInput.js";
@@ -136,6 +137,11 @@ export function App({
   // tracks reality. `null` means either the endpoint failed or we
   // haven't fetched yet; the panel hides the cell in that case.
   const [balance, setBalance] = useState<{ currency: string; total: number } | null>(null);
+  // Latest published version, populated in the background from the
+  // npm registry. `null` during the in-flight window and when the
+  // install is already current (or offline); rendered only when
+  // there's something newer to nudge the user toward.
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   // Snapshots of every file the *last* edit batch touched, keyed by
   // nothing more than "most recent". `/undo` restores from this ref
   // and nulls it out — one level of undo, Aider-style. Multi-step
@@ -275,6 +281,22 @@ export function App({
       cancelled = true;
     };
   }, [loop]);
+
+  // Background registry check — 24h disk cache absorbs repeated
+  // launches, timeout bounded so a flaky network doesn't delay the
+  // notification. Set to `null` on failure (silent: no network, no
+  // problem) and on "already latest" so the header stays quiet.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const latest = await getLatestVersion();
+      if (cancelled || !latest) return;
+      if (compareVersions(VERSION, latest) < 0) setUpdateAvailable(latest);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Wire the shared progressSink so the bridge's onProgress → us.
   // Only updates progress when the frame belongs to the currently-
@@ -1032,6 +1054,7 @@ export function App({
           branchBudget={loop.branchOptions.budget}
           planMode={planMode}
           balance={balance}
+          updateAvailable={updateAvailable}
         />
         <Static items={historical}>{(item) => <EventRow key={item.id} event={item} />}</Static>
         {/*

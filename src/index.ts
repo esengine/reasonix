@@ -244,4 +244,12 @@ export type {
   JSONSchema,
 } from "./types.js";
 
-export const VERSION = "0.4.20";
+export {
+  LATEST_CACHE_TTL_MS,
+  LATEST_FETCH_TIMEOUT_MS,
+  VERSION,
+  compareVersions,
+  getLatestVersion,
+  isNpxInstall,
+} from "./version.js";
+export type { GetLatestVersionOptions } from "./version.js";

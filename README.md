@@ -148,6 +148,24 @@ reasonix code › /commit "fix: findByEmail case-insensitive"
   writable).
 - `npx reasonix code --no-session` — ephemeral; nothing saved.
 
+### Staying current
+
+The panel header shows the running version next to `Reasonix` (e.g.
+`Reasonix v0.4.22 · model …`). A quiet 24-hour background check against
+the npm registry surfaces a yellow `update: X.Y.Z` on the right side
+of the same row when a newer version has been published. No blocking,
+no nagging — the check runs once per day max and is silent on failure
+(offline, firewall, etc.).
+
+```bash
+reasonix update             # print current vs latest, run `npm i -g reasonix@latest`
+reasonix update --dry-run   # print the plan without running anything
+```
+
+Running via `npx`? The command detects that and prints a
+cache-refresh hint instead — npx picks up the newest version on
+its next invocation automatically.
+
 ### Project conventions — `REASONIX.md`
 
 Drop a `REASONIX.md` in the project root and its contents are pinned

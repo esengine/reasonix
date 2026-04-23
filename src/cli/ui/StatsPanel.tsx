@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import React from "react";
 import { DEEPSEEK_CONTEXT_TOKENS, DEFAULT_CONTEXT_TOKENS } from "../../telemetry.js";
 import type { SessionSummary } from "../../telemetry.js";
+import { VERSION } from "../../version.js";
 
 export interface StatsPanelProps {
   summary: SessionSummary;
@@ -25,6 +26,13 @@ export interface StatsPanelProps {
    * with USD both see "getting low."
    */
   balance?: { currency: string; total: number } | null;
+  /**
+   * Published npm version newer than VERSION. Rendered as a yellow
+   * "· update: X" nudge in the panel header. `null` / `undefined`
+   * hides the nudge (offline launch, already up to date, or check
+   * still in flight).
+   */
+  updateAvailable?: string | null;
 }
 
 export function StatsPanel({
@@ -35,6 +43,7 @@ export function StatsPanel({
   branchBudget,
   planMode,
   balance,
+  updateAvailable,
 }: StatsPanelProps) {
   const hitPct = (summary.cacheHitRatio * 100).toFixed(1);
   const hitColor =
@@ -52,6 +61,7 @@ export function StatsPanel({
           <Text color="cyan" bold>
             Reasonix
           </Text>
+          <Text dimColor>{` v${VERSION}`}</Text>
           <Text dimColor> · model </Text>
           <Text color="yellow">{model}</Text>
           <Text dimColor> · prefix </Text>
@@ -65,7 +75,12 @@ export function StatsPanel({
             </Text>
           ) : null}
         </Text>
-        <Text dimColor>turns {summary.turns} · type /help</Text>
+        <Text>
+          {updateAvailable ? (
+            <Text color="yellow" bold>{`update: ${updateAvailable} · `}</Text>
+          ) : null}
+          <Text dimColor>turns {summary.turns} · type /help</Text>
+        </Text>
       </Box>
       <Box marginTop={1} gap={3}>
         <Text>

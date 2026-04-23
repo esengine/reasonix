@@ -12,6 +12,7 @@ import { runCommand } from "./commands/run.js";
 import { sessionsCommand } from "./commands/sessions.js";
 import { setupCommand } from "./commands/setup.js";
 import { statsCommand } from "./commands/stats.js";
+import { updateCommand } from "./commands/update.js";
 import { versionCommand } from "./commands/version.js";
 import { resolveDefaults } from "./resolve.js";
 
@@ -259,6 +260,16 @@ mcp
   });
 
 program.command("version").description("Print Reasonix version.").action(versionCommand);
+
+program
+  .command("update")
+  .description(
+    "Check the npm registry for a newer Reasonix and install it. Detects npx vs global install; for npx users, prints a cache-refresh hint instead of running `npm i -g`.",
+  )
+  .option("--dry-run", "Print the plan without executing the install")
+  .action(async (opts: { dryRun?: boolean }) => {
+    await updateCommand({ dryRun: !!opts.dryRun });
+  });
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);

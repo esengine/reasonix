@@ -3,6 +3,70 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.22] — 2026-04-22
+
+**Headline:** Version display in the TUI header + `reasonix update`
+self-upgrade command.
+
+Two small quality-of-life additions. The stats panel now carries the
+running version (`Reasonix v0.4.22 · model …`) so users can tell at
+a glance whether they're on the latest build; a 24-hour background
+check against the npm registry quietly surfaces a yellow
+`update: X.Y.Z` nudge on the right side of the same row when a
+newer version has been published. The nudge never blocks startup —
+the fetch is bounded at 2s with a 24h on-disk cache, and any
+failure (offline, firewall, registry hiccup) is silent by design.
+
+`reasonix update` is the command form: detects whether you're
+running a global install vs an ephemeral `npx` spawn, and either
+spawns `npm install -g reasonix@latest` for the former or prints a
+cache-refresh hint for the latter. `--dry-run` prints the plan
+without executing.
+
+The `VERSION` constant now sources from `package.json` at runtime
+(walking up from `import.meta.url`) instead of a hand-maintained
+literal, so it can never drift again — it was stale at `0.4.20`
+before this release. Tests assert they stay in sync.
+
+### Added
+
+- **`src/version.ts`** — exports `VERSION`, `compareVersions`,
+  `getLatestVersion`, `isNpxInstall`, and the
+  `LATEST_CACHE_TTL_MS` / `LATEST_FETCH_TIMEOUT_MS` constants.
+  `getLatestVersion` caches to `~/.reasonix/version-cache.json`
+  (24h TTL) and returns `null` on any failure.
+- **`reasonix update`** subcommand (`src/cli/commands/update.ts`).
+  `planUpdate()` is the pure decision function, `updateCommand()`
+  is the CLI orchestrator with test seams (`fetchLatest`, `isNpx`,
+  `spawnInstall`, `write`, `exit`).
+- **StatsPanel header shows `v${VERSION}`** inline, plus an
+  `update: X` badge (yellow, bold) on the right when
+  `updateAvailable` is passed. App.tsx fires the registry check
+  in a background `useEffect` on mount; only a version strictly
+  newer than the running one flips the state.
+
+### Fixed
+
+- **Drifted `VERSION` constant.** `src/index.ts` hard-coded
+  `"0.4.20"` while `package.json` was on `0.4.21`. Replaced with a
+  re-export from `src/version.ts`, which reads the manifest on
+  first access. A regression test pins them together.
+
+### Tests (+19, suite 588 → 607)
+
+- `tests/version.test.ts` — `VERSION === package.json.version`,
+  `compareVersions` covers numeric + pre-release ordering,
+  `isNpxInstall` covers the three detection paths,
+  `getLatestVersion` covers cache hit / force-refresh / expired
+  entry / network failure / bad body / cache-write failure.
+- `tests/update-command.test.ts` — `planUpdate` returns the
+  correct action for all four decision quadrants; `updateCommand`
+  respects every seam: no-spawn on up-to-date, no-spawn on npx,
+  spawns on global-behind-latest, honors `--dry-run`, exits
+  non-zero on registry failure, surfaces npm's non-zero exit.
+
+---
+
 ## [0.4.21] — 2026-04-22
 
 **Headline:** Skills — user-authored prompt packs, two-scope layout
