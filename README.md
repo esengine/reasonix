@@ -6,8 +6,9 @@
 [![downloads](https://img.shields.io/npm/dm/reasonix.svg)](https://www.npmjs.com/package/reasonix)
 [![node](https://img.shields.io/node/v/reasonix.svg)](./package.json)
 
-**A DeepSeek-native AI coding assistant in your terminal.** Ink TUI. MCP
-first-class. No LangChain.
+**A DeepSeek-native AI coding agent in your terminal.** Edits files as
+reviewable SEARCH/REPLACE blocks. Ink TUI. MCP first-class. No
+LangChain.
 
 ---
 
@@ -16,60 +17,27 @@ first-class. No LangChain.
 **1. Get a DeepSeek API key.** Free credit on signup:
 <https://platform.deepseek.com/api_keys>
 
-**2. Run it.** No install needed.
-
-```bash
-npx reasonix
-```
-
-First run walks you through a 30-second wizard:
-
-- paste your API key (saved to `~/.reasonix/config.json`)
-- pick a preset — `fast` (cheap chat, default), `smart` (+R1 reasoning), `max` (+self-consistency branching)
-- multi-select MCP servers from a catalog (filesystem, memory, github, puppeteer, …)
-
-Every run after that drops you straight into chat.
-
-**3. Inside the chat.** Type anything and hit Enter. Type `/help` to see
-every command. The status bar at the top shows cache hit %, cost so far,
-balance, and context usage. Press `Esc` to cancel whatever is running.
-
-```
-reasonix › explain what this project does
-assistant
-  …streams R1 reasoning into a dim preview, then writes the answer…
-status bar: cache hit 92% · cost $0.001 · ctx 8k/131k (6%) · balance 12.34 CNY
-```
-
-Requires Node ≥ 18. Works on macOS, Linux, Windows (Git Bash + PowerShell).
-
----
-
-## Using `reasonix code` — your terminal pair programmer
-
-Scoped to the directory you launch from. The model has native
-`read_file` / `write_file` / `edit_file` / `list_directory` /
-`search_files` / `directory_tree` / `get_file_info` /
-`create_directory` / `move_file` tools, all sandboxed — any path that
-resolves outside the launch root (including `..` and symlink escapes)
-is refused.
+**2. Point it at a project.** No install needed.
 
 ```bash
 cd my-project
 npx reasonix code
 ```
 
-### Walkthrough: fix a bug
+First run walks you through a 30-second wizard (paste API key → pick
+preset → multi-select MCP servers). Every run after that drops you
+straight in.
+
+**3. Ask it to edit.** The model proposes edits as SEARCH/REPLACE
+blocks — nothing hits disk until you `/apply`.
 
 ```
-reasonix code › users.ts 里 findByEmail 对大小写敏感导致登录失败，帮我改成大小写不敏感
+reasonix code › users.ts 里 findByEmail 对大小写敏感导致登录失败，帮我改
 
 assistant
-  ▸ R1 reasoning · 1243 chars of thought
   ▸ tool<search_files> → src/users.ts, src/users.test.ts
   ▸ tool<read_file>    → (src/users.ts, 412 chars)
-  ▸ tool<read_file>    → (src/users.test.ts, 820 chars)
-  ▸ 找到了。findByEmail 直接用 === 比对。我把查询和存储都规范化为小写，并补上一条测试。
+  ▸ 找到了。findByEmail 直接用 === 比对。改成小写规范化并补一条测试。
 
 src/users.ts
 <<<<<<< SEARCH
@@ -79,49 +47,34 @@ src/users.ts
   return users.find(u => u.email.toLowerCase() === needle);
 >>>>>>> REPLACE
 
-src/users.test.ts
-<<<<<<< SEARCH
-  it("finds by email", () => {
-    expect(findByEmail("a@b.com")).toBeDefined();
-  });
-=======
-  it("finds by email", () => {
-    expect(findByEmail("a@b.com")).toBeDefined();
-  });
+▸ 1 pending edit across 1 file — /apply to write · /discard to drop
 
-  it("is case-insensitive", () => {
-    expect(findByEmail("A@B.COM")).toBeDefined();
-  });
->>>>>>> REPLACE
-
-▸ 2 pending edits across 2 files — /apply to write · /discard to drop
+reasonix code › /apply
+▸ ✓ applied src/users.ts
 ```
 
-**At this point nothing has been written to disk.** You have three
-options:
+Requires Node ≥ 20.10. macOS, Linux, Windows (PowerShell / Git Bash /
+Windows Terminal). Press `Esc` anytime to abort; `/help` for the full
+command list.
 
-- `/apply` — commit the pending blocks. You'll see `✓ applied
-  src/users.ts` and `✓ applied src/users.test.ts`. A snapshot of the
-  pre-edit file is kept so `/undo` can roll back.
-- `/discard` — throw the blocks away without writing.
-- Keep chatting — ask for adjustments. Say "also cover the empty
-  string case" and the model proposes another block set.
+---
 
-After applying:
+## `reasonix code` — pair programmer in your terminal
 
-```
-reasonix code › /commit "fix: findByEmail case-insensitive"
-▸ git add -A && git commit -m "fix: findByEmail case-insensitive"
-  [main a1b2c3d] fix: findByEmail case-insensitive
-```
-
-`/commit` runs `git add -A && git commit -m ...` from the sandbox root.
+Scoped to the directory you launch from. The model has native
+`read_file` / `write_file` / `edit_file` / `list_directory` /
+`search_files` / `directory_tree` / `get_file_info` /
+`create_directory` / `move_file` tools, all sandboxed — any path that
+resolves outside the launch root (including `..` and symlink escapes)
+is refused. Plus `run_command` with a read-only allowlist; anything
+state-mutating (`npm install`, `git commit`, …) is gated behind a
+confirmation picker.
 
 ### Walkthrough: explore before editing
 
 For "what does this code do?" questions the model uses the read-side
-tools and replies in prose — no SEARCH/REPLACE blocks, no file writes.
-Ask to change something only when you mean it:
+tools and replies in prose — no SEARCH/REPLACE blocks, no file
+writes. Ask to change something only when you mean it:
 
 ```
 reasonix code › 这个项目的路由是怎么组织的？
@@ -132,23 +85,10 @@ assistant
     nested routes 写子路径，最后 …
 ```
 
-If the SEARCH text doesn't match the file byte-for-byte, `edit_file`
-refuses the edit loudly rather than fuzzy-matching. The model sees the
-error and retries with the correct search text — silent wrong edits are
-worse than visible rejections.
-
-### Things to try
-
-- `/tool 1` — dump the last tool call's full output (when the 400-char
-  inline clip isn't enough).
-- `/think` — see the model's full R1 reasoning for the last turn
-  (reasoner preset only).
-- `/memory` — show the project's `REASONIX.md` (see below).
-- `/plan` — toggle read-only plan mode (see below).
-- `/undo` — roll back the last applied edit batch.
-- `/new` — start fresh in the same directory without losing the
-  session file.
-- Drop `--no-session` for an ephemeral session that doesn't persist.
+If an `edit_file` SEARCH block doesn't match the file byte-for-byte,
+the edit is refused loudly rather than fuzzy-matched. The model sees
+the error and retries — silent wrong edits are worse than visible
+rejections.
 
 ### Plan mode — review before executing
 
@@ -179,24 +119,40 @@ Swap JWT middleware for session cookies, keep user table intact.
     Cancel
 ```
 
-**Approve** exits plan mode and the model starts executing.
-**Refine** keeps the model exploring and asking for an updated plan.
-**Cancel** drops it and asks you what you actually want.
-
-Small fixes skip this — the model goes straight to `edit_file`.
-
 **Force it** with `/plan` — enters an explicit read-only phase where
 the model *must* submit a plan before any edit or non-allowlisted
-shell call will execute. Use it for high-stakes changes where you
-want to audit the plan before the model touches disk. `/plan off` or
-picker Approve/Cancel exits.
+shell call will execute. Use for high-stakes changes you want to
+audit before the model touches disk. `/plan off` or picker
+Approve/Cancel exits.
 
-### Project memory — `REASONIX.md`
+### `/commit` — stage + commit in one step
+
+```
+reasonix code › /commit "fix: findByEmail case-insensitive"
+▸ git add -A && git commit -m "fix: findByEmail case-insensitive"
+  [main a1b2c3d] fix: findByEmail case-insensitive
+```
+
+### Things to try
+
+- `/tool 1` — dump the last tool call's full output (when the 400-char
+  inline clip isn't enough).
+- `/think` — see the model's full R1 reasoning for the last turn
+  (reasoner preset only).
+- `/undo` — roll back the last applied edit batch.
+- `/new` — start fresh in the same directory without losing the
+  session file.
+- `npx reasonix code --preset max` — R1 + 3-way self-consistency
+  branching for gnarly refactors.
+- `npx reasonix code src/` — narrower sandbox (only `src/` is
+  writable).
+- `npx reasonix code --no-session` — ephemeral; nothing saved.
+
+### Project conventions — `REASONIX.md`
 
 Drop a `REASONIX.md` in the project root and its contents are pinned
-into the immutable-prefix system prompt every time you launch
-`reasonix` in that directory. Good for house conventions, domain
-glossary, or things the model keeps forgetting:
+into the system prompt every launch. Committable team memory — house
+conventions, domain glossary, things the model keeps forgetting:
 
 ```bash
 cat > REASONIX.md <<'EOF'
@@ -210,7 +166,7 @@ EOF
 Re-launch (or `/new`) to pick it up; the prefix is hashed once per
 session to keep the DeepSeek cache warm. `/memory` prints what's
 currently pinned. `REASONIX_MEMORY=off` disables every memory source
-(REASONIX.md + `~/.reasonix/memory/`) for CI / offline repro.
+for CI / offline repro.
 
 ### User memory — `~/.reasonix/memory/`
 
@@ -218,15 +174,16 @@ A second, **private per-user** memory layer lives under your home
 directory. Unlike `REASONIX.md` it's never committed, and the model
 can write to it itself via the `remember` tool. Two scopes:
 
-- `~/.reasonix/memory/global/` — cross-project (your preferences, tooling).
-- `~/.reasonix/memory/<project-hash>/` — scoped to one sandbox root in
-  `reasonix code` (decisions, local facts, per-repo shortcuts).
+- `~/.reasonix/memory/global/` — cross-project (your preferences,
+  tooling).
+- `~/.reasonix/memory/<project-hash>/` — scoped to one sandbox root
+  in `reasonix code` (decisions, local facts, per-repo shortcuts).
 
-Each scope keeps an always-loaded `MEMORY.md` index of one-liners plus
-zero or more `<name>.md` detail files (loaded on demand via
+Each scope keeps an always-loaded `MEMORY.md` index of one-liners
+plus zero or more `<name>.md` detail files (loaded on demand via
 `recall_memory`). Writes land immediately; pinning into the system
-prompt takes effect on next `/new` or launch so the cache prefix stays
-stable for the current session.
+prompt takes effect on next `/new` or launch so the cache prefix
+stays stable for the current session.
 
 ```
 reasonix code › 我用 bun 而不是 npm，请以后都用 bun 跑构建
@@ -234,38 +191,71 @@ reasonix code › 我用 bun 而不是 npm，请以后都用 bun 跑构建
 assistant
   ▸ tool<remember> → project/bun_build saved
     "Build command on this machine is `bun run build`"
-
-reasonix code › /memory list
-  project/project     bun_build       Build command on this machine is `bun run build`
 ```
 
-**Slash commands:**
+**Slash**: `/memory` · `/memory list` · `/memory show <name>` ·
+`/memory forget <name>` · `/memory clear <scope> confirm`.
+**Model tools**: `remember(type, scope, name, description, content)` ·
+`forget(scope, name)` · `recall_memory(scope, name)`.
 
-- `/memory` — show everything pinned (REASONIX.md + both MEMORY.md scopes)
-- `/memory list` — every memory file with scope + type + description
-- `/memory show <name>` — dump one file's full body
-- `/memory forget <name>` — delete one memory (no LLM turn)
-- `/memory clear <global|project> confirm` — wipe a scope (typed literal)
+Project scope is only available inside `reasonix code` (needs a real
+sandbox root to hash); plain `reasonix` gets the global scope only.
 
-**Model tools** (available in every session):
+### Skills — user-authored prompt packs
 
-- `remember(type, scope, name, description, content)` — save a memory
-- `forget(scope, name)` — delete it
-- `recall_memory(scope, name)` — read the full body when the one-liner isn't enough
+Skills are prose instruction blocks you drop on disk. Reasonix pins
+their names + one-line descriptions into the system prompt; the
+model can call `run_skill({name: "..."})` on its own when a match
+fits, or you can type `/skill <name> [args]` to run one manually.
 
-Project scope is only available inside `reasonix code` (there has to be
-a real sandbox root to hash); plain `reasonix` / `reasonix chat` gets
-the global scope only.
+Two scopes, same layout as user memory:
 
-```bash
-npx reasonix code src/           # narrower sandbox (only src/ is writable)
-npx reasonix code --no-session   # ephemeral — nothing saved to disk
-npx reasonix code --preset max   # R1 reasoning + 3-way self-consistency
+- `<project>/.reasonix/skills/` — per-project skills (commit them to
+  share with your team, or add to `.gitignore` for personal drafts).
+- `~/.reasonix/skills/` — global skills available everywhere.
+
+Either layout works: `<name>/SKILL.md` (preferred — can bundle
+additional assets alongside) or flat `<name>.md`.
+
+```markdown
+---
+name: review
+description: Review uncommitted changes and flag risks
+---
+
+Run `git diff` on staged and unstaged changes. Summarize what each
+hunk does, call out potential regressions, and list files that might
+need additional tests. Don't propose edits unless I ask.
 ```
+
+Use it:
+
+```
+reasonix code › /skill review
+▸ running skill: review
+assistant
+  ▸ tool<run_command> → git diff --cached
+  ▸ 3 改动，1 个需要回归测试 …
+```
+
+Or let the model pick autonomously — because the skill's name +
+description are pinned in the prefix, asking "帮我看下未提交的改动有没
+有风险" triggers `run_skill({name: "review"})` without you typing the
+slash command.
+
+**Slash**: `/skill` (list) · `/skill show <name>` · `/skill <name>
+[args]` (inject body as user turn).
+
+**Deliberately not tied** to any other client's directory convention
+(`.claude/skills`, etc.) — Reasonix is model-agnostic at the
+conversation layer. Any SKILL.md you author works; the body is
+prose, so skills authored for other tools usually port over unchanged
+(Reasonix's tool names differ — `filesystem` / `shell` / `web` — but
+the model reads the instructions and picks our equivalents).
 
 ---
 
-## Using `reasonix` — general chat
+## `reasonix` — also works as general chat
 
 Same TUI, no filesystem tools unless you opt in via MCP. Good for
 drafting, Q&A, schema design, architecture discussions, or driving
@@ -274,102 +264,74 @@ your own MCP servers. Sessions persist per name under
 
 ```bash
 npx reasonix                             # uses saved config + wizard-selected MCP
-npx reasonix --preset smart              # one-shot override
-npx reasonix --session design            # named session
-npx reasonix --session design            # resume it later — history intact
+npx reasonix --preset smart              # reasoner + R1 harvest for this run
+npx reasonix --session design            # named session — resume later with --session design
 ```
 
-### Walkthrough: a multi-turn session with R1 reasoning
-
-```
-reasonix › /preset smart
-▸ switched to smart · model deepseek-reasoner · harvest on · branch off
-
-reasonix › 我要给一个 Flutter 应用设计限时折扣的弹窗展示规则。目标：
-      每天首次打开时弹一次，连续弹 3 天后休眠 7 天。怎么实现？
-
-assistant
-  ▸ R1 reasoning · 2410 chars of thought
-  ‹ subgoals (3): 持久化展示计数 · 判断是否过了 24h · 休眠窗口判断
-  ‹ hypotheses (2): SharedPreferences 存计数 · lastShownAt 时间戳
-  ‹ uncertainties (1): 用户换设备后重置的策略
-
-  建议数据模型：
-    lastShownAt: DateTime
-    consecutiveShows: int (0..3)
-    sleepUntil: DateTime?
-  …
-```
-
-`/think` dumps the full R1 thought trace; `/status` shows the current
-model / flags / context use; `/retry` re-samples the same prompt with
-a fresh random seed (useful when the first answer missed something).
-
-### Walkthrough: attach MCP tools on the fly
+Bridge your own MCP servers on the fly:
 
 ```bash
-# Attach the official filesystem server sandboxed to /tmp/scratch,
-# plus a remote knowledge-base over SSE.
 npx reasonix \
-  --mcp "fs=npx -y @modelcontextprotocol/server-filesystem /tmp/scratch" \
+  --mcp "fs=npx -y @modelcontextprotocol/server-filesystem /tmp/safe" \
   --mcp "kb=https://mcp.example.com/sse"
 ```
 
-Inside the chat:
-
-```
-reasonix › /mcp
-▸ fs (stdio, 11 tools)   fs_read_file · fs_list_directory · fs_write_file · …
-▸ kb (sse,   4 tools)    kb_search · kb_get · kb_list_collections · kb_stat
-
-reasonix › 在 /tmp/scratch 下把所有 .log 文件里含 "ERROR" 的行收集到 errors.txt
-assistant
-  ▸ tool<fs_search_files> → 4 matches
-  ▸ tool<fs_read_file>    → …
-  ▸ tool<fs_write_file>   → wrote 2.4 KB to errors.txt
-  ▸ 已写入 errors.txt — 共 38 行，分布在 4 个源文件中。
-```
-
 MCP tools go through the same Cache-First + repair + context-safety
-plumbing as native tools, including the 32k result cap and live
-progress-notification rendering.
-
-### When to use `reasonix` vs `reasonix code`
-
-| situation | command |
-|---|---|
-| Editing files in the current project | `reasonix code` |
-| Exploring a project without writing files | `reasonix code` (it only writes on `/apply`) |
-| Design / architecture / research chat | `reasonix` |
-| Driving your own MCP servers | `reasonix --mcp "..."` |
-| One-shot question, no TUI | `reasonix run "..."` |
-| Reproducing a prior session / benchmark | `reasonix replay path.jsonl` |
+plumbing as native tools — 32k result cap, live progress-notification
+rendering, retries.
 
 ---
 
 ## Commands inside the session
 
+**Core**
+
 | command | what it does |
 |---|---|
-| `/help` | full command reference with hints |
+| `/help` · `/?` | full command reference with hints |
 | `/status` | current model · flags · context · session |
+| `/new` · `/reset` | fresh conversation in the same session |
+| `/clear` | clear visible scrollback only (log kept) |
+| `/retry` | truncate and resend your last message (fresh sample) |
+| `/exit` · `/quit` | quit |
+
+**Model**
+
+| command | what it does |
+|---|---|
 | `/preset <fast\|smart\|max>` | one-tap bundle (model + harvest + branch) |
 | `/model <id>` | switch DeepSeek model (`deepseek-chat`, `deepseek-reasoner`) |
 | `/harvest [on\|off]` | toggle R1 plan-state extraction |
 | `/branch <N\|off>` | run N parallel samples per turn, pick best (N ≥ 2) |
+| `/think` | dump the last turn's full R1 reasoning |
+
+**Context & tools**
+
+| command | what it does |
+|---|---|
 | `/mcp` | list attached MCP servers and their tools |
 | `/tool [N]` | dump the Nth tool call's full output (1 = latest) |
-| `/think` | dump the last turn's full R1 reasoning |
-| `/retry` | truncate and resend your last message (fresh sample) |
 | `/compact [cap]` | shrink oversized tool results in the log |
+
+**Memory & skills**
+
+| command | what it does |
+|---|---|
+| `/memory` | show pinned memory (REASONIX.md + ~/.reasonix/memory) |
+| `/memory list` · `show <name>` · `forget <name>` · `clear <scope> confirm` | manage the store |
+| `/skill` · `/skill list` | list discovered skills (project + global) |
+| `/skill show <name>` | dump one skill's body |
+| `/skill <name> [args]` | run a skill (inject body as user turn) |
+
+**Sessions**
+
+| command | what it does |
+|---|---|
 | `/sessions` | list saved sessions (current marked with `▸`) |
 | `/forget` | delete the current session from disk |
-| `/new` (alias `/reset`) | start a fresh conversation in the same session |
-| `/clear` | clear visible scrollback only (log kept) |
 | `/setup` | reconfigure (exit and run `reasonix setup`) |
-| `/exit` | quit |
 
-Additional commands in `reasonix code`:
+**Code mode only** (`reasonix code`)
 
 | command | what it does |
 |---|---|
@@ -377,32 +339,36 @@ Additional commands in `reasonix code`:
 | `/discard` | drop the pending edit blocks without writing |
 | `/undo` | roll back the last applied edit batch |
 | `/commit "msg"` | `git add -A && git commit -m "msg"` |
+| `/plan [on\|off]` | toggle read-only plan mode |
+| `/apply-plan` | force-approve a pending plan |
 
-**Keyboard:**
+**Keyboard**
 
 - `Enter` — submit
-- `Shift+Enter` / `Ctrl+J` — newline (multi-line paste also supported; `\` + Enter as a portable fallback)
-- `↑ / ↓` — walk prompt history while idle; navigate slash-autocomplete matches
+- `Shift+Enter` / `Ctrl+J` — newline (multi-line paste also supported;
+  `\` + Enter as a portable fallback)
+- `↑` / `↓` — walk prompt history while idle; navigate slash-autocomplete
 - `Tab` / `Enter` on a `/foo` prefix — accept the highlighted suggestion
-- `Esc` — abort the current turn (stops the API call, cancels any in-flight tool, rejects pending MCP requests)
+- `Esc` — abort the current turn (stops the API call, cancels any
+  in-flight tool, rejects pending MCP requests)
 - `y` / `n` on confirm prompts — hotkey accept / reject
 
 ---
 
 ## Sessions and safety nets
 
-- Sessions live as JSONL under `~/.reasonix/sessions/<name>.jsonl` (per
-  directory for `reasonix code`). Every message appended atomically; `Ctrl+C`
-  never loses context.
+- Sessions live as JSONL under `~/.reasonix/sessions/<name>.jsonl`
+  (per directory for `reasonix code`). Every message appended
+  atomically; `Ctrl+C` never loses context.
 - Tool results are capped at 32k chars per call. Oversized sessions
   self-heal on load (shrinks + rewrites the file).
 - Malformed `assistant.tool_calls` / `tool` pairing is validated on
   every outgoing API call so a corrupted session can't keep 400ing.
-- Context gauge turns yellow at 50%, red at 80% with a `/compact` nudge.
-  Approaching the 131k window triggers an automatic compaction attempt
-  before falling back to a forced summary.
-- The model's sandbox in `reasonix code` refuses any path that resolves
-  outside the launch directory, including symlink escape and `..` traversal.
+- Context gauge turns yellow at 50%, red at 80% with a `/compact`
+  nudge. Approaching the 131k window triggers an automatic
+  compaction attempt before falling back to a forced summary.
+- The `reasonix code` sandbox refuses any path that resolves outside
+  the launch directory, including symlink escape and `..` traversal.
 
 ### Troubleshooting: duplicate rows / ghost rendering
 
@@ -416,18 +382,12 @@ If you hit this, run with plain mode:
 
 ```bash
 REASONIX_UI=plain npx reasonix code
-# or
-REASONIX_UI=plain npx reasonix
 ```
 
-Plain mode suppresses every live/animated row and disables the
-internal tick timer. You lose the streaming preview and spinners
-but gain stable scrollback. Committed events (your prompts, tool
-results, the model's final responses) still render normally via
-Ink's `<Static>` append path.
-
-Windows Terminal, PowerShell 7 in Windows Terminal, and WezTerm
-don't need this opt-out.
+Plain mode suppresses live/animated rows and disables the internal
+tick timer. You lose the streaming preview and spinners but gain
+stable scrollback. Windows Terminal, PowerShell 7 in Windows
+Terminal, and WezTerm don't need this opt-out.
 
 ---
 
@@ -439,19 +399,11 @@ something the model wasn't trained on (new releases, current events,
 obscure APIs), it decides to call `web_search` on its own; if a
 snippet isn't enough it follows up with `web_fetch`.
 
-```
-you › Flutter 3.19 新加了什么？
-assistant
-  ▸ tool<web_search> → query: "Flutter 3.19 new features"
-  ▸ tool<web_fetch> → https://docs.flutter.dev/release/3-19
-  ▸ 3.19 主要新增了 …
-```
-
-Backed by **Mojeek**'s public search page — an independent web index,
-no API key, no signup, bot-friendly. Coverage on niche or very recent
-queries can be thinner than Google/Bing, but it's reliable from
-scripts and doesn't gate on cookies or sessions. (DDG was the original
-backend but it started serving anti-bot pages in 2026.)
+Backed by **Mojeek**'s public search page — an independent web
+index, bot-friendly, no cookies/sessions. Coverage on niche or very
+recent queries can be thinner than Google/Bing, but it's reliable
+from scripts. (DDG was the original backend but started serving
+anti-bot pages in 2026.)
 
 **Turn it off** (offline mode / privacy / CI):
 
@@ -461,37 +413,11 @@ backend but it started serving anti-bot pages in 2026.)
 ```
 
 ```bash
-# Or one env var (wins over config):
-REASONIX_SEARCH=off npx reasonix
+REASONIX_SEARCH=off npx reasonix code
 ```
 
-**Bring your own provider** (Kagi, SearXNG, Serper, an internal
-cache) — implement the two tools however you want and register them
-manually:
-
-```ts
-import { ToolRegistry } from "reasonix";
-// Register your own `web_search` / `web_fetch` on a ToolRegistry,
-// then pass it to CacheFirstLoop (or `reasonix chat --no-config`
-// with seedTools via library API).
-```
-
-Inside the session:
-
-```
-reasonix › Flutter 3.19 引入了什么新的 Navigator API？
-assistant
-  ▸ tool<web_search> → query: "Flutter 3.19 new Navigator API"
-    answer: Flutter 3.19 introduces the NavigatorObserver changes …
-    1. Flutter 3.19 Release Notes — https://docs.flutter.dev/…
-    2. What's new in Flutter 3.19 — https://medium.com/…
-  ▸ tool<web_fetch> → https://docs.flutter.dev/release/release-notes/3-19-0
-    (full page text, clipped at 32k)
-  ▸ 3.19 新增了 …
-```
-
-For advanced / self-hosted search (Kagi, SearXNG, internal caches)
-implement the `WebSearchProvider` interface and call
+**Bring your own** (Kagi, SearXNG, internal caches): implement the
+`WebSearchProvider` interface and call
 `registerWebTools(registry, { provider })` yourself, or bridge an
 existing MCP search server via `--mcp`.
 
@@ -499,14 +425,14 @@ existing MCP search server via `--mcp`.
 
 ## MCP — bring your own tools
 
-Any [MCP](https://spec.modelcontextprotocol.io/) server works. Wizard
-lets you pick from a catalog, or drive it by flag:
+Any [MCP](https://spec.modelcontextprotocol.io/) server works. The
+wizard lets you pick from a catalog, or drive it by flag:
 
 ```bash
 # stdio (local subprocess)
 npx reasonix --mcp "fs=npx -y @modelcontextprotocol/server-filesystem /tmp/safe"
 
-# multiple servers at once
+# multiple at once
 npx reasonix \
   --mcp "fs=npx -y @modelcontextprotocol/server-filesystem /tmp/safe" \
   --mcp "demo=npx tsx examples/mcp-server-demo.ts"
@@ -515,21 +441,22 @@ npx reasonix \
 npx reasonix --mcp "kb=https://mcp.example.com/sse"
 ```
 
-`reasonix mcp list` shows the curated catalog. `reasonix mcp inspect <spec>`
-connects once and dumps the server's tools / resources / prompts without
-starting a chat. Progress notifications from long-running tools (2025-03-26
-spec) render live as a progress bar in the spinner.
+`reasonix mcp list` shows the curated catalog. `reasonix mcp inspect
+<spec>` connects once and dumps the server's tools / resources /
+prompts without starting a chat. Progress notifications from
+long-running tools (2025-03-26 spec) render live as a progress bar
+in the spinner.
 
-Supported transports: **stdio** (local command) and **HTTP+SSE** (remote,
-MCP 2024-11-05 spec).
+Supported transports: **stdio** (local command) and **HTTP+SSE**
+(remote, MCP 2024-11-05 spec).
 
 ---
 
 ## CLI reference
 
 ```bash
-npx reasonix                             # chat (uses saved config)
 npx reasonix code [path]                 # coding mode scoped to path (default: cwd)
+npx reasonix                             # chat (uses saved config)
 npx reasonix setup                       # reconfigure the wizard
 npx reasonix chat --session work         # named session
 npx reasonix chat --no-session           # ephemeral
@@ -561,6 +488,9 @@ Env vars (win over config):
 ```bash
 export DEEPSEEK_API_KEY=sk-...
 export DEEPSEEK_BASE_URL=https://...   # optional alternate endpoint
+export REASONIX_MEMORY=off              # disable REASONIX.md + user memory
+export REASONIX_SEARCH=off              # disable web_search / web_fetch
+export REASONIX_UI=plain                # disable live rows (ghosting workaround)
 ```
 
 ---
@@ -606,13 +536,14 @@ for await (const ev of loop.step("What is 17 + 25?")) {
 console.log(loop.stats.summary());
 ```
 
-`ChatOptions.seedTools` accepts a pre-built `ToolRegistry` for callers
-who want the `reasonix code` loop wiring without the CLI wrapper.
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for internals.
+`ChatOptions.seedTools` accepts a pre-built `ToolRegistry` for
+callers who want the `reasonix code` loop wiring without the CLI
+wrapper. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for
+internals.
 
 ---
 
-## Why Reasonix (not LangChain)
+## Benchmarks — verify the cache-hit claim yourself
 
 Every abstraction here earns its weight against a DeepSeek-specific
 property — dirt-cheap tokens, R1 reasoning traces, automatic prefix
@@ -626,11 +557,10 @@ caching, JSON mode. Generic wrappers leave these on the table.
 | Scavenge tool calls leaked into `<think>` | yes | no |
 | Call-storm breaker on identical-arg repeats | yes | no |
 | Live cache-hit / cost / vs-Claude panel | yes | no |
-| First-run config prompt + Markdown TUI | yes | no |
 
 On the same τ-bench-lite workload — 8 multi-turn tool-use tasks × 3
-repeats = 48 runs per side, live DeepSeek `deepseek-chat`, sole variable
-prefix stability:
+repeats = 48 runs per side, live DeepSeek `deepseek-chat`, sole
+variable prefix stability:
 
 | metric | baseline (cache-hostile) | Reasonix | delta |
 |---|---:|---:|---:|
@@ -638,7 +568,7 @@ prefix stability:
 | cost / task | $0.002599 | $0.001579 | **−39%** |
 | pass rate | 96% (23/24) | **100% (24/24)** | — |
 
-**Verify it yourself — no API key, zero cost:**
+**Reproduce without spending an API credit:**
 
 ```bash
 git clone https://github.com/esengine/reasonix.git && cd reasonix && npm install
@@ -654,8 +584,10 @@ model call; baseline's churns on every turn. The cache delta is
 *mechanically* attributable to log stability, not to a different
 system prompt.
 
-Full 48-run report: [`benchmarks/tau-bench/report.md`](./benchmarks/tau-bench/report.md).
-Reproduce with your own API key: `npx tsx benchmarks/tau-bench/runner.ts --repeats 3`.
+Full 48-run report:
+[`benchmarks/tau-bench/report.md`](./benchmarks/tau-bench/report.md).
+Reproduce with your own API key: `npx tsx
+benchmarks/tau-bench/runner.ts --repeats 3`.
 
 MCP reference runs (one single prefix hash across all 5 turns even
 with two concurrent MCP subprocesses):
@@ -670,10 +602,16 @@ with two concurrent MCP subprocesses):
 
 ## Non-goals
 
-- Multi-agent orchestration (use LangGraph).
-- RAG / vector stores (use LlamaIndex).
-- Multi-provider abstraction (use LiteLLM).
-- Web UI / SaaS.
+- **Multi-agent orchestration / sub-agents** (use LangGraph).
+- **Workflow DSL / DAG scheduler / parallel-branch engine** — skills
+  are prose; the model sequences via the normal tool-use loop.
+  Keeps single-loop + append-only + cache-first invariants intact.
+- **Multi-provider abstraction** (use LiteLLM). Reasonix is
+  DeepSeek-only on purpose — every pillar (cache-first loop, R1
+  harvesting, tool-call repair) is tuned against DeepSeek-specific
+  behavior and economics. Coupling to one backend is the feature.
+- **RAG / vector stores** (use LlamaIndex).
+- **Web UI / SaaS.**
 
 Reasonix does DeepSeek, deeply.
 
@@ -685,9 +623,9 @@ Reasonix does DeepSeek, deeply.
 git clone https://github.com/esengine/reasonix.git
 cd reasonix
 npm install
-npm run dev chat        # run CLI from source via tsx
+npm run dev code        # run CLI from source via tsx
 npm run build           # tsup to dist/
-npm test                # vitest (444 tests)
+npm test                # vitest (648 tests)
 npm run lint            # biome
 npm run typecheck       # tsc --noEmit
 ```
