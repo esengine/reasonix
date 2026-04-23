@@ -48,6 +48,88 @@ export interface FilesystemToolsOptions {
 const DEFAULT_MAX_READ_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_LIST_BYTES = 256 * 1024;
 
+/**
+ * Directory names skipped by `search_content` unless `include_deps:true`
+ * is passed. The intent is "user is asking about THEIR code, not the
+ * libraries they depend on" — vendored / generated trees would otherwise
+ * dominate every match list. Pass include_deps when you genuinely need
+ * to grep a dependency.
+ */
+const SKIP_DIR_NAMES: ReadonlySet<string> = new Set([
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  "dist",
+  "build",
+  "out",
+  ".next",
+  ".nuxt",
+  "target", // Rust / Java
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".cache",
+  "coverage",
+]);
+
+/**
+ * Cheap binary-by-extension check for `search_content`. We err on the
+ * side of skipping so a NUL-byte content sniff is the second line of
+ * defense (handles e.g. a `.txt` that's actually a binary dump).
+ */
+const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".bmp",
+  ".ico",
+  ".webp",
+  ".tiff",
+  ".pdf",
+  ".zip",
+  ".tar",
+  ".gz",
+  ".bz2",
+  ".xz",
+  ".7z",
+  ".rar",
+  ".exe",
+  ".dll",
+  ".so",
+  ".dylib",
+  ".bin",
+  ".class",
+  ".jar",
+  ".war",
+  ".o",
+  ".obj",
+  ".lib",
+  ".a",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf",
+  ".eot",
+  ".mp3",
+  ".mp4",
+  ".mov",
+  ".avi",
+  ".webm",
+  ".wasm",
+  ".pyc",
+  ".pyo",
+]);
+
+function isLikelyBinaryByName(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return false;
+  return BINARY_EXTENSIONS.has(name.slice(dot).toLowerCase());
+}
+
 export function registerFilesystemTools(
   registry: ToolRegistry,
   opts: FilesystemToolsOptions,
@@ -62,8 +144,22 @@ export function registerFilesystemTools(
     if (typeof raw !== "string" || raw.length === 0) {
       throw new Error("path must be a non-empty string");
     }
-    // Interpret relative paths against rootDir (the session's scope).
-    const resolved = pathMod.resolve(rootDir, raw);
+    // Sandbox-root semantics: a leading POSIX-style `/` (or `\` on
+    // Windows) means "from the project root", not "from the filesystem
+    // root". Models routinely write `path: "/"` or `path: "/src/foo.ts"`
+    // intending the sandbox root — without this normalization,
+    // path.resolve interprets `/` as the actual drive root (`F:\` on
+    // Windows, `/` on POSIX) and the escape check rightly rejects it,
+    // confusing the model. Strip leading separators so the rest of the
+    // resolution treats the input as relative to rootDir. Drive-letter
+    // absolutes (`C:\foo`) and Unix absolutes outside rootDir still
+    // get caught by the relative-escape check below.
+    let normalized = raw;
+    while (normalized.startsWith("/") || normalized.startsWith("\\")) {
+      normalized = normalized.slice(1);
+    }
+    if (normalized.length === 0) normalized = ".";
+    const resolved = pathMod.resolve(rootDir, normalized);
     const normRoot = pathMod.resolve(rootDir);
     // Use relative() to catch any `..` segments that escape.
     const rel = pathMod.relative(normRoot, resolved);
@@ -240,6 +336,139 @@ export function registerFilesystemTools(
       };
       await walk(startAbs);
       return matches.length === 0 ? "(no matches)" : matches.join("\n");
+    },
+  });
+
+  registry.register({
+    name: "search_content",
+    description:
+      "Recursively grep file CONTENTS for a substring or regex. This is the right tool for 'find all places that call X', 'where is Y referenced', 'what files contain Z'. Different from search_files (which matches FILE NAMES). Returns one match per line in 'path:line: text' format. Skips dependency / VCS / build directories (node_modules, .git, dist, build, .next, target, .venv) and binary files by default.",
+    readOnly: true,
+    parameters: {
+      type: "object",
+      properties: {
+        pattern: {
+          type: "string",
+          description: "Substring (or regex) to search file contents for.",
+        },
+        path: {
+          type: "string",
+          description: "Directory to start the search at (default: sandbox root).",
+        },
+        glob: {
+          type: "string",
+          description:
+            "Optional file-name suffix or substring filter. Examples: '.ts' (only TypeScript), 'test' (any file with 'test' in the name). Reduces noise when you know the file shape.",
+        },
+        case_sensitive: {
+          type: "boolean",
+          description: "When true, match case exactly. Default false (case-insensitive).",
+        },
+        include_deps: {
+          type: "boolean",
+          description:
+            "When true, also search inside node_modules / .git / dist / build / etc. Off by default — most exploration questions are about the user's own code.",
+        },
+      },
+      required: ["pattern"],
+    },
+    fn: async (args: {
+      pattern: string;
+      path?: string;
+      glob?: string;
+      case_sensitive?: boolean;
+      include_deps?: boolean;
+    }) => {
+      const startAbs = safePath(args.path ?? ".");
+      const caseSensitive = args.case_sensitive === true;
+      const includeDeps = args.include_deps === true;
+      const nameFilter = typeof args.glob === "string" ? args.glob.toLowerCase() : null;
+      // Try the pattern as a regex first (lets the model say `\bdispatch\(`
+      // for a word-bounded match); fall back to literal substring on
+      // invalid regex. No `g` flag — we test once per line, so global
+      // statefulness (lastIndex tracking) would just be noise.
+      let re: RegExp | null = null;
+      try {
+        re = new RegExp(args.pattern, caseSensitive ? "" : "i");
+      } catch {
+        re = null;
+      }
+      const needle = caseSensitive ? args.pattern : args.pattern.toLowerCase();
+      const matches: string[] = [];
+      let totalBytes = 0;
+      let scanned = 0;
+      let truncated = false;
+
+      const walk = async (dir: string): Promise<void> => {
+        if (truncated) return;
+        let entries: import("node:fs").Dirent[];
+        try {
+          entries = await fs.readdir(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const e of entries) {
+          if (truncated) return;
+          if (e.isDirectory()) {
+            if (!includeDeps && SKIP_DIR_NAMES.has(e.name)) continue;
+            await walk(pathMod.join(dir, e.name));
+            continue;
+          }
+          if (!e.isFile()) continue;
+          if (nameFilter && !e.name.toLowerCase().includes(nameFilter)) continue;
+          if (isLikelyBinaryByName(e.name)) continue;
+          const full = pathMod.join(dir, e.name);
+          let stat: import("node:fs").Stats;
+          try {
+            stat = await fs.stat(full);
+          } catch {
+            continue;
+          }
+          // Per-file size cap so a 50MB log doesn't dominate the search.
+          // Anything legitimately interesting fits in 2 MB; bigger files
+          // are usually data dumps or generated bundles.
+          if (stat.size > 2 * 1024 * 1024) continue;
+          let raw: Buffer;
+          try {
+            raw = await fs.readFile(full);
+          } catch {
+            continue;
+          }
+          // Content-based binary sniff: a NUL byte in the first 8KB is
+          // a strong indicator. Catches binaries with .json or .txt
+          // extensions (yes, this happens).
+          const firstNul = raw.indexOf(0);
+          if (firstNul !== -1 && firstNul < 8 * 1024) continue;
+          const text = raw.toString("utf8");
+          const rel = pathMod.relative(rootDir, full);
+          const lines = text.split(/\r?\n/);
+          for (let li = 0; li < lines.length; li++) {
+            const line = lines[li]!;
+            const lineForCheck = caseSensitive ? line : line.toLowerCase();
+            const hit = re ? re.test(line) : lineForCheck.includes(needle);
+            if (!hit) continue;
+            // Truncate very long lines so one giant minified file
+            // doesn't blow the budget on a single match.
+            const display = line.length > 200 ? `${line.slice(0, 200)}…` : line;
+            const out = `${rel}:${li + 1}: ${display}`;
+            if (totalBytes + out.length + 1 > maxListBytes) {
+              matches.push(`[… truncated at ${maxListBytes} bytes — refine pattern or path …]`);
+              truncated = true;
+              return;
+            }
+            matches.push(out);
+            totalBytes += out.length + 1;
+          }
+          scanned++;
+        }
+      };
+      await walk(startAbs);
+      if (matches.length === 0) {
+        return scanned === 0
+          ? "(no files scanned — path empty or all files filtered out)"
+          : `(no matches across ${scanned} file${scanned === 1 ? "" : "s"})`;
+      }
+      return matches.join("\n");
     },
   });
 

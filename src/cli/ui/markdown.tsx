@@ -160,7 +160,7 @@ export function stripMath(s: string): string {
 const INLINE_RE =
   /(\*\*([^*\n]+?)\*\*|```([^\n]+?)```|`([^`\n]+?)`|(?<![*\w])\*([^*\n]+?)\*(?!\w))/g;
 
-function InlineMd({ text }: { text: string }) {
+function InlineMd({ text, padTo }: { text: string; padTo?: number }) {
   const parts: React.ReactNode[] = [];
   let last = 0;
   let idx = 0;
@@ -207,7 +207,39 @@ function InlineMd({ text }: { text: string }) {
   if (last < text.length) {
     parts.push(<Text key={`t${idx++}`}>{text.slice(last)}</Text>);
   }
+  // Trailing pad — used by table cells so column widths line up after
+  // the inline markup is rendered (markup chars like `**` and `` ` ``
+  // are invisible in output, so naive `pad(rawText, width)` over-pads
+  // styled cells and the columns drift out of alignment).
+  if (padTo !== undefined) {
+    const seen = visibleWidth(text);
+    if (seen < padTo) {
+      parts.push(<Text key={`pad${idx++}`}>{" ".repeat(padTo - seen)}</Text>);
+    }
+  }
   return <Text>{parts}</Text>;
+}
+
+/**
+ * Strip inline markdown markers (**, _, single + triple backtick) so the
+ * remaining text reflects what the user actually SEES on screen. Used
+ * to compute correct column widths for table cells where the raw cell
+ * length includes invisible markup chars.
+ */
+export function stripInlineMarkup(s: string): string {
+  return s
+    .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
+    .replace(/```([^\n]+?)```/g, (_m, c: string) => c.replace(/^(\w+)\s+/, ""))
+    .replace(/`([^`\n]+?)`/g, "$1")
+    .replace(/(?<![*\w])\*([^*\n]+?)\*(?!\w)/g, "$1");
+}
+
+/**
+ * Display width AFTER stripping inline markup. The visible-on-screen
+ * column width — what padding decisions should be based on.
+ */
+export function visibleWidth(s: string): number {
+  return displayWidth(stripInlineMarkup(s));
 }
 
 interface ParagraphBlock {
@@ -409,22 +441,79 @@ export function parseBlocks(raw: string): Block[] {
       continue;
     }
 
-    // Table detection: a line with at least one `|` where the NEXT
-    // line looks like a GFM separator (`| --- | --- |` or any mix of
-    // pipes + dashes + colons + spaces). Both the header row and the
-    // separator need to be present — a bare pipe in prose shouldn't
-    // trigger the table path.
-    if (line.includes("|")) {
+    // Box-drawing frame detection: top edge `┌────┐`, body lines that
+    // each begin and end with `│`, bottom edge `└────┘`. Models love to
+    // draw decorative frames around code snippets and flow charts using
+    // these characters; without this branch, every body line gets
+    // word-wrapped by Ink and the frame turns into garbage. Rendering
+    // the inner content as a code block preserves the fixed-width
+    // layout the model intended AND gives it a real border via the
+    // existing code-block renderer. Only triggers OUTSIDE code mode
+    // (where `inCode` is false) so a literal box-drawing character
+    // inside a real fenced block isn't grabbed.
+    if (/^\s*┌─+┐\s*$/.test(line)) {
+      let j = i + 1;
+      const bodyLines: string[] = [];
+      while (j < lines.length && !/^\s*└─+┘\s*$/.test(lines[j]!)) {
+        const inner = lines[j]!;
+        // Strip outer `│ ... │` so the content reads naturally.
+        const m = inner.match(/^\s*│\s?(.*?)\s?│\s*$/);
+        bodyLines.push(m ? (m[1] ?? "") : inner);
+        j++;
+      }
+      if (j < lines.length) {
+        flushPara();
+        flushList();
+        out.push({ kind: "code", lang: "", text: bodyLines.join("\n") });
+        i = j;
+        continue;
+      }
+      // No closing edge — fall through and let the line render as
+      // paragraph rather than eating to EOF.
+    }
+
+    // Table detection: a line with at least one column separator where
+    // the NEXT line looks like a separator row. Two flavors accepted:
+    //
+    //   - Standard GFM: `|` columns + `---` / `:---:` separators.
+    //   - Unicode box-drawing: `│` columns (U+2502) + `─` / `┼` (U+2500
+    //     / U+253C) separators. Models trained on Chinese text routinely
+    //     pick the box-drawing characters even when GFM was an option;
+    //     accepting both keeps their output legible without forcing a
+    //     re-prompt. `splitTableRow` normalizes `│` → `|` so the rest of
+    //     the path stays uniform.
+    //
+    // Both the header row and the separator must be present — a bare
+    // pipe in prose shouldn't trigger the table path.
+    if (line.includes("|") || line.includes("│")) {
       const next = (lines[i + 1] ?? "").trim();
-      if (/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(next)) {
+      const isGfmSep = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(next);
+      const isBoxSep = /^[│─┼┬┴┌┐└┘├┤\s]+$/.test(next) && /─{2,}/.test(next);
+      if (isGfmSep || isBoxSep) {
         flushPara();
         flushList();
         const header = splitTableRow(line);
+        const colCount = header.length;
         const rows: string[][] = [];
         let j = i + 2; // skip header + separator
         while (j < lines.length) {
           const r = lines[j]!.replace(/\s+$/g, "");
-          if (r.trim() === "" || !r.includes("|")) break;
+          if (r.trim() === "") break;
+          if (!r.includes("|") && !r.includes("│")) {
+            // Continuation row: model wrapped a long cell across lines
+            // without re-emitting the column separator. Fold this line
+            // back into the LAST cell of the previous row so its inline
+            // markup (backticks, bold) parses as one piece instead of
+            // bleeding into the paragraph stream below the table.
+            const prev = rows[rows.length - 1];
+            if (prev && prev.length === colCount) {
+              const lastIdx = prev.length - 1;
+              prev[lastIdx] = `${prev[lastIdx] ?? ""} ${r.trim()}`;
+              j++;
+              continue;
+            }
+            break;
+          }
           rows.push(splitTableRow(r));
           j++;
         }
@@ -505,14 +594,16 @@ function BlockView({ block }: { block: Block }) {
 }
 
 /**
- * Split one table row into trimmed cells. Leading/trailing pipes are
- * optional (both `| a | b |` and `a | b` are accepted). Pipes escaped
- * as `\|` stay in the cell content.
+ * Split one table row into trimmed cells. Leading/trailing column
+ * markers are optional (both `| a | b |` and `a | b` are accepted).
+ * Pipes escaped as `\|` stay in the cell content. Unicode `│`
+ * (U+2502 BOX DRAWINGS LIGHT VERTICAL) is normalized to `|` first so
+ * box-drawing tables and GFM tables share one code path.
  */
 function splitTableRow(line: string): string[] {
   // Temporarily replace escaped pipes so split() doesn't fire on them.
   const SENTINEL = "\u0000";
-  const masked = line.replace(/\\\|/g, SENTINEL);
+  const masked = line.replace(/\\\|/g, SENTINEL).replace(/│/g, "|");
   const trimmed = masked.trim().replace(/^\||\|$/g, "");
   return trimmed.split("|").map((c) => c.trim().replace(new RegExp(SENTINEL, "g"), "|"));
 }
@@ -527,15 +618,15 @@ function TableBlockRow({ block }: { block: TableBlock }) {
   const colCount = Math.max(block.header.length, ...block.rows.map((r) => r.length));
   const widths: number[] = [];
   for (let c = 0; c < colCount; c++) {
-    const cellLengths = [displayWidth(block.header[c] ?? "")];
-    for (const r of block.rows) cellLengths.push(displayWidth(r[c] ?? ""));
+    // Use VISIBLE width (post-markup-strip) for column sizing —
+    // otherwise a cell like `**定义** \`dispatch\` 方法` would be
+    // measured with the ** and ` chars included, over-padding once
+    // the markers vanish at render time and shoving subsequent
+    // columns rightward.
+    const cellLengths = [visibleWidth(block.header[c] ?? "")];
+    for (const r of block.rows) cellLengths.push(visibleWidth(r[c] ?? ""));
     widths.push(Math.min(40, Math.max(3, ...cellLengths)));
   }
-  const pad = (s: string, w: number) => {
-    const dw = displayWidth(s);
-    if (dw >= w) return s;
-    return s + " ".repeat(w - dw);
-  };
   const separator = widths.map((w) => "─".repeat(w)).join("─┼─");
   return (
     <Box flexDirection="column">
@@ -543,7 +634,7 @@ function TableBlockRow({ block }: { block: TableBlock }) {
         {block.header.map((cell, ci) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: table columns never reorder — derived from a static header array
           <Text key={`h-${ci}`} bold color="cyan">
-            {pad(cell, widths[ci] ?? 3)}
+            <InlineMd text={cell} padTo={widths[ci] ?? 3} />
             {ci < colCount - 1 ? " │ " : ""}
           </Text>
         ))}
@@ -555,7 +646,7 @@ function TableBlockRow({ block }: { block: TableBlock }) {
           {Array.from({ length: colCount }).map((_, ci) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: same — column axis is fixed by the table shape
             <Text key={`c-${ri}-${ci}`}>
-              {pad(row[ci] ?? "", widths[ci] ?? 3)}
+              <InlineMd text={row[ci] ?? ""} padTo={widths[ci] ?? 3} />
               {ci < colCount - 1 ? " │ " : ""}
             </Text>
           ))}

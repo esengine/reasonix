@@ -597,4 +597,46 @@ describe("CacheFirstLoop (streaming) — tool_call_delta emission", () => {
     expect(deltas[0]!.name).toBe("edit_file");
     expect(deltas[deltas.length - 1]!.chars).toBeGreaterThan(deltas[0]!.chars!);
   });
+
+  it("does not emit a red error event when the API call is aborted mid-flight", async () => {
+    // Reproduces the reported "error This operation was aborted" UX
+    // bug: when App.tsx calls loop.abort() to switch to a queued
+    // synthetic input (e.g. ShellConfirm "always allow"), the in-flight
+    // fetch throws AbortError. We treat that as a clean early-exit
+    // (yield `done`) instead of bubbling it up as a red error row.
+    const client = new DeepSeekClient({
+      apiKey: "sk-test",
+      // Slow fake fetch — never resolves on its own; only the abort
+      // signal terminates it.
+      fetch: vi.fn(async (_url: any, init: any) => {
+        const signal: AbortSignal | undefined = init?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () =>
+            reject(new DOMException("This operation was aborted", "AbortError")),
+          );
+        });
+      }) as any,
+      retry: { maxAttempts: 1 },
+    });
+    const loop = new CacheFirstLoop({
+      client,
+      prefix: new ImmutablePrefix({ system: "s" }),
+      stream: false,
+    });
+
+    const events: Array<{ role: string; error?: string }> = [];
+    const stepPromise = (async () => {
+      for await (const ev of loop.step("hi")) {
+        events.push({ role: ev.role, error: ev.error });
+      }
+    })();
+    // Race: fire abort before the fake fetch can resolve.
+    setTimeout(() => loop.abort(), 10);
+    await stepPromise;
+
+    // No "error" event leaked through.
+    expect(events.find((e) => e.role === "error")).toBeUndefined();
+    // Loop terminated cleanly so the TUI's busy state unsticks.
+    expect(events[events.length - 1]?.role).toBe("done");
+  });
 });

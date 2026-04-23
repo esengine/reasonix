@@ -26,7 +26,6 @@ import { registerFilesystemTools } from "../../tools/filesystem.js";
 import { registerMemoryTools } from "../../tools/memory.js";
 import { registerPlanTool } from "../../tools/plan.js";
 import { registerShellTools } from "../../tools/shell.js";
-import { registerSkillTools } from "../../tools/skills.js";
 import { chatCommand } from "./chat.js";
 
 export interface CodeOptions {
@@ -76,12 +75,11 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
   // Project scope hashes off rootDir so switching projects gets a fresh
   // per-project memory store; the global scope is shared across runs.
   registerMemoryTools(tools, { projectRoot: rootDir });
-  // `run_skill` — loads user-authored prompt packs on demand. The
-  // index itself (names + descriptions) is already pinned into the
-  // system prompt by `applyMemoryStack`; this tool serves the bodies.
-  // Passing projectRoot surfaces `<rootDir>/.reasonix/skills/` alongside
-  // the global scope.
-  registerSkillTools(tools, { projectRoot: rootDir });
+  // `run_skill` is intentionally NOT registered here — App.tsx wires it
+  // up with the subagent runner attached, so `runAs: subagent` skills
+  // can spawn isolated child loops. Doing it here would mean the App's
+  // re-registration would shadow the no-runner version, which works
+  // (last write wins) but obscures the wiring.
 
   process.stderr.write(
     `▸ reasonix code: rooted at ${rootDir}, session "${session ?? "(ephemeral)"}" · ${tools.size} native tool(s)\n`,

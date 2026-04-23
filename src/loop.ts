@@ -712,6 +712,20 @@ export class CacheFirstLoop {
           usage = resp.usage;
         }
       } catch (err) {
+        // An aborted signal here is almost always our own doing —
+        // either Esc, or App.tsx calling `loop.abort()` to switch to a
+        // queued synthetic input (ShellConfirm "always allow", PlanConfirm
+        // approve, etc.). The DeepSeek client's fetch path translates
+        // the abort into a generic `AbortError("This operation was
+        // aborted")`, which used to bubble up here and render as a
+        // scary red "error" row even though nothing actually broke.
+        // Treat it as a clean early-exit instead: the next turn (queued
+        // synthetic OR user re-prompt) starts immediately and gets to
+        // produce its own answer.
+        if (signal.aborted) {
+          yield { turn: this._turn, role: "done", content: "" };
+          return;
+        }
         yield {
           turn: this._turn,
           role: "error",

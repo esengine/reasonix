@@ -18,8 +18,14 @@ describe("codeSystemPrompt", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("returns the base prompt unchanged when no .gitignore exists", () => {
-    expect(codeSystemPrompt(root)).toBe(CODE_SYSTEM_PROMPT);
+  it("does not append a .gitignore section when none exists", () => {
+    // We can no longer assert raw equality with CODE_SYSTEM_PROMPT —
+    // the bundled builtin skills (`explore`, `research`) always inject
+    // a `# Skills` block via applySkillsIndex. Assert the absence of
+    // the .gitignore-specific section instead.
+    const out = codeSystemPrompt(root);
+    expect(out).not.toMatch(/# Project \.gitignore/);
+    expect(out).toContain(CODE_SYSTEM_PROMPT);
   });
 
   it("appends the .gitignore content as a fenced block", () => {
@@ -36,8 +42,10 @@ describe("codeSystemPrompt", () => {
     writeFileSync(join(root, ".gitignore"), huge, "utf8");
     const out = codeSystemPrompt(root);
     expect(out).toMatch(/truncated \d+ chars/);
-    // The prompt (base + truncated + fences) is bounded, not 5000+.
-    expect(out.length).toBeLessThan(CODE_SYSTEM_PROMPT.length + 2300);
+    // The .gitignore block (base + truncated + fences) is bounded.
+    // Allow extra slack for the builtin Skills index that applyMemoryStack
+    // also injects — that's a fixed-size addition, not unbounded.
+    expect(out.length).toBeLessThan(CODE_SYSTEM_PROMPT.length + 4500);
   });
 
   it("reminds the model to skip dependency / build / VCS dirs", () => {

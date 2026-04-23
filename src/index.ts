@@ -64,9 +64,16 @@ export { registerMemoryTools } from "./tools/memory.js";
 export type { MemoryToolsOptions } from "./tools/memory.js";
 export { PlanProposedError, registerPlanTool } from "./tools/plan.js";
 export type { PlanToolOptions } from "./tools/plan.js";
+export { forkRegistryExcluding, registerSubagentTool } from "./tools/subagent.js";
+export type {
+  SubagentEvent,
+  SubagentSink,
+  SubagentToolOptions,
+} from "./tools/subagent.js";
 export {
   NeedsConfirmationError,
   formatCommandResult,
+  injectPowerShellUtf8,
   isAllowed,
   prepareSpawn,
   quoteForCmdExe,
@@ -74,6 +81,7 @@ export {
   resolveExecutable,
   runCommand,
   tokenizeCommand,
+  withUtf8Codepage,
 } from "./tools/shell.js";
 export type { RunCommandResult, ShellToolsOptions } from "./tools/shell.js";
 export {

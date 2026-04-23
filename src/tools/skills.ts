@@ -1,22 +1,47 @@
 /**
- * `run_skill` — load one user skill's body into the conversation.
+ * `run_skill` — invoke a user-authored playbook from the Skills index.
  *
- * The Skills index (names + one-liners) is pinned in the system prompt
- * by `applySkillsIndex`. That's enough context for the model to decide
- * *which* skill to invoke, but the body is NOT in the prefix — calling
- * this tool is how the body enters the turn. The tool result is the
- * full markdown instruction block; the model reads it and continues
- * the normal tool-use loop to follow whatever the skill prescribes.
+ * Two execution modes, picked at registration time per skill via
+ * frontmatter `runAs`:
+ *
+ *   - `inline` (default) — the skill body becomes the tool result and
+ *     enters the parent's append-only log. The model reads the
+ *     instructions and continues the normal loop, calling whatever
+ *     tools the skill prescribes. Cheap, no isolation. Best for
+ *     "load a checklist" / "load a coding style" / "load review
+ *     criteria" patterns.
+ *
+ *   - `subagent` — the skill body becomes the *system prompt* of an
+ *     isolated child loop; the user-supplied `arguments` becomes the
+ *     `task`. Only the child's final answer comes back as the tool
+ *     result. Best for big-context exploration or research playbooks
+ *     where the parent doesn't need to see the trail.
+ *
+ * Subagent dispatch is opt-in: callers must supply a `subagentRunner`
+ * at registration. When omitted (chat mode without a configured
+ * client), invoking a subagent skill returns a structured error
+ * instead of silently downgrading to inline — that would surprise the
+ * skill author.
  *
  * v1 deliberately ignores each skill's `allowed-tools` frontmatter:
- * Reasonix's tool namespace (`filesystem`, `shell`, `web`) doesn't
- * align with Claude Code's (`Read`, `Bash`, `Grep`) so a literal pass
- * would give wrong answers. Skills written for Claude Code still run —
- * the model reads the prose instructions and picks our equivalents.
+ * Reasonix's tool namespace doesn't align with Claude Code's so a
+ * literal pass would give wrong answers.
  */
 
-import { SkillStore } from "../skills.js";
+import { type Skill, SkillStore } from "../skills.js";
 import type { ToolRegistry } from "../tools.js";
+
+/**
+ * Caller-supplied closure that knows how to spawn a subagent for the
+ * given resolved skill + task. Decoupled from `registerSkillTools` so
+ * the skills tool doesn't need to know about DeepSeekClient or the
+ * parent ToolRegistry — the App / library wiring assembles those once
+ * and hands in this function.
+ *
+ * Returns the JSON tool-result string verbatim (already serialized via
+ * `formatSubagentResult`), so the dispatch path is pure pass-through.
+ */
+export type SubagentRunner = (skill: Skill, task: string) => Promise<string>;
 
 export interface SkillToolsOptions {
   /** Override `$HOME` — tests set this to a tmpdir. */
@@ -27,18 +52,32 @@ export interface SkillToolsOptions {
    * scope only).
    */
   projectRoot?: string;
+  /**
+   * Closure that spawns a subagent for `runAs: subagent` skills. When
+   * omitted, invoking a subagent skill returns an error directing the
+   * user to wire up the runner — silent fallback to inline would be
+   * worse, since the skill author wrote the body assuming isolation.
+   */
+  subagentRunner?: SubagentRunner;
+  /** Hide built-in skills (test-only knob; production callers leave off). */
+  disableBuiltins?: boolean;
 }
 
 export function registerSkillTools(
   registry: ToolRegistry,
   opts: SkillToolsOptions = {},
 ): ToolRegistry {
-  const store = new SkillStore({ homeDir: opts.homeDir, projectRoot: opts.projectRoot });
+  const store = new SkillStore({
+    homeDir: opts.homeDir,
+    projectRoot: opts.projectRoot,
+    disableBuiltins: opts.disableBuiltins,
+  });
+  const subagentRunner = opts.subagentRunner;
 
   registry.register({
     name: "run_skill",
     description:
-      "Load the full body of a user-defined skill into this conversation. Call when the pinned Skills index (in the system prompt) lists a skill whose description matches what's being asked. Returns the skill's markdown instructions — read them and continue the loop, calling whatever filesystem / shell / web tools the skill's prose requires. Skills are user content; follow their instructions, but keep Reasonix's own safety rules (no destructive ops without confirmation, etc.).",
+      "Invoke a playbook from the Skills index pinned in the system prompt. Each entry is a self-contained instruction block. Skills marked with 🧬 in the index spawn an isolated subagent — only the final distilled answer comes back, the model's tool calls + reasoning during the run never enter your context. Plain skills are inlined: the body becomes a tool result you read and follow. For 🧬 subagent skills, supply 'arguments' describing the concrete task — they'll be the only context the subagent has.",
     readOnly: true,
     parameters: {
       type: "object",
@@ -46,12 +85,12 @@ export function registerSkillTools(
         name: {
           type: "string",
           description:
-            "Skill identifier as it appears in the pinned Skills index (e.g. 'review', 'security-review'). Case-sensitive.",
+            "Skill identifier as it appears in the pinned Skills index (e.g. 'explore', 'review', 'security-review'). Case-sensitive.",
         },
         arguments: {
           type: "string",
           description:
-            "Optional free-form arguments the caller wants the skill to act on. Forwarded verbatim as an 'Arguments:' line appended to the skill body; the skill's own instructions decide how to consume them.",
+            "Free-form arguments the skill should act on. For inline skills: appended to the body as an 'Arguments:' line; the skill's own instructions decide how to consume them. For 🧬 subagent skills: REQUIRED — becomes the entire task description the subagent receives, since it has no other context.",
         },
       },
       required: ["name"],
@@ -73,6 +112,22 @@ export function registerSkillTools(
         });
       }
       const rawArgs = typeof args.arguments === "string" ? args.arguments.trim() : "";
+
+      if (skill.runAs === "subagent") {
+        if (!subagentRunner) {
+          return JSON.stringify({
+            error: `run_skill: skill ${JSON.stringify(name)} is marked runAs=subagent but no subagent runner is configured for this session. Skill authors who need isolation should run inside reasonix code (or a library setup that passes subagentRunner to registerSkillTools).`,
+          });
+        }
+        if (!rawArgs) {
+          return JSON.stringify({
+            error: `run_skill: skill ${JSON.stringify(name)} is a subagent and requires 'arguments' — the subagent has no other context, so describe the concrete task in the arguments field.`,
+          });
+        }
+        return subagentRunner(skill, rawArgs);
+      }
+
+      // inline path — body becomes the tool result.
       const header = [
         `# Skill: ${skill.name}`,
         skill.description ? `> ${skill.description}` : "",

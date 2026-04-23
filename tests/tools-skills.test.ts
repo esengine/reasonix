@@ -26,6 +26,24 @@ function writeSkill(baseDir: string, name: string, description: string, body: st
   );
 }
 
+/**
+ * Write a skill with arbitrary frontmatter — used for subagent-runAs
+ * tests where we need `runAs: subagent` and an optional `model:` line.
+ */
+function writeSkillWithFrontmatter(
+  baseDir: string,
+  name: string,
+  fm: Record<string, string>,
+  body: string,
+): void {
+  const dir = join(baseDir, ".reasonix", "skills", name);
+  mkdirSync(dir, { recursive: true });
+  const lines = ["---", `name: ${name}`];
+  for (const [k, v] of Object.entries(fm)) lines.push(`${k}: ${v}`);
+  lines.push("---", "");
+  writeFileSync(join(dir, "SKILL.md"), `${lines.join("\n")}${body}\n`, "utf8");
+}
+
 describe("run_skill tool", () => {
   let home: string;
   let projectRoot: string;
@@ -42,7 +60,7 @@ describe("run_skill tool", () => {
 
   it("registers run_skill as a read-only tool", () => {
     const reg = new ToolRegistry();
-    registerSkillTools(reg, { homeDir: home });
+    registerSkillTools(reg, { homeDir: home, disableBuiltins: true });
     const tool = reg.get("run_skill");
     expect(tool).toBeDefined();
     expect(tool?.readOnly).toBe(true);
@@ -51,7 +69,7 @@ describe("run_skill tool", () => {
   it("returns the skill body when the name resolves (global scope)", async () => {
     writeSkill(home, "review", "Review a PR", "Step 1: diff. Step 2: comment.");
     const reg = new ToolRegistry();
-    registerSkillTools(reg, { homeDir: home });
+    registerSkillTools(reg, { homeDir: home, disableBuiltins: true });
     const out = await reg.dispatch("run_skill", { name: "review" });
     expect(out).toContain("# Skill: review");
     expect(out).toContain("Review a PR");
@@ -62,7 +80,7 @@ describe("run_skill tool", () => {
   it("resolves project-scope skills when projectRoot is passed", async () => {
     writeSkill(projectRoot, "deploy", "Deploy to staging", "Run pipeline.");
     const reg = new ToolRegistry();
-    registerSkillTools(reg, { homeDir: home, projectRoot });
+    registerSkillTools(reg, { homeDir: home, projectRoot, disableBuiltins: true });
     const out = await reg.dispatch("run_skill", { name: "deploy" });
     expect(out).toContain("scope: project");
     expect(out).toContain("Run pipeline");
@@ -71,7 +89,7 @@ describe("run_skill tool", () => {
   it("appends a forwarded 'Arguments:' line when provided", async () => {
     writeSkill(home, "greet", "Greet someone", "Say hello to the name in args.");
     const reg = new ToolRegistry();
-    registerSkillTools(reg, { homeDir: home });
+    registerSkillTools(reg, { homeDir: home, disableBuiltins: true });
     const out = await reg.dispatch("run_skill", { name: "greet", arguments: "Alice" });
     expect(out).toContain("Arguments: Alice");
   });
@@ -80,7 +98,7 @@ describe("run_skill tool", () => {
     writeSkill(home, "review", "Review a PR", "...");
     writeSkill(home, "ship-it", "Push commit", "...");
     const reg = new ToolRegistry();
-    registerSkillTools(reg, { homeDir: home });
+    registerSkillTools(reg, { homeDir: home, disableBuiltins: true });
     const out = await reg.dispatch("run_skill", { name: "nope" });
     const parsed = JSON.parse(out);
     expect(parsed.error).toMatch(/unknown skill/);
@@ -90,8 +108,87 @@ describe("run_skill tool", () => {
 
   it("rejects an empty name", async () => {
     const reg = new ToolRegistry();
-    registerSkillTools(reg, { homeDir: home });
+    registerSkillTools(reg, { homeDir: home, disableBuiltins: true });
     const out = await reg.dispatch("run_skill", { name: "" });
     expect(JSON.parse(out).error).toMatch(/requires a 'name'/);
+  });
+
+  it("dispatches subagent-runAs skills through subagentRunner", async () => {
+    writeSkillWithFrontmatter(
+      home,
+      "deepdive",
+      { description: "deep dive subagent", runAs: "subagent" },
+      "You are a deep-dive agent. Investigate the task and return a one-line answer.",
+    );
+    const reg = new ToolRegistry();
+    let received: { skillName: string; skillBody: string; task: string } | null = null;
+    registerSkillTools(reg, {
+      homeDir: home,
+      disableBuiltins: true,
+      subagentRunner: async (skill, task) => {
+        received = { skillName: skill.name, skillBody: skill.body, task };
+        return JSON.stringify({ success: true, output: "subagent-said-this" });
+      },
+    });
+    const out = await reg.dispatch("run_skill", {
+      name: "deepdive",
+      arguments: "find all tests that touch the loop",
+    });
+    expect(received?.skillName).toBe("deepdive");
+    expect(received?.skillBody).toContain("deep-dive agent");
+    expect(received?.task).toBe("find all tests that touch the loop");
+    const parsed = JSON.parse(out);
+    expect(parsed.output).toBe("subagent-said-this");
+  });
+
+  it("returns a configured-error when a subagent skill fires without a runner", async () => {
+    writeSkillWithFrontmatter(
+      home,
+      "needs-runner",
+      { description: "needs a runner", runAs: "subagent" },
+      "...",
+    );
+    const reg = new ToolRegistry();
+    // Note: NO subagentRunner.
+    registerSkillTools(reg, { homeDir: home, disableBuiltins: true });
+    const out = await reg.dispatch("run_skill", {
+      name: "needs-runner",
+      arguments: "do the thing",
+    });
+    expect(JSON.parse(out).error).toMatch(/no subagent runner is configured/);
+  });
+
+  it("requires arguments for subagent skills (subagent has no other context)", async () => {
+    writeSkillWithFrontmatter(
+      home,
+      "needs-args",
+      { description: "needs args", runAs: "subagent" },
+      "...",
+    );
+    const reg = new ToolRegistry();
+    registerSkillTools(reg, {
+      homeDir: home,
+      disableBuiltins: true,
+      subagentRunner: async () => "should-not-be-called",
+    });
+    const out = await reg.dispatch("run_skill", { name: "needs-args" });
+    expect(JSON.parse(out).error).toMatch(/requires 'arguments'/);
+  });
+
+  it("inline skills don't go through subagentRunner even when one exists", async () => {
+    writeSkill(home, "inline-skill", "plain", "Step 1, Step 2.");
+    const reg = new ToolRegistry();
+    let runnerCalls = 0;
+    registerSkillTools(reg, {
+      homeDir: home,
+      disableBuiltins: true,
+      subagentRunner: async () => {
+        runnerCalls++;
+        return "x";
+      },
+    });
+    const out = await reg.dispatch("run_skill", { name: "inline-skill" });
+    expect(out).toContain("Step 1, Step 2.");
+    expect(runnerCalls).toBe(0);
   });
 });

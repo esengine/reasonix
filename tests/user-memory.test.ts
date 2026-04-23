@@ -382,13 +382,15 @@ describe("user-memory", () => {
       expect(iProject).toBeGreaterThan(iGlobal);
     });
 
-    it("applyMemoryStack with no memory at all returns BASE unchanged", () => {
-      // No REASONIX.md, no HOME memory → stack is a no-op.
-      // Points applyMemoryStack at a tmp home by temporarily monkey-patching
-      // via the env — but we don't have a hook for that, so just assert the
-      // common case: fresh projectRoot with no REASONIX.md produces the
-      // REASONIX.md-removed output when user memory is empty too.
-      expect(applyMemoryStack(BASE, projectRoot)).toBe(BASE);
+    it("applyMemoryStack injects no memory blocks when no memory is set", () => {
+      // No REASONIX.md, no HOME memory → no memory blocks. The bundled
+      // builtin skills (`explore`, `research`) still inject a Skills
+      // index, so we assert the absence of the memory-specific blocks
+      // rather than raw equality with BASE.
+      const out = applyMemoryStack(BASE, projectRoot);
+      expect(out).toContain(BASE);
+      expect(out).not.toMatch(/# Project memory/);
+      expect(out).not.toMatch(/# User memory/);
     });
   });
 });

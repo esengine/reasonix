@@ -17,6 +17,13 @@ import type { LoopEvent } from "../../loop.js";
 import type { SessionSummary } from "../../telemetry.js";
 import type { ToolRegistry } from "../../tools.js";
 import { formatCommandResult, runCommand } from "../../tools/shell.js";
+import { registerSkillTools } from "../../tools/skills.js";
+import {
+  type SubagentEvent,
+  type SubagentSink,
+  formatSubagentResult,
+  spawnSubagent,
+} from "../../tools/subagent.js";
 import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../transcript.js";
 import { appendUsage } from "../../usage.js";
 import { VERSION, compareVersions, getLatestVersion } from "../../version.js";
@@ -128,6 +135,16 @@ export function App({
     progress: number;
     total?: number;
     message?: string;
+  } | null>(null);
+  // Live state for an in-flight subagent. The subagent runs inside a
+  // tool dispatch frame, so its events come in via a sink ref instead
+  // of through the parent loop's event channel. `null` when no
+  // subagent is currently active. A new spawn overwrites the previous
+  // entry — MVP is serial, never two at once.
+  const [subagentActivity, setSubagentActivity] = useState<{
+    task: string;
+    iter: number;
+    elapsedMs: number;
   } | null>(null);
   // Transient "what's happening" text set by the loop during silent
   // phases (harvest round-trip, between-iteration R1 thinking, forced
@@ -271,6 +288,11 @@ export function App({
   }, [slashMatches]);
 
   const loopRef = useRef<CacheFirstLoop | null>(null);
+  // Sink the subagent tool emits live events through (`start` →
+  // `progress` → `end`). App attaches its updater on first loop
+  // construction; the registration captures the ref by closure so even
+  // late spawns find the current handler.
+  const subagentSinkRef = useRef<SubagentSink>({ current: null });
   // hookList + hookCwd intentionally NOT in deps — they seed the loop
   // on first construction (loopRef guards a single instantiation), and
   // later edits flow in through the mutable `loop.hooks = hookList`
@@ -281,6 +303,35 @@ export function App({
   const loop = useMemo(() => {
     if (loopRef.current) return loopRef.current;
     const client = new DeepSeekClient();
+    // Register run_skill HERE (not in code.tsx / chat.tsx) because
+    // subagent-runAs skills need the client + parent registry to
+    // spawn child loops. Wiring lives in App.tsx so the same code
+    // path covers both code mode and chat mode.
+    //
+    // The closure captures `tools` (parent registry), `client`, and
+    // the subagent sink ref by lexical scope — `spawnSubagent` reads
+    // them per invocation, so a sink handler attached after this
+    // registration still receives events.
+    if (tools && !tools.has("run_skill")) {
+      registerSkillTools(tools, {
+        projectRoot: codeMode?.rootDir,
+        subagentRunner: async (skill, task) => {
+          const result = await spawnSubagent({
+            client,
+            parentRegistry: tools,
+            // Skill body is the subagent's persona/playbook; the user-
+            // supplied task is what to actually do inside it.
+            system: skill.body,
+            task,
+            // Per-skill model override (frontmatter `model: ...`),
+            // else falls through to spawnSubagent's default.
+            model: skill.model,
+            sink: subagentSinkRef.current,
+          });
+          return formatSubagentResult(result);
+        },
+      });
+    }
     const prefix = new ImmutablePrefix({
       system,
       toolSpecs: tools?.specs(),
@@ -298,7 +349,7 @@ export function App({
     });
     loopRef.current = l;
     return l;
-  }, [model, system, harvest, branch, session, tools]);
+  }, [model, system, harvest, branch, session, tools, codeMode]);
 
   // Keep the loop's hook list in sync after a `/hooks reload`. The
   // loop's field is intentionally mutable for exactly this case —
@@ -359,6 +410,49 @@ export function App({
       if (progressSink.current) progressSink.current = null;
     };
   }, [progressSink]);
+
+  // Wire the subagent sink. `start` opens the activity row; each
+  // `progress` updates iter + elapsed in place; `end` clears the row
+  // and posts an info line summarizing the run. Only one subagent is
+  // active at a time in the MVP, so we treat overlapping events as a
+  // simple replace.
+  useEffect(() => {
+    subagentSinkRef.current.current = (ev: SubagentEvent) => {
+      if (ev.kind === "start") {
+        setSubagentActivity({
+          task: ev.task,
+          iter: ev.iter ?? 0,
+          elapsedMs: ev.elapsedMs ?? 0,
+        });
+        return;
+      }
+      if (ev.kind === "progress") {
+        setSubagentActivity({
+          task: ev.task,
+          iter: ev.iter ?? 0,
+          elapsedMs: ev.elapsedMs ?? 0,
+        });
+        return;
+      }
+      // end
+      setSubagentActivity(null);
+      const seconds = ((ev.elapsedMs ?? 0) / 1000).toFixed(1);
+      const summary = ev.error
+        ? `🧬 subagent "${ev.task}" failed after ${seconds}s · ${ev.iter ?? 0} tool call(s) — ${ev.error}`
+        : `🧬 subagent "${ev.task}" done in ${seconds}s · ${ev.iter ?? 0} tool call(s) · ${ev.turns ?? 0} turn(s)`;
+      setHistorical((prev) => [
+        ...prev,
+        {
+          id: `subagent-end-${Date.now()}`,
+          role: "info",
+          text: summary,
+        },
+      ]);
+    };
+    return () => {
+      subagentSinkRef.current.current = null;
+    };
+  }, []);
 
   // Surface a one-time banner about session state on first mount.
   const sessionBannerShown = useRef(false);
@@ -1196,6 +1290,9 @@ export function App({
         {!PLAIN_UI && !pendingShell && !pendingPlan && !stagedInput && ongoingTool ? (
           <OngoingToolRow tool={ongoingTool} progress={toolProgress} />
         ) : null}
+        {!PLAIN_UI && !pendingShell && !pendingPlan && !stagedInput && subagentActivity ? (
+          <SubagentRow activity={subagentActivity} />
+        ) : null}
         {!PLAIN_UI &&
         !pendingShell &&
         !pendingPlan &&
@@ -1285,6 +1382,29 @@ function StatusRow({ text }: { text: string }) {
       <Text color="magenta">{SPINNER_FRAMES[tick % SPINNER_FRAMES.length]}</Text>
       <Text color="magenta">{` ${text}`}</Text>
       <Text dimColor>{` ${elapsed}s`}</Text>
+    </Box>
+  );
+}
+
+/**
+ * Live one-line indicator for a running subagent. Sits below the
+ * OngoingToolRow (the parent's tool dispatch row for `spawn_subagent`)
+ * so the user sees both layers at once: outer "spawn_subagent
+ * running…" + inner "🧬 subagent: <task> · iter N · 12.3s". Cleared
+ * when the subagent ends; a one-line summary lands in historical.
+ */
+function SubagentRow({
+  activity,
+}: {
+  activity: { task: string; iter: number; elapsedMs: number };
+}) {
+  const tick = useTick();
+  const seconds = (activity.elapsedMs / 1000).toFixed(1);
+  return (
+    <Box paddingLeft={2}>
+      <Text color="magenta">{SPINNER_FRAMES[tick % SPINNER_FRAMES.length]}</Text>
+      <Text color="magenta">{` 🧬 subagent: ${activity.task}`}</Text>
+      <Text dimColor>{` · iter ${activity.iter} · ${seconds}s`}</Text>
     </Box>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBlocks, stripMath } from "../src/cli/ui/markdown.js";
+import { parseBlocks, stripInlineMarkup, stripMath, visibleWidth } from "../src/cli/ui/markdown.js";
 
 describe("stripMath", () => {
   it("converts \\frac, \\dfrac, \\tfrac uniformly", () => {
@@ -220,6 +220,141 @@ describe("parseBlocks — GFM tables", () => {
     expect(t).toBeDefined();
     if (t && t.kind === "table") {
       expect(t.rows[0]).toEqual(["x | y", "z"]);
+    }
+  });
+
+  it("recognizes Unicode box-drawing tables (│ ─ ┼) as tables too", () => {
+    // R1/V3 frequently emit this shape when asked for tabular data in
+    // Chinese — the GFM-only path treated them as plain paragraphs and
+    // Ink word-wrapped them into a tangle.
+    const md = [
+      "步骤             │ 说明",
+      "─────────────────┼─────────────────────────────────────────",
+      "**工具查找**     │ 按 `name` 查找已注册的工具",
+      "**参数解析**     │ 支持 string (JSON) 或 object 格式",
+      "",
+      "Trailing prose.",
+    ].join("\n");
+    const blocks = parseBlocks(md);
+    const table = blocks.find((b) => b.kind === "table");
+    expect(table).toBeDefined();
+    if (table && table.kind === "table") {
+      expect(table.header).toEqual(["步骤", "说明"]);
+      expect(table.rows).toHaveLength(2);
+      expect(table.rows[0]).toEqual(["**工具查找**", "按 `name` 查找已注册的工具"]);
+      expect(table.rows[1]).toEqual(["**参数解析**", "支持 string (JSON) 或 object 格式"]);
+    }
+    expect(
+      blocks.find((b) => b.kind === "paragraph" && b.text === "Trailing prose."),
+    ).toBeDefined();
+  });
+
+  it("does NOT trigger on a bare '│' in prose without a separator below", () => {
+    const md = ["The character │ is a vertical bar.", "Nothing tabular here."].join("\n");
+    expect(parseBlocks(md).find((b) => b.kind === "table")).toBeUndefined();
+  });
+
+  it("folds a continuation row (no column separator) into the last cell of the previous row", () => {
+    // Real-world LLM output: cell content too long, model wraps onto a
+    // second line without re-emitting the separator. Used to leak as
+    // a paragraph after the table; now stitched back into the cell so
+    // inline backticks / bold parse correctly.
+    const md = [
+      "文件         │ 角色",
+      "─────────────┼─────────────────────────────────────────",
+      "`src/tools.ts` │ `dispatch()` 方法定义（约第 106 行起）。签名：",
+      "                async dispatch(name: string, ...)。处理 plan-mode 拦截。",
+    ].join("\n");
+    const [t] = parseBlocks(md).filter((b) => b.kind === "table");
+    expect(t).toBeDefined();
+    if (t && t.kind === "table") {
+      expect(t.rows).toHaveLength(1);
+      expect(t.rows[0]?.[1]).toContain("dispatch()");
+      expect(t.rows[0]?.[1]).toContain("async dispatch(name");
+    }
+  });
+});
+
+describe("parseBlocks — box-drawing frames as code blocks", () => {
+  it("recognizes a single-line ┌─┐ │ └─┘ frame", () => {
+    // Models routinely wrap one line of code in a Unicode frame for
+    // emphasis. The renderer treats the frame as a code block so the
+    // inner content stays readable instead of being word-wrapped.
+    const md = [
+      "Here is the call site:",
+      "",
+      "┌──────────────────────────────────────────┐",
+      "│ result = await this.tools.dispatch(...); │",
+      "└──────────────────────────────────────────┘",
+      "",
+      "Trailing.",
+    ].join("\n");
+    const blocks = parseBlocks(md);
+    const code = blocks.find((b) => b.kind === "code");
+    expect(code).toBeDefined();
+    if (code && code.kind === "code") {
+      expect(code.text).toBe("result = await this.tools.dispatch(...);");
+    }
+    expect(blocks.find((b) => b.kind === "paragraph" && b.text === "Trailing.")).toBeDefined();
+  });
+
+  it("recognizes a multi-line ┌─┐ │…│ └─┘ frame (flow charts and diagrams)", () => {
+    const md = [
+      "┌──────────────┐",
+      "│ step 1       │",
+      "│  ↓           │",
+      "│ step 2       │",
+      "└──────────────┘",
+    ].join("\n");
+    const blocks = parseBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ kind: "code" });
+    if (blocks[0]?.kind === "code") {
+      expect(blocks[0].text).toContain("step 1");
+      expect(blocks[0].text).toContain("step 2");
+      expect(blocks[0].text).toContain("↓");
+      // Outer │ characters got stripped — content reads cleanly.
+      expect(blocks[0].text).not.toContain("│");
+    }
+  });
+
+  it("falls back to paragraph when the closing └─┘ is missing", () => {
+    const md = ["┌────┐", "│ a  │", "no closing edge here"].join("\n");
+    const blocks = parseBlocks(md);
+    // No code block emitted — the open-edge line stays as paragraph.
+    expect(blocks.find((b) => b.kind === "code")).toBeUndefined();
+  });
+});
+
+describe("stripInlineMarkup + visibleWidth", () => {
+  it("strips bold markers", () => {
+    expect(stripInlineMarkup("**hello**")).toBe("hello");
+  });
+  it("strips inline code backticks", () => {
+    expect(stripInlineMarkup("call `dispatch()` now")).toBe("call dispatch() now");
+  });
+  it("strips italic markers but leaves single * inside words", () => {
+    expect(stripInlineMarkup("*emphasis*")).toBe("emphasis");
+    expect(stripInlineMarkup("a*b*c")).toBe("a*b*c");
+  });
+  it("strips triple-backtick spans + their language tag", () => {
+    expect(stripInlineMarkup("```bash echo hi```")).toBe("echo hi");
+  });
+  it("visibleWidth excludes markup chars", () => {
+    // raw is 19 chars, visible is "定义 dispatch" = 4 (CJK ×2) + 1 (space) + 8 = 13
+    expect(visibleWidth("**定义** `dispatch`")).toBe(13);
+  });
+  it("table cells with inline markup get sized by visible width, not raw", () => {
+    // Header is plain, rows have inline code. The column sized by raw
+    // length would be too wide; visibleWidth keeps things aligned to
+    // what the user actually sees.
+    const md = ["| 位置 | 角色 |", "|------|------|", "| `src/tools.ts` | 定义 dispatch |"].join(
+      "\n",
+    );
+    const [t] = parseBlocks(md).filter((b) => b.kind === "table");
+    expect(t).toBeDefined();
+    if (t && t.kind === "table") {
+      expect(t.rows[0]).toEqual(["`src/tools.ts`", "定义 dispatch"]);
     }
   });
 });

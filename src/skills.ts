@@ -40,7 +40,18 @@ export const SKILLS_INDEX_MAX_CHARS = 4000;
 /** Skill identifier shape — alnum + `_` + `-` + interior `.`, 1-64 chars. */
 const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
 
-export type SkillScope = "project" | "global";
+export type SkillScope = "project" | "global" | "builtin";
+
+/**
+ * Execution mode for a skill. `inline` (default) returns the body as a
+ * tool result so the body enters the parent's append-only log — the
+ * model continues the loop using the loaded instructions. `subagent`
+ * spawns an isolated child loop with the body as the system prompt and
+ * the user-supplied `arguments` as the task; only the child's final
+ * answer comes back. Use `subagent` for big-context exploration / research
+ * playbooks where the parent doesn't need to see the trail.
+ */
+export type SkillRunAs = "inline" | "subagent";
 
 export interface Skill {
   /** Canonical name — sanitized, matches the directory / filename stem. */
@@ -51,10 +62,23 @@ export interface Skill {
   body: string;
   /** Which scope this skill was loaded from. */
   scope: SkillScope;
-  /** Absolute path to the SKILL.md (or {name}.md) file. */
+  /** Absolute path to the SKILL.md (or {name}.md) file, or "(builtin)" for shipped defaults. */
   path: string;
   /** Raw `allowed-tools` field from frontmatter, if any. Unused in v1. */
   allowedTools?: string;
+  /**
+   * Execution mode (frontmatter `runAs`). Defaults to `inline` for
+   * backwards compatibility with skills written before this field
+   * existed.
+   */
+  runAs: SkillRunAs;
+  /**
+   * Frontmatter `model` — when set, overrides the default model the
+   * subagent runs on. Only meaningful when `runAs === "subagent"`.
+   * Accept any DeepSeek model id; the subagent layer falls back to its
+   * own default if this is missing or invalid.
+   */
+  model?: string;
 }
 
 export interface SkillStoreOptions {
@@ -66,6 +90,13 @@ export interface SkillStoreOptions {
    * reads the global scope.
    */
   projectRoot?: string;
+  /**
+   * Suppress the bundled built-in skills (`explore`, `research`).
+   * Used by unit tests that want to assert exact list contents
+   * without the +2 builtins distorting counts. Production callers
+   * leave this off so users always get the bundled defaults.
+   */
+  disableBuiltins?: boolean;
 }
 
 /**
@@ -102,10 +133,12 @@ function isValidSkillName(name: string): boolean {
 export class SkillStore {
   private readonly homeDir: string;
   private readonly projectRoot: string | undefined;
+  private readonly disableBuiltins: boolean;
 
   constructor(opts: SkillStoreOptions = {}) {
     this.homeDir = opts.homeDir ?? homedir();
     this.projectRoot = opts.projectRoot ? resolve(opts.projectRoot) : undefined;
+    this.disableBuiltins = opts.disableBuiltins === true;
   }
 
   /** True iff this store was configured with a project root. */
@@ -132,8 +165,8 @@ export class SkillStore {
 
   /**
    * List every skill visible to this store. On name collisions the
-   * higher-priority root (project over global) wins. Sorted by name
-   * for stable prefix hashing.
+   * higher-priority root (project over global over builtin) wins.
+   * Sorted by name for stable prefix hashing.
    */
   list(): Skill[] {
     const byName = new Map<string, Skill>();
@@ -148,6 +181,15 @@ export class SkillStore {
       for (const entry of entries) {
         const skill = this.readEntry(dir, scope, entry);
         if (!skill) continue;
+        if (!byName.has(skill.name)) byName.set(skill.name, skill);
+      }
+    }
+    // Builtins are appended last so user/project files take precedence
+    // when names collide. The same priority you'd expect: my-project's
+    // "explore" overrides the shipped one without forcing a different
+    // name.
+    if (!this.disableBuiltins) {
+      for (const skill of BUILTIN_SKILLS) {
         if (!byName.has(skill.name)) byName.set(skill.name, skill);
       }
     }
@@ -166,6 +208,13 @@ export class SkillStore {
       const flatCandidate = join(dir, `${name}.md`);
       if (existsSync(flatCandidate) && statSync(flatCandidate).isFile()) {
         return this.parse(flatCandidate, name, scope);
+      }
+    }
+    // Fall back to builtins. Same precedence as `list()` — user-authored
+    // wins, builtins are the floor.
+    if (!this.disableBuiltins) {
+      for (const skill of BUILTIN_SKILLS) {
+        if (skill.name === name) return skill;
       }
     }
     return null;
@@ -202,21 +251,35 @@ export class SkillStore {
       scope,
       path,
       allowedTools: data["allowed-tools"],
+      runAs: parseRunAs(data.runAs),
+      model: data.model?.startsWith("deepseek-") ? data.model : undefined,
     };
   }
+}
+
+/**
+ * Coerce a frontmatter `runAs` string to the discriminated union. Any
+ * value other than the literal "subagent" is treated as inline — typos
+ * and unknown values default to the safe (non-spawning) mode rather
+ * than failing the load.
+ */
+function parseRunAs(raw: string | undefined): SkillRunAs {
+  return raw?.trim() === "subagent" ? "subagent" : "inline";
 }
 
 /**
  * Build a single index line for one skill. Shape mirrors memory's
  * `indexLine` — a bullet suitable for a markdown fenced block in the
  * system prompt. Description is truncated to keep the full line under
- * ~150 chars.
+ * ~150 chars. Subagent-runAs skills carry a 🧬 marker so the model
+ * sees at a glance which skills will spawn an isolated child loop.
  */
-function skillIndexLine(s: Pick<Skill, "name" | "description">): string {
+function skillIndexLine(s: Pick<Skill, "name" | "description" | "runAs">): string {
   const safeDesc = s.description.replace(/\n/g, " ").trim();
-  const max = 130 - s.name.length;
+  const marker = s.runAs === "subagent" ? "🧬 " : "";
+  const max = 130 - s.name.length - marker.length;
   const clipped = safeDesc.length > max ? `${safeDesc.slice(0, Math.max(1, max - 1))}…` : safeDesc;
-  return clipped ? `- ${s.name} — ${clipped}` : `- ${s.name}`;
+  return clipped ? `- ${marker}${s.name} — ${clipped}` : `- ${marker}${s.name}`;
 }
 
 /**
@@ -243,12 +306,92 @@ export function applySkillsIndex(basePrompt: string, opts: SkillStoreOptions = {
   return [
     basePrompt,
     "",
-    "# Skills — user-defined prompt packs",
+    "# Skills — playbooks you can invoke",
     "",
-    'One-liner index. Each skill is a self-contained instruction block (plus optional tool hints) the user or an earlier session saved. To load the full body, call `run_skill({ name: "<skill-name>" })` — the body is NOT in this prompt, only the name and description are. The user can also invoke a skill directly as `/skill <name>`.',
+    'One-liner index. Each entry is either a built-in or a user-authored playbook. Call `run_skill({ name: "<skill-name>", arguments: "<task>" })` to invoke one. Skills marked with 🧬 spawn an **isolated subagent** — its tool calls and reasoning never enter your context, only its final answer does. Use 🧬 skills for tasks that would otherwise flood your context (deep exploration, multi-step research, anything where you only need the conclusion). Plain skills are inlined: their body becomes a tool result you read and act on directly. The user can also invoke a skill via `/skill <name>`.',
     "",
     "```",
     truncated,
     "```",
   ].join("\n");
 }
+
+/**
+ * Built-in skills shipped with Reasonix. These are always available
+ * (no install step) and live as constants rather than files because:
+ *   - Zero filesystem coupling — no copy-on-first-run dance, nothing
+ *     to migrate when we update them.
+ *   - They participate in the same `byName` priority as user/project
+ *     skills: write `~/.reasonix/skills/explore.md` to override.
+ *
+ * Keep this list small and high-leverage. The bar for adding one: it
+ * demonstrates a pattern users would otherwise have to invent
+ * themselves, and the body fits in a screen.
+ */
+const BUILTIN_EXPLORE_BODY = `You are running as an exploration subagent. Your job is to investigate the codebase the parent agent pointed you at, then return one focused, distilled answer.
+
+How to operate:
+- Use read_file, search_files, search_content, directory_tree, list_directory, get_file_info as your primary tools. Stay read-only.
+- For "find all places that call / reference / use X" questions, use \`search_content\` (content grep) — NOT \`search_files\` (which only matches file names). This is the most common subagent mistake; using the wrong tool gives empty results and you waste your iter budget chasing a phantom.
+- Cast a wide net first (search_content for symbol references, directory_tree for structure) to map the territory; then read the 3-10 most relevant files in full.
+- Don't read every file — be selective. Aim for breadth on the first pass, depth only where the question demands it.
+- Stop exploring as soon as you can answer the question. The parent doesn't see your tool calls, so over-exploration is pure waste.
+
+Your final answer:
+- One paragraph (or a few short bullets). Lead with the conclusion.
+- Cite specific file paths + line ranges when they support the answer.
+- If the question can't be answered from what you found, say so plainly and suggest where to look next.
+- No follow-up offers, no "let me know if you need more." The parent will ask again if they need more.
+
+Formatting (rendered in a TUI):
+- Tabular data → GitHub-Flavored Markdown tables with ASCII pipes (\`| col | col |\` + \`| --- | --- |\`). Never use Unicode box-drawing characters (│ ─ ┼) — they break word-wrap.
+- Keep table cells short; if a cell needs a paragraph, use bullets below the table instead.
+- Code, file paths with line ranges, and shell commands → fenced code blocks (\`\`\`).
+- NEVER draw decorative frames around code or text with \`┌──┐ │ └──┘\` box-drawing characters. Use plain code blocks; the renderer adds its own border.
+- For flow charts: use a bullet list with \`→\` or \`↓\` between steps, not ASCII boxes-and-arrows.
+
+The 'task' the parent gave you is the question you must answer. Treat any other reading of it as scope creep.`;
+
+const BUILTIN_RESEARCH_BODY = `You are running as a research subagent. Your job is to gather information from code AND the web, synthesize it, and return one focused conclusion.
+
+How to operate:
+- Combine code reading (read_file, search_files) with web tools (web_search, web_fetch) as appropriate to the question.
+- For "how does X work" / "is Y supported" questions: web first to find the canonical reference, then verify against the local code.
+- For "what's our policy on Z" / "where do we use Q": local code first, web only if you need to compare against external standards.
+- Cap yourself at ~10 tool calls. If you can't converge in 10, return what you have plus a note about what's missing.
+
+Your final answer:
+- One paragraph (or short bullets). Lead with the conclusion.
+- Cite both code (file:line) AND web sources (URL) when they back the answer.
+- Distinguish "I verified this in code" from "I read this on a docs page" — the parent will trust the former more.
+- If the answer is uncertain, say so. Don't invent confidence.
+
+Formatting (rendered in a TUI):
+- Tabular data → GitHub-Flavored Markdown tables with ASCII pipes (\`| col | col |\` + \`| --- | --- |\`). Never use Unicode box-drawing characters (│ ─ ┼) — they break word-wrap.
+- Keep table cells short; if a cell needs a paragraph, use bullets below the table instead.
+- Code, file paths with line ranges, and shell commands → fenced code blocks (\`\`\`).
+- NEVER draw decorative frames around code or text with \`┌──┐ │ └──┘\` box-drawing characters. Use plain code blocks; the renderer adds its own border.
+- For flow charts: use a bullet list with \`→\` or \`↓\` between steps, not ASCII boxes-and-arrows.
+
+The 'task' the parent gave you is the research question. Stay on it.`;
+
+const BUILTIN_SKILLS: readonly Skill[] = Object.freeze([
+  Object.freeze<Skill>({
+    name: "explore",
+    description:
+      "Explore the codebase in an isolated subagent — wide-net read-only investigation that returns one distilled answer. Best for: 'find all places that...', 'how does X work across the project', 'survey the code for Y'.",
+    body: BUILTIN_EXPLORE_BODY,
+    scope: "builtin",
+    path: "(builtin)",
+    runAs: "subagent",
+  }),
+  Object.freeze<Skill>({
+    name: "research",
+    description:
+      "Research a question by combining web search + code reading in an isolated subagent. Best for: 'is X feature supported by lib Y', 'what's the canonical way to do Z', 'compare our impl against the spec'.",
+    body: BUILTIN_RESEARCH_BODY,
+    scope: "builtin",
+    path: "(builtin)",
+    runAs: "subagent",
+  }),
+]);

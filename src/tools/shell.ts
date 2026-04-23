@@ -367,7 +367,7 @@ export function prepareSpawn(
     const cmdline = [resolved, ...tail].map(quoteForCmdExe).join(" ");
     return {
       bin: "cmd.exe",
-      args: ["/d", "/s", "/c", cmdline],
+      args: ["/d", "/s", "/c", withUtf8Codepage(cmdline)],
       // windowsVerbatimArguments prevents Node from re-quoting the /c
       // payload — we've already composed an exact cmd.exe command
       // line. Without this Node wraps our already-quoted string in
@@ -387,12 +387,78 @@ export function prepareSpawn(
     const cmdline = [head, ...tail].map(quoteForCmdExe).join(" ");
     return {
       bin: "cmd.exe",
-      args: ["/d", "/s", "/c", cmdline],
+      args: ["/d", "/s", "/c", withUtf8Codepage(cmdline)],
       spawnOverrides: { windowsVerbatimArguments: true },
     };
   }
 
+  // PowerShell variants: chcp 65001 doesn't help here because PowerShell
+  // sets its own [Console]::OutputEncoding at startup — usually system
+  // codepage (CP936/CP932/CP949 on CJK Windows) or UTF-16. The result
+  // is mojibake when our `chunk.toString()` UTF-8-decodes its stdout.
+  // Inject a UTF-8 setup prelude into the `-Command` (or `-c`) arg so
+  // any output produced thereafter is UTF-8.
+  if (isPowerShellExe(resolved)) {
+    const patched = injectPowerShellUtf8(tail);
+    if (patched) {
+      return { bin: resolved, args: patched, spawnOverrides: {} };
+    }
+  }
+
   return { bin: resolved, args: [...tail], spawnOverrides: {} };
+}
+
+/** Resolved bin path looks like Windows PowerShell or PowerShell Core. */
+function isPowerShellExe(resolved: string): boolean {
+  return /(?:^|[\\/])(?:powershell|pwsh)(?:\.exe)?$/i.test(resolved);
+}
+
+/**
+ * Locate `-Command` / `-c` in `args` and prepend the UTF-8 setup prelude
+ * to its value. Returns the patched args, or `null` when no `-Command`
+ * arg is present (in which case we leave the invocation untouched —
+ * inline-expression and script-file modes have their own conventions
+ * we don't want to silently rewrite).
+ *
+ * Why not always wrap: PowerShell's quoting semantics are finicky enough
+ * that adding a prelude to a script file invocation could break it.
+ * `-Command` is the case the model actually uses, and where mojibake
+ * matters; targeting just it keeps the blast radius small.
+ *
+ * Exported for tests.
+ */
+export function injectPowerShellUtf8(args: readonly string[]): string[] | null {
+  const prelude =
+    "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;$OutputEncoding=[System.Text.Encoding]::UTF8;";
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i] ?? "";
+    if (/^-(?:Command|c)$/i.test(a) && i + 1 < args.length) {
+      const out = [...args];
+      out[i + 1] = `${prelude}${args[i + 1] ?? ""}`;
+      return out;
+    }
+  }
+  return null;
+}
+
+/**
+ * Prefix a cmd.exe command line with `chcp 65001 >nul &` so output
+ * (from cmd.exe and any child it spawns) is UTF-8-encoded. Without
+ * this, on Chinese / Japanese / Korean Windows, `dir`, `findstr`,
+ * `where`, etc. emit text in the system codepage (CP936, CP932,
+ * CP949, …) and `chunk.toString()` — which decodes as UTF-8 — produces
+ * garbled mojibake the model then sees as poisoned input on the next
+ * turn.
+ *
+ * Scope: chcp affects ONLY this cmd.exe instance, which exits after
+ * `/c`. No global console state changes. Single `&` (not `&&`) so the
+ * command still runs even on the rare Windows builds where chcp
+ * itself returns a non-zero exit (Win7 quirks; harmless on Win10+).
+ *
+ * Exported so tests can verify the wrapping shape.
+ */
+export function withUtf8Codepage(cmdline: string): string {
+  return `chcp 65001 >nul & ${cmdline}`;
 }
 
 /**

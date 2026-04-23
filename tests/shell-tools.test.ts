@@ -6,6 +6,7 @@ import { ToolRegistry } from "../src/tools.js";
 import {
   NeedsConfirmationError,
   formatCommandResult,
+  injectPowerShellUtf8,
   isAllowed,
   prepareSpawn,
   quoteForCmdExe,
@@ -387,7 +388,7 @@ describe("prepareSpawn", () => {
       "/d",
       "/s",
       "/c",
-      '"C:\\Program Files\\nodejs\\npm.CMD" install foo',
+      'chcp 65001 >nul & "C:\\Program Files\\nodejs\\npm.CMD" install foo',
     ]);
     expect(out.spawnOverrides.windowsVerbatimArguments).toBe(true);
   });
@@ -401,8 +402,8 @@ describe("prepareSpawn", () => {
       isFile: (p) => hits.has(p),
     });
     // No spaces in the path ⇒ no surrounding quotes; cmd.exe parses
-    // backslashes literally.
-    expect(out.args[3]).toBe("C:\\tools\\npm.CMD install");
+    // backslashes literally. UTF-8 codepage prefix is always inserted.
+    expect(out.args[3]).toBe("chcp 65001 >nul & C:\\tools\\npm.CMD install");
   });
 
   it("wraps .bat files too", () => {
@@ -414,7 +415,7 @@ describe("prepareSpawn", () => {
       isFile: (p) => hits.has(p),
     });
     expect(out.bin).toBe("cmd.exe");
-    expect(out.args[3]).toMatch(/gradle\.BAT/);
+    expect(out.args[3]).toMatch(/^chcp 65001 >nul & .*gradle\.BAT/);
   });
 
   it("spawns .exe directly (no cmd.exe wrapping)", () => {
@@ -438,7 +439,7 @@ describe("prepareSpawn", () => {
       pathDelimiter: ";",
       isFile: (p) => hits.has(p),
     });
-    expect(out.args[3]).toBe('C:\\tools\\tool.CMD "a&b" "c|d"');
+    expect(out.args[3]).toBe('chcp 65001 >nul & C:\\tools\\tool.CMD "a&b" "c|d"');
   });
 
   it("routes bare unresolved Windows commands through cmd.exe (builtins)", () => {
@@ -454,7 +455,7 @@ describe("prepareSpawn", () => {
       isFile: () => false,
     });
     expect(out.bin).toBe("cmd.exe");
-    expect(out.args).toEqual(["/d", "/s", "/c", "dir .reasonix"]);
+    expect(out.args).toEqual(["/d", "/s", "/c", "chcp 65001 >nul & dir .reasonix"]);
     expect(out.spawnOverrides.windowsVerbatimArguments).toBe(true);
   });
 
@@ -466,7 +467,7 @@ describe("prepareSpawn", () => {
       isFile: () => false,
     });
     expect(out.bin).toBe("cmd.exe");
-    expect(out.args[3]).toBe('echo "a & b"');
+    expect(out.args[3]).toBe('chcp 65001 >nul & echo "a & b"');
   });
 
   it("does not wrap paths-with-separators through cmd.exe", () => {
@@ -481,6 +482,37 @@ describe("prepareSpawn", () => {
     });
     expect(out.bin).toBe("C:\\missing\\tool.exe");
     expect(out.args).toEqual(["arg"]);
+  });
+
+  it("injects UTF-8 prelude into powershell -Command invocations", () => {
+    // Uppercase .EXE in the hit set so resolveExecutable's PATHEXT
+    // probe finds it (matches existing .CMD test convention).
+    const hits = new Set(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE"]);
+    const out = prepareSpawn(["powershell", "-Command", "Get-ChildItem -Path tests"], {
+      platform: "win32",
+      env: {
+        PATH: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0",
+        PATHEXT: ".EXE",
+      },
+      pathDelimiter: ";",
+      isFile: (p) => hits.has(p),
+    });
+    expect(out.bin).toMatch(/powershell\.exe$/i);
+    // args = [-Command, "<prelude>Get-ChildItem -Path tests"]
+    expect(out.args[0]).toBe("-Command");
+    expect(out.args[1]).toMatch(/^\[Console\]::OutputEncoding=/);
+    expect(out.args[1]).toContain("Get-ChildItem -Path tests");
+    // No cmd.exe wrapping for powershell — direct spawn.
+    expect(out.spawnOverrides).toEqual({});
+  });
+
+  it("injectPowerShellUtf8 leaves unrelated invocations untouched", () => {
+    // No -Command flag → can't safely inject; we leave it alone.
+    expect(injectPowerShellUtf8(["-File", "script.ps1"])).toBeNull();
+    // -c (alias) still gets the prelude.
+    const out = injectPowerShellUtf8(["-c", "Write-Host hi"]);
+    expect(out).not.toBeNull();
+    expect(out![1]).toMatch(/^\[Console\]::OutputEncoding=.*Write-Host hi$/);
   });
 
   it("does not wrap already-extensioned commands", () => {

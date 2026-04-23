@@ -51,9 +51,13 @@ describe("filesystem tools (built-in, sandbox-enforced)", () => {
       expect(out).toMatch(/escapes sandbox/);
     });
 
-    it("rejects absolute paths outside root", async () => {
+    it("reinterprets POSIX-absolute paths as sandbox-relative (model can't escape via /)", async () => {
+      // Sandbox-root semantics: `/etc/passwd` becomes `etc/passwd`
+      // under rootDir. Real /etc/passwd stays unreachable; the lookup
+      // just fails because <root>/etc/passwd doesn't exist.
       const out = await tools.dispatch("read_file", JSON.stringify({ path: "/etc/passwd" }));
-      expect(out).toMatch(/escapes sandbox/);
+      expect(out).not.toMatch(/escapes sandbox/);
+      expect(out).toMatch(/ENOENT|no such file/i);
     });
 
     it("returns a truncation notice when file exceeds maxReadBytes", async () => {
@@ -109,6 +113,128 @@ describe("filesystem tools (built-in, sandbox-enforced)", () => {
     it("reports no-matches cleanly", async () => {
       const out = await tools.dispatch("search_files", JSON.stringify({ pattern: "nothing123" }));
       expect(out).toBe("(no matches)");
+    });
+
+    it("treats path: '/' as the sandbox root (model's POSIX intuition)", async () => {
+      // Common model failure mode: the LLM passes path: "/" intending
+      // "search the whole project". Without sandbox-root semantics
+      // path.resolve treats "/" as the actual filesystem root, the
+      // escape check rejects it, and the model sees a confusing error.
+      const out = await tools.dispatch(
+        "search_files",
+        JSON.stringify({ path: "/", pattern: "index" }),
+      );
+      expect(out).not.toMatch(/escapes sandbox/);
+      expect(out).toContain("index.ts");
+    });
+
+    it("treats path: '/src' as <root>/src", async () => {
+      const out = await tools.dispatch(
+        "search_files",
+        JSON.stringify({ path: "/src", pattern: "util" }),
+      );
+      expect(out).not.toMatch(/escapes sandbox/);
+      expect(out).toContain("util.ts");
+    });
+  });
+
+  describe("search_content", () => {
+    it("finds a literal substring inside a file's content", async () => {
+      // src/index.ts has `export const x = 1;`
+      const out = await tools.dispatch(
+        "search_content",
+        JSON.stringify({ pattern: "export const x" }),
+      );
+      // Format: path:line: text
+      expect(out).toMatch(/src[\\/]index\.ts:1: export const x = 1;/);
+    });
+
+    it("matches across multiple files and reports each line", async () => {
+      // Both src/index.ts and src/util.ts have `export const`.
+      const out = await tools.dispatch(
+        "search_content",
+        JSON.stringify({ pattern: "export const" }),
+      );
+      expect(out).toContain("index.ts");
+      expect(out).toContain("util.ts");
+    });
+
+    it("supports regex patterns (word-bounded match)", async () => {
+      const out = await tools.dispatch(
+        "search_content",
+        JSON.stringify({ pattern: "\\bexport\\s+const\\s+y\\b" }),
+      );
+      expect(out).toContain("util.ts");
+      expect(out).not.toContain("index.ts");
+    });
+
+    it("is case-insensitive by default", async () => {
+      const out = await tools.dispatch("search_content", JSON.stringify({ pattern: "EXPORT" }));
+      expect(out).toContain("export");
+    });
+
+    it("respects case_sensitive when set", async () => {
+      const out = await tools.dispatch(
+        "search_content",
+        JSON.stringify({ pattern: "EXPORT", case_sensitive: true }),
+      );
+      expect(out).toMatch(/no matches/);
+    });
+
+    it("filters by glob substring on the file name", async () => {
+      const out = await tools.dispatch(
+        "search_content",
+        JSON.stringify({ pattern: "export const", glob: "util" }),
+      );
+      expect(out).toContain("util.ts");
+      expect(out).not.toContain("index.ts");
+    });
+
+    it("skips dependency dirs by default", async () => {
+      // Drop a node_modules-style file matching the pattern.
+      await fs.mkdir(join(root, "node_modules", "junk"), { recursive: true });
+      await fs.writeFile(
+        join(root, "node_modules", "junk", "vendor.ts"),
+        "export const NEEDLE = 1;\n",
+      );
+      const out = await tools.dispatch("search_content", JSON.stringify({ pattern: "NEEDLE" }));
+      expect(out).toMatch(/no matches/);
+    });
+
+    it("includes dependency dirs when include_deps:true", async () => {
+      await fs.mkdir(join(root, "node_modules", "junk"), { recursive: true });
+      await fs.writeFile(
+        join(root, "node_modules", "junk", "vendor.ts"),
+        "export const NEEDLE = 1;\n",
+      );
+      const out = await tools.dispatch(
+        "search_content",
+        JSON.stringify({ pattern: "NEEDLE", include_deps: true }),
+      );
+      expect(out).toContain("vendor.ts");
+    });
+
+    it("skips binary files by extension", async () => {
+      // A .png with searchable text inside — extension wins.
+      await fs.writeFile(join(root, "logo.png"), "this is a PNG with NEEDLE inside\n");
+      const out = await tools.dispatch("search_content", JSON.stringify({ pattern: "NEEDLE" }));
+      expect(out).not.toContain("logo.png");
+    });
+
+    it("skips binary files by content (NUL byte sniff)", async () => {
+      // A .txt that's actually binary — content sniff catches it.
+      const buf = Buffer.concat([Buffer.from("NEEDLE\0"), Buffer.from([0, 1, 2, 3])]);
+      await fs.writeFile(join(root, "data.txt"), buf);
+      const out = await tools.dispatch("search_content", JSON.stringify({ pattern: "NEEDLE" }));
+      expect(out).not.toContain("data.txt");
+    });
+
+    it("returns a clean (no matches) message when nothing matches", async () => {
+      const out = await tools.dispatch(
+        "search_content",
+        JSON.stringify({ pattern: "definitely_not_present_anywhere_zxq" }),
+      );
+      expect(out).toMatch(/no matches/);
     });
   });
 
