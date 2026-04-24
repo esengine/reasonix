@@ -15,7 +15,7 @@
  * it later is trivial via the inverse byte-level table.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,25 +105,43 @@ function buildByteToChar(): string[] {
 let cached: LoadedTokenizer | null = null;
 
 /**
- * Find the bundled tokenizer data file. Resolution order:
- * 1. `REASONIX_TOKENIZER_PATH` env var (for tests / custom builds).
+ * Find the bundled tokenizer data file. Resolution order (first hit wins):
+ * 1. `REASONIX_TOKENIZER_PATH` env var (tests / custom builds).
  * 2. `../data/deepseek-tokenizer.json.gz` relative to this module —
- *    works both in dev (src/) and after tsup bundling (dist/).
+ *    covers dev (src/tokenizer.ts → data/) AND production bundled at
+ *    dist/index.js → dist/../data = data/.
+ * 3. `../../data/deepseek-tokenizer.json.gz` — covers the CLI bundle
+ *    at dist/cli/index.js → dist/cli/../../data = data/. Without this
+ *    step 2 resolves to dist/data/ which doesn't exist (the data file
+ *    is shipped at package root per package.json `files` entry), and
+ *    every step() preflight crashes the loop with ENOENT.
+ * 4. `require.resolve("reasonix/package.json")` — last-resort package
+ *    root lookup for unusual bundlers.
  */
 function resolveDataPath(): string {
   if (process.env.REASONIX_TOKENIZER_PATH) return process.env.REASONIX_TOKENIZER_PATH;
+  const candidates: string[] = [];
   try {
     const here = dirname(fileURLToPath(import.meta.url));
-    return join(here, "..", "data", "deepseek-tokenizer.json.gz");
+    candidates.push(join(here, "..", "data", "deepseek-tokenizer.json.gz"));
+    candidates.push(join(here, "..", "..", "data", "deepseek-tokenizer.json.gz"));
   } catch {
-    // CJS fallback — `require.resolve` finds the package root.
-    const req = createRequire(import.meta.url);
-    return join(
-      dirname(req.resolve("reasonix/package.json")),
-      "data",
-      "deepseek-tokenizer.json.gz",
-    );
+    /* import.meta.url unavailable — skip to the package resolution step. */
   }
+  try {
+    const req = createRequire(import.meta.url);
+    candidates.push(
+      join(dirname(req.resolve("reasonix/package.json")), "data", "deepseek-tokenizer.json.gz"),
+    );
+  } catch {
+    /* Not installed as `reasonix/` — the earlier candidates still may hit. */
+  }
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  // Nothing exists — return the first candidate anyway so readFileSync
+  // surfaces a concrete path in the ENOENT message (better than silent miss).
+  return candidates[0] ?? join(process.cwd(), "data", "deepseek-tokenizer.json.gz");
 }
 
 function loadTokenizer(): LoadedTokenizer {
