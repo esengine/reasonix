@@ -821,7 +821,9 @@ export class CacheFirstLoop {
         assistantContent || null,
       );
 
-      this.appendAndPersist(this.assistantMessage(assistantContent, repairedCalls));
+      this.appendAndPersist(
+        this.assistantMessage(assistantContent, repairedCalls, reasoningContent),
+      );
 
       yield {
         turn: this._turn,
@@ -1104,9 +1106,22 @@ export class CacheFirstLoop {
     return final;
   }
 
-  private assistantMessage(content: string, toolCalls: ToolCall[]): ChatMessage {
+  private assistantMessage(
+    content: string,
+    toolCalls: ToolCall[],
+    reasoningContent?: string,
+  ): ChatMessage {
     const msg: ChatMessage = { role: "assistant", content };
     if (toolCalls.length > 0) msg.tool_calls = toolCalls;
+    // Only round-trip reasoning when it actually has body AND the turn
+    // has tool_calls — that's the specific shape R1 thinking mode
+    // requires. For plain text turns omitting reasoning is harmless and
+    // saves prompt bytes on the next turn (reasoning can be thousands
+    // of tokens). deepseek-chat never produces it, so the field stays
+    // absent and V3 requests are untouched.
+    if (toolCalls.length > 0 && reasoningContent && reasoningContent.length > 0) {
+      msg.reasoning_content = reasoningContent;
+    }
     return msg;
   }
 }

@@ -36,6 +36,14 @@ export interface ChatMessage {
   name?: string;
   tool_call_id?: string;
   tool_calls?: ToolCall[];
+  /**
+   * R1 `reasoning_content` captured from the assistant's thinking turn.
+   * DeepSeek's thinking mode 400s with "reasoning_content in the
+   * thinking mode must be passed back" when a tool-loop continuation
+   * omits it from the preceding assistant message. Round-tripped for
+   * deepseek-reasoner turns with tool_calls; absent for deepseek-chat.
+   */
+  reasoning_content?: string | null;
 }
 
 export interface RawUsage {
