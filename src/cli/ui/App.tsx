@@ -41,11 +41,19 @@ import { PlanConfirm, type PlanConfirmChoice } from "./PlanConfirm.js";
 import { PlanRefineInput } from "./PlanRefineInput.js";
 import { PromptInput } from "./PromptInput.js";
 import { ShellConfirm, type ShellConfirmChoice, derivePrefix } from "./ShellConfirm.js";
+import { SlashArgPicker } from "./SlashArgPicker.js";
 import { SlashSuggestions } from "./SlashSuggestions.js";
 import { StatsPanel } from "./StatsPanel.js";
 import { detectBangCommand, formatBangUserMessage } from "./bang.js";
 import { formatLongPaste } from "./paste-collapse.js";
-import { type McpServerSummary, handleSlash, parseSlash, suggestSlashCommands } from "./slash.js";
+import {
+  type McpServerSummary,
+  type SlashArgContext,
+  detectSlashArgContext,
+  handleSlash,
+  parseSlash,
+  suggestSlashCommands,
+} from "./slash.js";
 import { TickerProvider, useElapsedSeconds, useTick } from "./ticker.js";
 
 export interface AppProps {
@@ -367,6 +375,65 @@ export function App({
     [atPicker, input],
   );
 
+  // Slash-argument picker. After `/<cmd> <partial>` we surface one of
+  // three states:
+  //   - file picker     → reuses `atFiles` + rankPickerCandidates
+  //   - enum picker     → literal values from spec.argCompleter
+  //   - usage hint only → dim "what goes here?" line
+  // Mutually exclusive with the slash-name picker (those conditions
+  // don't overlap by regex) and with the atMention picker (we don't
+  // run both — slash args take priority inside a slash buffer).
+  const [slashArgSelected, setSlashArgSelected] = useState(0);
+  const slashArgContext = useMemo<SlashArgContext | null>(() => {
+    // Only active inside a slash buffer that's past the name boundary.
+    if (!input.startsWith("/")) return null;
+    if (slashMatches !== null) return null;
+    return detectSlashArgContext(input, !!codeMode);
+  }, [input, slashMatches, codeMode]);
+  const slashArgMatches = useMemo<readonly string[] | null>(() => {
+    if (!slashArgContext || slashArgContext.kind !== "picker") return null;
+    const completer = slashArgContext.spec.argCompleter;
+    if (completer === "file") {
+      return rankPickerCandidates(atFiles, slashArgContext.partial, {
+        limit: 40,
+        recentlyUsed: recentFilesRef.current,
+      });
+    }
+    if (completer === "models") {
+      const all = models ?? [];
+      if (!slashArgContext.partial) return all.slice(0, 40);
+      const needle = slashArgContext.partial.toLowerCase();
+      return all.filter((m) => m.toLowerCase().includes(needle)).slice(0, 40);
+    }
+    if (Array.isArray(completer)) {
+      if (!slashArgContext.partial) return completer.slice();
+      const needle = slashArgContext.partial.toLowerCase();
+      return completer.filter((v) => v.toLowerCase().startsWith(needle));
+    }
+    return null;
+  }, [slashArgContext, atFiles, models]);
+  useEffect(() => {
+    setSlashArgSelected((prev) => {
+      if (!slashArgMatches || slashArgMatches.length === 0) return 0;
+      if (prev >= slashArgMatches.length) return slashArgMatches.length - 1;
+      return prev;
+    });
+  }, [slashArgMatches]);
+  const pickSlashArg = useCallback(
+    (chosen: string) => {
+      if (!slashArgContext) return;
+      const before = input.slice(0, slashArgContext.partialOffset);
+      // File picks end with a space so the user can keep typing the
+      // instruction (for `/edit <file> <instruction>`). Enum picks
+      // (preset / model / plan / branch / harvest) end with nothing
+      // since those commands don't take further args — the user just
+      // presses Enter to run.
+      const trailing = slashArgContext.spec.argCompleter === "file" ? " " : "";
+      setInput(`${before}${chosen}${trailing}`);
+    },
+    [slashArgContext, input],
+  );
+
   const loopRef = useRef<CacheFirstLoop | null>(null);
   // Sink the subagent tool emits live events through (`start` →
   // `progress` → `end`). App attaches its updater on first loop
@@ -629,6 +696,26 @@ export function App({
       }
     }
 
+    // Slash-argument picker. Fires inside `/<cmd> <partial>` — either
+    // a file picker (for /edit), enum picker (for /preset, /model,
+    // /plan, /branch, /harvest), or hint-only row. Navigation + Tab
+    // substitute the highlighted value at the arg's offset.
+    if (slashArgMatches && slashArgMatches.length > 0) {
+      if (key.upArrow) {
+        setSlashArgSelected((i) => Math.max(0, i - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSlashArgSelected((i) => Math.min(slashArgMatches.length - 1, i + 1));
+        return;
+      }
+      if (key.tab) {
+        const sel = slashArgMatches[slashArgSelected] ?? slashArgMatches[0];
+        if (sel) pickSlashArg(sel);
+        return;
+      }
+    }
+
     // Slash-suggestion mode takes priority over history recall.
     // When the user is typing a `/…` prefix and there are matches,
     // ↑/↓ walk the suggestion list and Tab snaps the input to the
@@ -766,6 +853,20 @@ export function App({
         const sel = atMatches[atSelected] ?? atMatches[0];
         if (sel) {
           pickAtMention(sel);
+          return;
+        }
+      }
+
+      // Slash-argument picker intercept — same shape as @-picker. For
+      // file pickers (/edit) we splice + trailing space so the user
+      // keeps typing the instruction. For enum pickers (/preset,
+      // /model, /plan, …) we splice without trailing space; those
+      // commands take no further args, so the user presses Enter a
+      // second time to run.
+      if (slashArgMatches && slashArgMatches.length > 0 && slashArgContext) {
+        const sel = slashArgMatches[slashArgSelected] ?? slashArgMatches[0];
+        if (sel) {
+          pickSlashArg(sel);
           return;
         }
       }
@@ -1325,6 +1426,10 @@ export function App({
       atSelected,
       pickAtMention,
       recordRecentFile,
+      slashArgMatches,
+      slashArgContext,
+      slashArgSelected,
+      pickSlashArg,
       togglePlanMode,
       writeTranscript,
     ],
@@ -1617,6 +1722,15 @@ export function App({
               selectedIndex={atSelected}
               query={atPicker?.query ?? ""}
             />
+            {slashArgContext ? (
+              <SlashArgPicker
+                matches={slashArgMatches}
+                selectedIndex={slashArgSelected}
+                spec={slashArgContext.spec}
+                kind={slashArgContext.kind}
+                partial={slashArgContext.partial}
+              />
+            ) : null}
           </>
         )}
       </Box>

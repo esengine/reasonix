@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SLASH_COMMANDS,
+  detectSlashArgContext,
   handleSlash,
   parseSlash,
   suggestSlashCommands,
@@ -572,6 +573,79 @@ describe("handleSlash", () => {
   it("/help mentions /keys", () => {
     const r = handleSlash("help", [], makeLoop());
     expect(r.info).toMatch(/\/keys/);
+  });
+
+  describe("detectSlashArgContext", () => {
+    it("returns null before the user commits to a slash name", () => {
+      expect(detectSlashArgContext("/ed")).toBeNull();
+      expect(detectSlashArgContext("/edit")).toBeNull();
+    });
+
+    it("returns null when the command doesn't exist", () => {
+      expect(detectSlashArgContext("/nope foo")).toBeNull();
+    });
+
+    it("returns null on plain prose (no slash at all)", () => {
+      expect(detectSlashArgContext("just some text")).toBeNull();
+    });
+
+    it("activates file picker for /edit in code mode", () => {
+      const ctx = detectSlashArgContext("/edit src/lo", true);
+      expect(ctx).not.toBeNull();
+      expect(ctx!.kind).toBe("picker");
+      expect(ctx!.spec.cmd).toBe("edit");
+      expect(ctx!.partial).toBe("src/lo");
+      // Offset is the char index where the partial starts in the buffer.
+      expect(ctx!.partialOffset).toBe("/edit ".length);
+    });
+
+    it("is hidden for /edit outside code mode (command is contextual)", () => {
+      expect(detectSlashArgContext("/edit src/foo", false)).toBeNull();
+    });
+
+    it("activates enum picker for /preset", () => {
+      const ctx = detectSlashArgContext("/preset fa");
+      expect(ctx).not.toBeNull();
+      expect(ctx!.kind).toBe("picker");
+      expect(ctx!.spec.argCompleter).toEqual(["fast", "smart", "max"]);
+      expect(ctx!.partial).toBe("fa");
+    });
+
+    it("activates model picker for /model", () => {
+      const ctx = detectSlashArgContext("/model deep");
+      expect(ctx).not.toBeNull();
+      expect(ctx!.kind).toBe("picker");
+      expect(ctx!.spec.argCompleter).toBe("models");
+    });
+
+    it("activates enum picker for /plan in code mode", () => {
+      const ctx = detectSlashArgContext("/plan o", true);
+      expect(ctx).not.toBeNull();
+      expect(ctx!.kind).toBe("picker");
+      expect(ctx!.spec.argCompleter).toEqual(["on", "off"]);
+    });
+
+    it("surfaces a hint-only row once the user types a space inside the partial", () => {
+      // "/edit src/foo.ts fix" — past the file arg, typing instruction.
+      const ctx = detectSlashArgContext("/edit src/foo.ts fix", true);
+      expect(ctx).not.toBeNull();
+      expect(ctx!.kind).toBe("hint");
+    });
+
+    it("returns picker with empty partial when the user just hit space", () => {
+      const ctx = detectSlashArgContext("/edit ", true);
+      expect(ctx).not.toBeNull();
+      expect(ctx!.kind).toBe("picker");
+      expect(ctx!.partial).toBe("");
+    });
+
+    it("returns hint for commands without a completer", () => {
+      // `/commit "msg"` — free-form argument, no picker data.
+      const ctx = detectSlashArgContext('/commit "', true);
+      expect(ctx).not.toBeNull();
+      expect(ctx!.kind).toBe("hint");
+      expect(ctx!.spec.cmd).toBe("commit");
+    });
   });
 
   it("SLASH_COMMANDS registry contains every handler switch case", () => {

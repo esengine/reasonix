@@ -186,6 +186,18 @@ export interface SlashCommandSpec {
   contextual?: "code";
   /** If the command takes args, hint text shown after the name. */
   argsHint?: string;
+  /**
+   * How the first argument position should autocomplete. Shapes the
+   * picker that appears below the prompt once the user types `/<cmd>`
+   * + space:
+   *   - `"file"`    → file picker (uses the same mtime/recency ranking
+   *                    as the `@` picker; resolves against codeMode.rootDir).
+   *   - `"models"`  → DeepSeek model-id list fetched at startup.
+   *   - `string[]`  → small enum of literal values (e.g. `["on", "off"]`).
+   *   - omitted     → no picker; a persistent usage hint shows the
+   *                    argsHint + summary so the user knows what to type.
+   */
+  argCompleter?: "file" | "models" | readonly string[];
 }
 
 export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
@@ -195,11 +207,27 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     cmd: "preset",
     argsHint: "<fast|smart|max>",
     summary: "one-tap model + harvest + branch bundle",
+    argCompleter: ["fast", "smart", "max"],
   },
-  { cmd: "model", argsHint: "<id>", summary: "switch DeepSeek model id" },
+  {
+    cmd: "model",
+    argsHint: "<id>",
+    summary: "switch DeepSeek model id",
+    argCompleter: "models",
+  },
   { cmd: "models", summary: "list available models fetched from DeepSeek /models" },
-  { cmd: "harvest", argsHint: "[on|off]", summary: "toggle Pillar-2 plan-state extraction" },
-  { cmd: "branch", argsHint: "<N|off>", summary: "run N parallel samples per turn (N>=2)" },
+  {
+    cmd: "harvest",
+    argsHint: "[on|off]",
+    summary: "toggle Pillar-2 plan-state extraction",
+    argCompleter: ["on", "off"],
+  },
+  {
+    cmd: "branch",
+    argsHint: "<N|off>",
+    summary: "run N parallel samples per turn (N>=2)",
+    argCompleter: ["off", "2", "3", "4", "5"],
+  },
   { cmd: "mcp", summary: "list MCP servers + tools attached to this session" },
   { cmd: "tool", argsHint: "[N]", summary: "dump full output of the Nth tool call (1=latest)" },
   {
@@ -250,6 +278,7 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     argsHint: "<file> <instruction>",
     summary: "one-shot surgical edit — inlines <file>, asks model for a SEARCH/REPLACE block",
     contextual: "code",
+    argCompleter: "file",
   },
   { cmd: "apply", summary: "commit pending edit blocks to disk", contextual: "code" },
   { cmd: "discard", summary: "drop pending edit blocks without writing", contextual: "code" },
@@ -265,6 +294,7 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     argsHint: "[on|off]",
     summary: "toggle read-only plan mode (writes bounced until submit_plan + approval)",
     contextual: "code",
+    argCompleter: ["on", "off"],
   },
   {
     cmd: "apply-plan",
@@ -284,6 +314,72 @@ export function suggestSlashCommands(prefix: string, codeMode = false): SlashCom
     if (c.contextual === "code" && !codeMode) return false;
     return c.cmd.startsWith(p);
   });
+}
+
+/**
+ * Shape describing what the prompt buffer is asking for AFTER the
+ * user has committed to a slash command (`/<cmd> `) and started
+ * typing its first argument. Consumed by the TUI to drive an
+ * argument-level picker.
+ */
+export interface SlashArgContext {
+  /** The command spec (looked up by name from SLASH_COMMANDS). */
+  spec: SlashCommandSpec;
+  /** The partial first-argument text, possibly empty. */
+  partial: string;
+  /**
+   * Buffer offset where `partial` begins. Used by the TUI to splice
+   * a picked completion back in at the right position.
+   */
+  partialOffset: number;
+  /**
+   * Classification of what the caller should show:
+   *   - `"picker"` → an interactive picker (file / enum / models). The
+   *     caller uses `spec.argCompleter` to pick the data source and
+   *     filters against `partial`.
+   *   - `"hint"`   → past the completable position (additional args or
+   *     no completer declared). Caller shows a dim usage hint only.
+   */
+  kind: "picker" | "hint";
+}
+
+/**
+ * Classify the prompt buffer for argument completion. Returns `null`
+ * when the buffer isn't in a slash-with-args state.
+ *
+ * Firing shape: input must start with `/<cmd> ` (space after a known
+ * command). The character right after the space through end-of-buffer
+ * is the "arg tail"; if the tail has NO internal whitespace the
+ * picker is live (tail is the partial). If the tail has whitespace,
+ * the user has moved past the first argument position and we surface
+ * the usage hint only.
+ */
+export function detectSlashArgContext(input: string, codeMode = false): SlashArgContext | null {
+  // `/cmd <rest>` — one space, rest captured up to end-of-buffer.
+  const m = /^\/(\S+) ([\s\S]*)$/.exec(input);
+  if (!m) return null;
+  const cmdName = m[1]!.toLowerCase();
+  const tail = m[2] ?? "";
+  const spec = SLASH_COMMANDS.find(
+    (s) => s.cmd === cmdName && (s.contextual !== "code" || codeMode),
+  );
+  if (!spec) return null;
+  const hasInternalSpace = /\s/.test(tail);
+  const partialOffset = input.length - tail.length;
+  if (hasInternalSpace) {
+    // Past the first arg position (typing the second arg for e.g.
+    // `/edit <file> <instruction>`, or mid-sentence for free-form).
+    return { spec, partial: tail, partialOffset, kind: "hint" };
+  }
+  // No internal whitespace — we're still typing the first arg. Picker
+  // is live if the spec declares a completer; otherwise show a hint
+  // ("what goes here?") since the user's guessing.
+  return {
+    spec,
+    partial: tail,
+    partialOffset,
+    kind: spec.argCompleter ? "picker" : "hint",
+  };
 }
 
 export function parseSlash(text: string): { cmd: string; args: string[] } | null {
