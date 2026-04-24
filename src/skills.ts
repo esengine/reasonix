@@ -272,15 +272,22 @@ function parseRunAs(raw: string | undefined): SkillRunAs {
  * Build a single index line for one skill. Shape mirrors memory's
  * `indexLine` — a bullet suitable for a markdown fenced block in the
  * system prompt. Description is truncated to keep the full line under
- * ~150 chars. Subagent-runAs skills carry a 🧬 marker so the model
- * sees at a glance which skills will spawn an isolated child loop.
+ * ~150 chars.
+ *
+ * Subagent-runAs skills carry a `[🧬 subagent]` tag AFTER the name
+ * so the model can't confuse the marker for part of the skill name.
+ * (Historical bug: when the marker led the name — `- 🧬 explore` —
+ * models would call `run_skill({ name: "🧬 explore" })` verbatim
+ * and fail lookup. Wrapping the marker in brackets AFTER the name
+ * eliminates that confusion; `run_skill`'s name arg also strips any
+ * leading non-word chars as a belt-and-suspenders measure.)
  */
 function skillIndexLine(s: Pick<Skill, "name" | "description" | "runAs">): string {
   const safeDesc = s.description.replace(/\n/g, " ").trim();
-  const marker = s.runAs === "subagent" ? "🧬 " : "";
-  const max = 130 - s.name.length - marker.length;
+  const tag = s.runAs === "subagent" ? " [🧬 subagent]" : "";
+  const max = 130 - s.name.length - tag.length;
   const clipped = safeDesc.length > max ? `${safeDesc.slice(0, Math.max(1, max - 1))}…` : safeDesc;
-  return clipped ? `- ${marker}${s.name} — ${clipped}` : `- ${marker}${s.name}`;
+  return clipped ? `- ${s.name}${tag} — ${clipped}` : `- ${s.name}${tag}`;
 }
 
 /**
@@ -309,7 +316,7 @@ export function applySkillsIndex(basePrompt: string, opts: SkillStoreOptions = {
     "",
     "# Skills — playbooks you can invoke",
     "",
-    'One-liner index. Each entry is either a built-in or a user-authored playbook. Call `run_skill({ name: "<skill-name>", arguments: "<task>" })` to invoke one. Skills marked with 🧬 spawn an **isolated subagent** — its tool calls and reasoning never enter your context, only its final answer does. Use 🧬 skills for tasks that would otherwise flood your context (deep exploration, multi-step research, anything where you only need the conclusion). Plain skills are inlined: their body becomes a tool result you read and act on directly. The user can also invoke a skill via `/skill <name>`.',
+    'One-liner index. Each entry is either a built-in or a user-authored playbook. Call `run_skill({ name: "<skill-name>", arguments: "<task>" })` — the `name` is JUST the skill identifier (e.g. `"explore"`), NOT the `[🧬 subagent]` tag that appears after it. Entries tagged `[🧬 subagent]` spawn an **isolated subagent** — its tool calls and reasoning never enter your context, only its final answer does. Use subagent skills for tasks that would otherwise flood your context (deep exploration, multi-step research, anything where you only need the conclusion). Plain skills are inlined: their body becomes a tool result you read and act on directly. The user can also invoke a skill via `/skill <name>`.',
     "",
     "```",
     truncated,

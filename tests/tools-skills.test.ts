@@ -113,6 +113,32 @@ describe("run_skill tool", () => {
     expect(JSON.parse(out).error).toMatch(/requires a 'name'/);
   });
 
+  it("normalizes decorated names (emoji / brackets) to the bare identifier", async () => {
+    // Reproduces the bug where the model copied the `[🧬 subagent]` tag
+    // from the Skills index into the `name` argument verbatim. The
+    // tool strips leading non-word chars + anything past the first
+    // whitespace token, so these all resolve to the same skill.
+    writeSkill(home, "explore", "Look around", "body");
+    const reg = new ToolRegistry();
+    registerSkillTools(reg, { homeDir: home, disableBuiltins: true });
+
+    const cases = [
+      "🧬 explore",
+      "[🧬 subagent] explore",
+      "[🧬] explore",
+      "  explore  ",
+      "explore [🧬 subagent]",
+    ];
+    for (const name of cases) {
+      const out = await reg.dispatch("run_skill", { name });
+      // Inline skills return the body (non-JSON markdown) on success;
+      // an unknown-skill error returns JSON. Presence of the unknown-
+      // skill text in the output is a guaranteed failure marker.
+      expect(out, `case ${JSON.stringify(name)}`).not.toMatch(/unknown skill/i);
+      expect(out, `case ${JSON.stringify(name)}`).toContain("Skill: explore");
+    }
+  });
+
   it("dispatches subagent-runAs skills through subagentRunner", async () => {
     writeSkillWithFrontmatter(
       home,

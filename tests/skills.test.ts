@@ -221,7 +221,7 @@ describe("applySkillsIndex", () => {
     expect(first).toBe(second);
   });
 
-  it("marks subagent-runAs skills with the 🧬 prefix in the index", () => {
+  it("tags subagent-runAs skills AFTER the name in the index (not before)", () => {
     writeSkillDir(
       projectRoot,
       "global",
@@ -239,8 +239,13 @@ describe("applySkillsIndex", () => {
       home,
     );
     const out = applySkillsIndex(BASE, { homeDir: home, projectRoot, disableBuiltins: true });
-    expect(out).toContain("- 🧬 lookup — Look something up");
+    // Name-first, tag-after: prevents the model from copying "🧬 lookup"
+    // as the skill name into `run_skill({ name: ... })`.
+    expect(out).toContain("- lookup [🧬 subagent] — Look something up");
     expect(out).toContain("- fmt — Format the codebase");
+    // Old "🧬 name" format must not regress — there was a user bug where
+    // the model copied the marker verbatim and run_skill failed lookup.
+    expect(out).not.toMatch(/- 🧬 lookup\b/);
     expect(out).not.toContain("- 🧬 fmt");
   });
 });
@@ -341,10 +346,10 @@ describe("Built-in skills", () => {
     expect(store.list()).toEqual([]);
   });
 
-  it("builtins surface with the 🧬 marker in applySkillsIndex", () => {
+  it("builtins surface with the subagent tag after the name in applySkillsIndex", () => {
     const out = applySkillsIndex(BASE, { homeDir: home }); // builtins ON
     expect(out).toContain("# Skills");
-    expect(out).toContain("🧬 explore");
-    expect(out).toContain("🧬 research");
+    expect(out).toContain("explore [🧬 subagent]");
+    expect(out).toContain("research [🧬 subagent]");
   });
 });

@@ -77,7 +77,7 @@ export function registerSkillTools(
   registry.register({
     name: "run_skill",
     description:
-      "Invoke a playbook from the Skills index pinned in the system prompt. Each entry is a self-contained instruction block. Skills marked with 🧬 in the index spawn an isolated subagent — only the final distilled answer comes back, the model's tool calls + reasoning during the run never enter your context. Plain skills are inlined: the body becomes a tool result you read and follow. For 🧬 subagent skills, supply 'arguments' describing the concrete task — they'll be the only context the subagent has.",
+      "Invoke a playbook from the Skills index pinned in the system prompt. Each entry is a self-contained instruction block. Pass `name` as the BARE skill identifier (e.g. 'explore'), NOT the `[🧬 subagent]` tag that appears after it in the index. Entries tagged `[🧬 subagent]` spawn an isolated subagent — only the final distilled answer comes back, the model's tool calls + reasoning during the run never enter your context. Plain skills are inlined: the body becomes a tool result you read and follow. For subagent skills, supply 'arguments' describing the concrete task — they'll be the only context the subagent has.",
     readOnly: true,
     parameters: {
       type: "object",
@@ -90,15 +90,33 @@ export function registerSkillTools(
         arguments: {
           type: "string",
           description:
-            "Free-form arguments the skill should act on. For inline skills: appended to the body as an 'Arguments:' line; the skill's own instructions decide how to consume them. For 🧬 subagent skills: REQUIRED — becomes the entire task description the subagent receives, since it has no other context.",
+            "Free-form arguments the skill should act on. For inline skills: appended to the body as an 'Arguments:' line; the skill's own instructions decide how to consume them. For `[🧬 subagent]` skills: REQUIRED — becomes the entire task description the subagent receives, since it has no other context.",
         },
       },
       required: ["name"],
     },
     fn: async (args: { name?: unknown; arguments?: unknown }) => {
-      const name = typeof args.name === "string" ? args.name.trim() : "";
-      if (!name) {
+      const raw = typeof args.name === "string" ? args.name.trim() : "";
+      if (!raw) {
         return JSON.stringify({ error: "run_skill requires a 'name' argument" });
+      }
+      // Defensive: The Skills index writes entries like
+      // `explore [🧬 subagent]`, and models sometimes copy the
+      // decoration verbatim into the `name` argument instead of just
+      // the identifier. Rather than reject those calls:
+      //   1. Drop any `[...]` bracketed tag (possibly containing
+      //      emoji + "subagent" label).
+      //   2. Find the first whitespace-delimited token whose first
+      //      char is alphanumeric — that's the skill identifier,
+      //      whether the tag came before or after the name.
+      const stripped = raw.replace(/\[[^\]]*\]/g, " ").trim();
+      const tokens = stripped.split(/\s+/).filter(Boolean);
+      const name = tokens.find((t) => /^[a-zA-Z0-9]/.test(t)) ?? "";
+      if (!name) {
+        return JSON.stringify({
+          error: "run_skill requires a 'name' argument",
+          hint: `'${raw}' is just a marker/tag, not a skill name`,
+        });
       }
       const skill = store.read(name);
       if (!skill) {
