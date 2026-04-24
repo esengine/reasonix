@@ -13,10 +13,19 @@ export {
 } from "./loop.js";
 export {
   AT_MENTION_PATTERN,
+  AT_PICKER_PREFIX,
   DEFAULT_AT_MENTION_MAX_BYTES,
+  DEFAULT_PICKER_IGNORE_DIRS,
+  detectAtPicker,
   expandAtMentions,
+  listFilesSync,
+  rankPickerCandidates,
 } from "./at-mentions.js";
-export type { AtMentionExpansion, AtMentionOptions } from "./at-mentions.js";
+export type {
+  AtMentionExpansion,
+  AtMentionOptions,
+  ListFilesOptions,
+} from "./at-mentions.js";
 export type {
   CacheFirstLoopOptions,
   LoopEvent,

@@ -1,7 +1,12 @@
 import type { WriteStream } from "node:fs";
 import { Box, Static, Text, useApp, useInput } from "ink";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { expandAtMentions } from "../../at-mentions.js";
+import {
+  detectAtPicker,
+  expandAtMentions,
+  listFilesSync,
+  rankPickerCandidates,
+} from "../../at-mentions.js";
 import {
   type ApplyResult,
   type EditBlock,
@@ -28,6 +33,7 @@ import {
 import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../transcript.js";
 import { appendUsage } from "../../usage.js";
 import { VERSION, compareVersions, getLatestVersion } from "../../version.js";
+import { AtMentionSuggestions } from "./AtMentionSuggestions.js";
 import { type DisplayEvent, EventRow } from "./EventLog.js";
 import { PlanConfirm, type PlanConfirmChoice } from "./PlanConfirm.js";
 import { PlanRefineInput } from "./PlanRefineInput.js";
@@ -293,6 +299,54 @@ export function App({
     });
   }, [slashMatches]);
 
+  // File picker for `@` mentions — only meaningful in code mode where
+  // the model has filesystem tools and expandAtMentions is active.
+  const [atSelected, setAtSelected] = useState(0);
+  // Walk the code root ONCE on mount. Files created mid-session via
+  // tool edits won't appear until restart — rare, and the user can
+  // always type the full path (picker's a convenience, not a gate).
+  const atFiles = useMemo<readonly string[]>(() => {
+    if (!codeMode?.rootDir) return [];
+    try {
+      return listFilesSync(codeMode.rootDir, { maxResults: 500 });
+    } catch {
+      return [];
+    }
+  }, [codeMode?.rootDir]);
+  // Detect the trailing `@…` prefix and the partial query. `null` when
+  // we're not in picker mode (non-code mode, buffer doesn't end in a
+  // mention-in-progress, or already in slash mode).
+  const atPicker = useMemo(() => {
+    if (!codeMode?.rootDir) return null;
+    // Slash prefix wins — avoids the picker confusingly surfacing on
+    // `/@wat`-style edge inputs.
+    if (slashMatches !== null) return null;
+    return detectAtPicker(input);
+  }, [codeMode?.rootDir, input, slashMatches]);
+  const atMatches = useMemo<readonly string[] | null>(() => {
+    if (!atPicker) return null;
+    return rankPickerCandidates(atFiles, atPicker.query, 40);
+  }, [atPicker, atFiles]);
+  useEffect(() => {
+    setAtSelected((prev) => {
+      if (!atMatches || atMatches.length === 0) return 0;
+      if (prev >= atMatches.length) return atMatches.length - 1;
+      return prev;
+    });
+  }, [atMatches]);
+  // Substitute the trailing `@partial` with `@chosenPath ` and keep
+  // the rest of the buffer intact. The trailing space auto-closes
+  // the picker (regex no longer matches) so Enter next time submits
+  // cleanly without needing an explicit dismissal.
+  const pickAtMention = useCallback(
+    (chosenPath: string) => {
+      if (!atPicker) return;
+      const before = input.slice(0, atPicker.atOffset);
+      setInput(`${before}@${chosenPath} `);
+    },
+    [atPicker, input],
+  );
+
   const loopRef = useRef<CacheFirstLoop | null>(null);
   // Sink the subagent tool emits live events through (`start` →
   // `progress` → `end`). App attaches its updater on first loop
@@ -533,6 +587,28 @@ export function App({
     // (hidden) prompt buffer. Bail early.
     if (pendingShell) return;
 
+    // @-mention picker takes the same priority tier as slash. When
+    // the user is typing `@…` in code mode and there are file matches,
+    // ↑/↓ walk the list and Tab substitutes the selected path. Enter
+    // is caught in handleSubmit. Must come BEFORE slash so the two
+    // pickers don't fight over arrow keys (mutually exclusive by
+    // construction — atPicker is null when slashMatches is set).
+    if (atMatches && atMatches.length > 0) {
+      if (key.upArrow) {
+        setAtSelected((i) => Math.max(0, i - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setAtSelected((i) => Math.min(atMatches.length - 1, i + 1));
+        return;
+      }
+      if (key.tab) {
+        const sel = atMatches[atSelected] ?? atMatches[0];
+        if (sel) pickAtMention(sel);
+        return;
+      }
+    }
+
     // Slash-suggestion mode takes priority over history recall.
     // When the user is typing a `/…` prefix and there are matches,
     // ↑/↓ walk the suggestion list and Tab snaps the input to the
@@ -659,6 +735,20 @@ export function App({
     async (raw: string) => {
       let text = raw.trim();
       if (!text || busy) return;
+
+      // @-mention picker intercept. When the picker is open (trailing
+      // `@…` with file matches), Enter substitutes the highlighted
+      // path INTO the buffer and does NOT submit — the user almost
+      // always types more after a mention ("look at @file.ts and…").
+      // Substituting adds a trailing space which dismisses the picker,
+      // so the next Enter submits normally.
+      if (atMatches && atMatches.length > 0 && atPicker) {
+        const sel = atMatches[atSelected] ?? atMatches[0];
+        if (sel) {
+          pickAtMention(sel);
+          return;
+        }
+      }
 
       // Slash auto-complete on Enter. When the user typed a prefix
       // (e.g. "/he") and the suggestion list is visible, substitute
@@ -1121,6 +1211,10 @@ export function App({
       planMode,
       session,
       slashSelected,
+      atMatches,
+      atPicker,
+      atSelected,
+      pickAtMention,
       togglePlanMode,
       writeTranscript,
     ],
@@ -1408,6 +1502,11 @@ export function App({
               disabled={busy}
             />
             <SlashSuggestions matches={slashMatches} selectedIndex={slashSelected} />
+            <AtMentionSuggestions
+              matches={atMatches}
+              selectedIndex={atSelected}
+              query={atPicker?.query ?? ""}
+            />
           </>
         )}
       </Box>

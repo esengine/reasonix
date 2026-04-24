@@ -19,11 +19,151 @@
  * appended instead of content so the user sees why it was skipped.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { isAbsolute, relative, resolve } from "node:path";
+import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 /** Caps match tool-result dispatch truncation (0.5.2). */
 export const DEFAULT_AT_MENTION_MAX_BYTES = 64 * 1024;
+
+/**
+ * Default directory names skipped when listing files for the picker.
+ * Matches what most repos gitignore AND keeps the picker off the
+ * hottest bloat — `node_modules` alone can be 100k+ entries.
+ */
+export const DEFAULT_PICKER_IGNORE_DIRS: readonly string[] = [
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  "out",
+  "coverage",
+  ".cache",
+  ".vscode",
+  ".idea",
+  "target",
+  ".venv",
+  "venv",
+  "__pycache__",
+];
+
+export interface ListFilesOptions {
+  /** Cap the walk once we've collected this many entries. Default 500. */
+  maxResults?: number;
+  /** Directory names to skip entirely. Defaults to {@link DEFAULT_PICKER_IGNORE_DIRS}. */
+  ignoreDirs?: readonly string[];
+}
+
+/**
+ * Walk `root` recursively and return relative file paths (forward-slash
+ * separator, regardless of platform) for the `@` picker.
+ *
+ * Synchronous on purpose: this runs once at App mount (and on each turn
+ * so newly-created files show up) and blocks the render thread for a
+ * predictable ~10-50ms on a moderate repo. An async variant would need
+ * to coordinate with the Ink render loop; sync fits the rest of the
+ * TUI's single-turn-per-tick model cleanly.
+ *
+ * Skips:
+ *   - directories in `ignoreDirs` (default: DEFAULT_PICKER_IGNORE_DIRS)
+ *   - any directory whose name starts with `.` (covers `.git`,
+ *     `.vscode`, dotfile vendors). Dotfile REGULAR FILES (`.env`,
+ *     `.gitignore`, `.prettierrc`) are kept — users reference them.
+ *   - entries the walker can't read (permission errors, broken links).
+ */
+export function listFilesSync(root: string, opts: ListFilesOptions = {}): string[] {
+  const maxResults = Math.max(1, opts.maxResults ?? 500);
+  const ignore = new Set(opts.ignoreDirs ?? DEFAULT_PICKER_IGNORE_DIRS);
+  const rootAbs = resolve(root);
+  const out: string[] = [];
+
+  const walk = (dirAbs: string, dirRel: string) => {
+    if (out.length >= maxResults) return;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dirAbs, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const ent of entries) {
+      if (out.length >= maxResults) return;
+      const relPath = dirRel ? `${dirRel}/${ent.name}` : ent.name;
+      if (ent.isDirectory()) {
+        // Skip dot-dirs (.git, .vscode, .idea…) and the explicit ignore
+        // list. Users who want to @-reference a file inside a dot-dir
+        // can type the full path — picker just doesn't surface them.
+        if (ent.name.startsWith(".") || ignore.has(ent.name)) continue;
+        walk(join(dirAbs, ent.name), relPath);
+      } else if (ent.isFile()) {
+        out.push(relPath);
+      }
+    }
+  };
+
+  walk(rootAbs, "");
+  return out;
+}
+
+/**
+ * Prefix pattern used by the `@` picker to detect an IN-PROGRESS
+ * mention at the END of the input buffer. Captures the partial path
+ * (which may be empty — just `@`) so the picker can use it as a
+ * substring filter.
+ *
+ * Distinct from {@link AT_MENTION_PATTERN} (which finds completed
+ * mentions anywhere in the text for expansion-at-submit). This one
+ * fires on the trailing token only, anchored at end-of-input.
+ */
+export const AT_PICKER_PREFIX = /(?:^|\s)@([a-zA-Z0-9_./\\-]*)$/;
+
+/**
+ * Return the picker state for a given input buffer: the partial query
+ * (may be empty string — just `@`) and the buffer offset of the `@`
+ * character. `null` when the buffer doesn't end in a mention-in-
+ * progress.
+ */
+export function detectAtPicker(input: string): { query: string; atOffset: number } | null {
+  const m = AT_PICKER_PREFIX.exec(input);
+  if (!m) return null;
+  const query = m[1] ?? "";
+  // `m.index` is the offset of the capture group's SURROUNDING match —
+  // which starts at either ^ or the preceding whitespace. The `@`
+  // itself is at `end-of-input - query.length - 1`.
+  const atOffset = input.length - query.length - 1;
+  return { query, atOffset };
+}
+
+/**
+ * Filter and rank candidate files against the picker's partial query.
+ * Empty query → return the first `limit` candidates as-is (alpha).
+ * Non-empty query → case-insensitive substring match, with a modest
+ * boost for basename-starts-with matches so `src/l` still puts
+ * `loop.ts`-shaped paths near the top.
+ */
+export function rankPickerCandidates(
+  files: readonly string[],
+  query: string,
+  limit = 40,
+): string[] {
+  if (!query) return files.slice(0, limit);
+  const needle = query.toLowerCase();
+  const scored: Array<{ path: string; score: number }> = [];
+  for (const f of files) {
+    const lower = f.toLowerCase();
+    const hit = lower.indexOf(needle);
+    if (hit < 0) continue;
+    // Rank: basename prefix < path prefix < substring. Lower score = better.
+    const slash = lower.lastIndexOf("/");
+    const base = slash >= 0 ? lower.slice(slash + 1) : lower;
+    let score = 2;
+    if (base.startsWith(needle)) score = 0;
+    else if (lower.startsWith(needle)) score = 1;
+    scored.push({ path: f, score: score * 10_000 + hit });
+  }
+  scored.sort((a, b) => a.score - b.score);
+  return scored.slice(0, limit).map((s) => s.path);
+}
 
 /**
  * Matches `@` at a word boundary (start-of-string or preceded by
