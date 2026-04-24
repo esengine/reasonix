@@ -1511,22 +1511,70 @@ export function healLoadedMessagesByTokens(
 }
 
 /**
- * Annotate the `DeepSeek 400: … maximum context length …` error the API
- * returns when a session's history has grown past 131,072 tokens. The
- * raw message is a JSON blob; we surface a short actionable hint on top
- * so the user knows to `/forget` or `/clear` rather than parsing the
- * JSON themselves. Other errors pass through unchanged — the loop's
- * error channel already formats them well enough.
+ * Turn raw `DeepSeek NNN: {json}` errors into short actionable hints.
+ * Client code throws these verbatim from the HTTP layer (see client.ts);
+ * this is the one place the UI text layer reads to decide what the user
+ * actually needs to do about it.
+ *
+ * Covered codes (per DeepSeek's error-code doc):
+ *   - 400 + "maximum context length" → context-overflow, point at /forget
+ *   - 400 generic → strip the JSON, show inner message
+ *   - 401 → API key rejected, point at `reasonix setup`
+ *   - 402 → balance depleted, link to top-up page
+ *   - 422 → param error, show inner message (usually explains which field)
+ *
+ * 429/500/502/503/504 are swallowed by retry.ts before they reach here;
+ * if they DO reach here (all retries exhausted), the raw string already
+ * says "DeepSeek 503: server busy" etc. which is informative enough.
  */
 export function formatLoopError(err: Error): string {
   const msg = err.message ?? "";
   if (msg.includes("maximum context length")) {
-    // Pull the "requested X tokens" figure out of the JSON for scale.
     const reqMatch = msg.match(/requested\s+(\d+)\s+tokens/);
     const requested = reqMatch
       ? `${Number(reqMatch[1]).toLocaleString()} tokens`
       : "too many tokens";
-    return `Context overflow (DeepSeek 400): session history is ${requested}, past the 131,072-token limit. Usually this means a single tool call returned a huge payload. v0.3.0-alpha.6+ caps new tool results at 32k chars, AND auto-heals oversized history on session load — restart Reasonix and this session should come back trimmed. If it still overflows, run /forget (delete the session) or /clear (drop the displayed history) to start fresh.`;
+    return `Context overflow (DeepSeek 400): session history is ${requested}, past the model's prompt limit (V4: 1M tokens; legacy chat/reasoner: 131k). Usually a single tool result grew too big. Reasonix caps new tool results at 8k tokens and auto-heals oversized history on session load — a restart often clears it. If it still overflows, run /forget (delete the session) or /clear (drop the displayed history) to start fresh.`;
+  }
+
+  const m = /^DeepSeek (\d{3}):\s*([\s\S]*)$/.exec(msg);
+  if (!m) return msg;
+  const status = m[1] ?? "";
+  const body = m[2] ?? "";
+  const inner = extractDeepSeekErrorMessage(body);
+
+  if (status === "401") {
+    return `Authentication failed (DeepSeek 401): ${inner}. Your API key is rejected. Fix with \`reasonix setup\` or \`export DEEPSEEK_API_KEY=sk-...\`. Get one at https://platform.deepseek.com/api_keys.`;
+  }
+  if (status === "402") {
+    return `Out of balance (DeepSeek 402): ${inner}. Top up at https://platform.deepseek.com/top_up — the panel header shows your balance once it's non-zero.`;
+  }
+  if (status === "422") {
+    return `Invalid parameter (DeepSeek 422): ${inner}`;
+  }
+  if (status === "400") {
+    return `Bad request (DeepSeek 400): ${inner}`;
   }
   return msg;
+}
+
+/**
+ * Pull the human-readable message out of a DeepSeek error response body
+ * (`{"error":{"message":"..."}}`). Falls back to the raw body when
+ * parsing fails — anything is better than eating the clue entirely.
+ */
+function extractDeepSeekErrorMessage(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return "(no message)";
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as { error?: { message?: unknown }; message?: unknown };
+      if (obj.error && typeof obj.error.message === "string") return obj.error.message;
+      if (typeof obj.message === "string") return obj.message;
+    }
+  } catch {
+    /* not JSON — fall through */
+  }
+  return trimmed;
 }

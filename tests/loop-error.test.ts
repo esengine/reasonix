@@ -21,9 +21,48 @@ describe("formatLoopError", () => {
     expect(out).toMatch(/929,452 tokens/); // pretty-printed from the raw JSON
   });
 
-  it("leaves non-overflow errors unchanged", () => {
-    const raw = new Error("DeepSeek 401: invalid api key");
-    expect(formatLoopError(raw)).toBe("DeepSeek 401: invalid api key");
+  it("401 → authentication hint with setup/env var fix", () => {
+    const raw = new Error(
+      'DeepSeek 401: {"error":{"message":"Authentication Fails, Your api key is invalid"}}',
+    );
+    const out = formatLoopError(raw);
+    expect(out).toMatch(/Authentication failed/);
+    expect(out).toMatch(/reasonix setup/);
+    expect(out).toMatch(/DEEPSEEK_API_KEY/);
+    // Inner error.message survives the unwrap
+    expect(out).toContain("Your api key is invalid");
+  });
+
+  it("402 → balance hint with top-up URL", () => {
+    const raw = new Error('DeepSeek 402: {"error":{"message":"Insufficient Balance"}}');
+    const out = formatLoopError(raw);
+    expect(out).toMatch(/Out of balance/);
+    expect(out).toMatch(/top_up/);
+    expect(out).toContain("Insufficient Balance");
+  });
+
+  it("422 → invalid parameter with the server's reason", () => {
+    const raw = new Error(
+      'DeepSeek 422: {"error":{"message":"Invalid value for `temperature`: must be between 0 and 2"}}',
+    );
+    const out = formatLoopError(raw);
+    expect(out).toMatch(/Invalid parameter/);
+    expect(out).toContain("temperature");
+  });
+
+  it("400 (non-overflow) → extracts the inner error message, drops the JSON wrapping", () => {
+    const raw = new Error(
+      'DeepSeek 400: {"error":{"message":"request body malformed at messages[3].role"}}',
+    );
+    const out = formatLoopError(raw);
+    expect(out).toMatch(/Bad request/);
+    expect(out).toContain("messages[3].role");
+    expect(out).not.toContain("{"); // JSON wrapping is gone
+  });
+
+  it("leaves non-DeepSeek-shaped errors untouched", () => {
+    const raw = new Error("socket hang up");
+    expect(formatLoopError(raw)).toBe("socket hang up");
   });
 
   it("tolerates an overflow error without a requested-tokens figure", () => {
@@ -31,6 +70,22 @@ describe("formatLoopError", () => {
     const out = formatLoopError(raw);
     expect(out).toMatch(/Context overflow/);
     expect(out).toMatch(/too many tokens/);
+  });
+
+  it("context-overflow message mentions both the 1M V4 limit and the legacy 131k", () => {
+    const raw = new Error(
+      'DeepSeek 400: {"error":{"message":"This model\'s maximum context length is 131072 tokens. However, you requested 200000 tokens."}}',
+    );
+    const out = formatLoopError(raw);
+    expect(out).toMatch(/1M/);
+    expect(out).toMatch(/131k/);
+  });
+
+  it("tolerates an empty or malformed JSON body on the error payload", () => {
+    const raw = new Error("DeepSeek 500: ");
+    const out = formatLoopError(raw);
+    // 500 isn't in the remapped set, so it passes through as-is
+    expect(out).toBe("DeepSeek 500: ");
   });
 });
 
