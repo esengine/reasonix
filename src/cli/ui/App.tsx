@@ -7,6 +7,7 @@ import {
   listFilesSync,
   rankPickerCandidates,
 } from "../../at-mentions.js";
+import { formatAllBlockDiffs } from "../../code/diff-preview.js";
 import {
   type ApplyResult,
   type EditBlock,
@@ -1769,24 +1770,16 @@ function formatEditResults(results: ApplyResult[]): string {
 
 /**
  * Pending-edits preview shown after each assistant turn that proposed
- * changes. We keep it deliberately thin — path + approximate
- * ±line-count — because a full diff would crowd the TUI and the user
- * can always run `git diff` after /apply.
+ * changes. Per-block path header + ±line-count, then a unified-diff-
+ * style preview (context trimmed to 2 lines each side, total capped
+ * at 20 lines per block). Users can eyeball what's about to land
+ * BEFORE pressing `y` — the old summary-only view was a common
+ * mistake surface.
  */
 function formatPendingPreview(blocks: EditBlock[]): string {
-  const lines = blocks.map((b) => {
-    const removed = b.search === "" ? 0 : countLines(b.search);
-    const added = countLines(b.replace);
-    const tag = b.search === "" ? "NEW " : "    ";
-    return `  ${tag}${b.path}  (-${removed} +${added} lines)`;
-  });
   const header = `▸ ${blocks.length} pending edit block(s) — /apply (or y) to commit · /discard (or n) to drop`;
-  return [header, ...lines].join("\n");
-}
-
-function countLines(s: string): number {
-  if (s.length === 0) return 0;
-  return (s.match(/\n/g)?.length ?? 0) + 1;
+  const diffLines = formatAllBlockDiffs(blocks);
+  return [header, ...diffLines].join("\n");
 }
 
 function formatUndoResults(results: ApplyResult[]): string {
