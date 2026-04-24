@@ -226,29 +226,43 @@ describe("handleSlash", () => {
     loop.log.append({ role: "tool", tool_call_id: "t1", content: "short result" });
     const r = handleSlash("compact", [], loop);
     expect(r.info).toMatch(/nothing to compact/);
+    expect(r.info).toMatch(/tokens/);
   });
 
-  it("/compact shrinks oversized tool results and reports chars saved", () => {
+  it("/compact shrinks oversized tool results and reports tokens saved", () => {
     const loop = makeLoop();
     loop.log.append({ role: "user", content: "read a big file" });
-    loop.log.append({ role: "tool", tool_call_id: "t1", content: "Z".repeat(20_000) });
+    // Realistic log-shape content — avoids the BPE O(n²) pathological
+    // path on pure-repeat inputs while still tokenizing well over the
+    // default 4000-token cap.
+    loop.log.append({
+      role: "tool",
+      tool_call_id: "t1",
+      content: "ERROR: line failed with detail and context\n".repeat(2000),
+    });
     const r = handleSlash("compact", [], loop);
     expect(r.info).toMatch(/compacted 1 tool result/);
-    expect(r.info).toMatch(/saved/);
-    // After compaction the tool message length should be below the default 4k cap + envelope.
+    expect(r.info).toMatch(/saved [\d,]+ tokens/);
+    // After compaction the tool content should be much smaller than
+    // the original 84KB, comfortably under the cap's char worst-case.
     const toolEntry = loop.log.entries.find((m) => m.role === "tool");
     expect(typeof toolEntry?.content).toBe("string");
-    expect((toolEntry?.content as string).length).toBeLessThan(5_000);
+    expect((toolEntry?.content as string).length).toBeLessThan(20_000);
   });
 
-  it("/compact honors a custom cap argument", () => {
+  it("/compact honors a custom token cap argument", () => {
     const loop = makeLoop();
-    loop.log.append({ role: "tool", tool_call_id: "t1", content: "A".repeat(10_000) });
-    // 2000-char cap should shrink the 10k message
-    const r = handleSlash("compact", ["2000"], loop);
+    loop.log.append({
+      role: "tool",
+      tool_call_id: "t1",
+      content: "INFO: event ok\n".repeat(1500),
+    });
+    // 500-token cap should shrink the message hard.
+    const r = handleSlash("compact", ["500"], loop);
     expect(r.info).toMatch(/compacted 1/);
+    expect(r.info).toMatch(/500 tokens each/);
     const toolEntry = loop.log.entries.find((m) => m.role === "tool");
-    expect((toolEntry?.content as string).length).toBeLessThan(2_500);
+    expect((toolEntry?.content as string).length).toBeLessThan(3_000);
   });
 
   it("/help mentions /compact", () => {

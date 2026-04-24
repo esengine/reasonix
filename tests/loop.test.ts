@@ -470,11 +470,13 @@ describe("CacheFirstLoop (non-streaming)", () => {
       maxToolIters: 64,
     });
     // Put a big tool message into the log so compact has work to do.
+    // Realistic log-line content (not "Z".repeat(N)) to avoid the
+    // tokenizer's BPE O(n²) pathological path on pure-repeat inputs.
     loop.log.append({ role: "user", content: "do stuff" });
     loop.log.append({
       role: "tool",
       tool_call_id: "prior",
-      content: "Z".repeat(60_000),
+      content: "ERROR: something went wrong in module X at step Y\n".repeat(2000),
     });
 
     const events: { role: string; forcedSummary?: boolean; content?: string }[] = [];
@@ -525,13 +527,14 @@ describe("CacheFirstLoop (non-streaming)", () => {
       stream: false,
       maxToolIters: 64,
     });
-    // Seed an oversized tool result (>16k cap) so proactive compact has
-    // work to do. Anything under 16k would be a no-op and skip the warning.
+    // Seed an oversized tool result (>4k tokens, the proactive cap)
+    // so proactive compact has work to do. Using realistic log-line
+    // content to avoid the tokenizer's BPE O(n²) pathological path.
     loop.log.append({ role: "user", content: "prior" });
     loop.log.append({
       role: "tool",
       tool_call_id: "prior",
-      content: "Z".repeat(40_000),
+      content: "INFO: step completed with some trailing detail\n".repeat(1500),
     });
 
     const events: { role: string; content?: string; forcedSummary?: boolean }[] = [];
@@ -543,7 +546,7 @@ describe("CacheFirstLoop (non-streaming)", () => {
       (e) => e.role === "warning" && /proactively compacted/.test(e.content ?? ""),
     );
     expect(proactive).toBeDefined();
-    expect(proactive!.content).toMatch(/16k/);
+    expect(proactive!.content).toMatch(/4k tokens/);
     // 60%-80% band must NOT force a summary (that's the 80% reactive path).
     const finals = events.filter((e) => e.role === "assistant_final");
     expect(finals[finals.length - 1]!.forcedSummary).toBeFalsy();

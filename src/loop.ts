@@ -17,6 +17,7 @@ import {
   DEFAULT_MAX_RESULT_CHARS,
   DEFAULT_MAX_RESULT_TOKENS,
   truncateForModel,
+  truncateForModelByTokens,
 } from "./mcp/registry.js";
 import { AppendOnlyLog, type ImmutablePrefix, VolatileScratch } from "./memory.js";
 import { type RepairReport, ToolCallRepair } from "./repair/index.js";
@@ -27,6 +28,7 @@ import {
   SessionStats,
   type TurnStats,
 } from "./telemetry.js";
+import { countTokens } from "./tokenizer.js";
 import { ToolRegistry } from "./tools.js";
 import type { ChatMessage, ToolCall } from "./types.js";
 
@@ -299,28 +301,36 @@ export class CacheFirstLoop {
 
   /**
    * Shrink the log by re-truncating oversized tool results to a tighter
-   * cap, and persist the result back to disk so the next launch doesn't
-   * re-inherit a fat session file. Returns a summary the TUI can
-   * display.
+   * token cap, and persist the result back to disk so the next launch
+   * doesn't re-inherit a fat session file. Returns a summary the TUI
+   * can display.
+   *
+   * The cap is in DeepSeek V3 tokens (not chars) — so CJK text gets
+   * capped at the same effective context footprint as English instead
+   * of slipping past a char cap at 2× the token cost. Default 4000
+   * tokens, matching the token-aware dispatch cap from 0.5.2.
    *
    * Only tool-role messages are touched (same rationale as
    * {@link healLoadedMessages}). User and assistant messages carry
    * authored intent we can't mechanically shrink without losing
    * meaning.
    */
-  compact(tightCapChars = 4000): { healedCount: number; charsSaved: number } {
+  compact(maxTokens = 4000): {
+    healedCount: number;
+    tokensSaved: number;
+    charsSaved: number;
+  } {
     const before = this.log.toMessages();
-    // Use `shrinkOversizedToolResults` (not `healLoadedMessages`) — the
-    // full heal would also strip a dangling `assistant.tool_calls` tail,
-    // which during an active turn is legitimate state we still need
-    // (tools haven't been dispatched yet). Structural healing is only
-    // appropriate at session LOAD; mid-session `/compact` is strictly
-    // about shrinking oversized tool payloads.
-    const { messages, healedCount, healedFrom } = shrinkOversizedToolResults(before, tightCapChars);
-    const afterBytes = messages
-      .filter((m) => m.role === "tool")
-      .reduce((s, m) => s + (typeof m.content === "string" ? m.content.length : 0), 0);
-    const charsSaved = healedFrom - afterBytes;
+    // Use `shrinkOversizedToolResultsByTokens` (not `healLoadedMessages`)
+    // — the full heal would also strip a dangling `assistant.tool_calls`
+    // tail, which during an active turn is legitimate state we still
+    // need (tools haven't been dispatched yet). Structural healing is
+    // only appropriate at session LOAD; mid-session `/compact` is
+    // strictly about shrinking oversized tool payloads.
+    const { messages, healedCount, tokensSaved, charsSaved } = shrinkOversizedToolResultsByTokens(
+      before,
+      maxTokens,
+    );
     if (healedCount > 0) {
       this.log.compactInPlace(messages);
       if (this.sessionName) {
@@ -331,7 +341,7 @@ export class CacheFirstLoop {
         }
       }
     }
-    return { healedCount, charsSaved };
+    return { healedCount, tokensSaved, charsSaved };
   }
 
   private appendAndPersist(message: ChatMessage): void {
@@ -831,42 +841,37 @@ export class CacheFirstLoop {
       //      not what we intended to do next.
       const ctxMax = DEEPSEEK_CONTEXT_TOKENS[this.model] ?? DEFAULT_CONTEXT_TOKENS;
       // Proactive tier: between 60% and 80%, pre-shrink oversized tool
-      // results to a moderate cap (16k chars ≈ 4k tokens) so the next
-      // iter doesn't slam straight into the 80% reactive path — which
-      // shrinks far more aggressively (4k cap) and risks losing useful
-      // tail info from prior results. This catches the slow-growth
-      // pattern (lots of medium-sized reads) before it compounds.
+      // results to a moderate cap (4k tokens) so the next iter doesn't
+      // slam straight into the 80% reactive path — which shrinks far
+      // more aggressively (1k tokens) and risks losing useful tail
+      // info. This catches the slow-growth pattern (lots of medium
+      // reads) before it compounds.
       if (usage) {
         const ratio = usage.promptTokens / ctxMax;
         if (ratio > 0.6 && ratio <= 0.8) {
           const before = usage.promptTokens;
-          const soft = this.compact(16_000);
+          const soft = this.compact(4_000);
           if (soft.healedCount > 0) {
-            const approxSaved = Math.round(soft.charsSaved / 4);
-            const after = Math.max(0, before - approxSaved);
+            const after = Math.max(0, before - soft.tokensSaved);
             yield {
               turn: this._turn,
               role: "warning",
               content: `context ${before.toLocaleString()}/${ctxMax.toLocaleString()} (${Math.round(
                 ratio * 100,
-              )}%) — proactively compacted ${soft.healedCount} tool result(s) to 16k, saved ~${approxSaved.toLocaleString()} tokens (now ~${after.toLocaleString()}). Staying ahead of the 80% guard.`,
+              )}%) — proactively compacted ${soft.healedCount} tool result(s) to 4k tokens, saved ${soft.tokensSaved.toLocaleString()} tokens (now ~${after.toLocaleString()}). Staying ahead of the 80% guard.`,
             };
           }
         }
       }
       if (usage && usage.promptTokens / ctxMax > 0.8) {
         const before = usage.promptTokens;
-        const compactResult = this.compact(4000);
+        const compactResult = this.compact(1_000);
         if (compactResult.healedCount > 0) {
-          // Rough estimate: 4 chars per token. Good enough to decide
-          // whether compaction pushed us back under the threshold; the
-          // exact number comes back from the NEXT API response's usage.
-          const approxSaved = Math.round(compactResult.charsSaved / 4);
-          const after = before - approxSaved;
+          const after = Math.max(0, before - compactResult.tokensSaved);
           yield {
             turn: this._turn,
             role: "warning",
-            content: `context ${before.toLocaleString()}/${ctxMax.toLocaleString()} — auto-compacted ${compactResult.healedCount} oversized tool result(s), saved ~${approxSaved.toLocaleString()} tokens (now ~${after.toLocaleString()}). Continuing.`,
+            content: `context ${before.toLocaleString()}/${ctxMax.toLocaleString()} — auto-compacted ${compactResult.healedCount} oversized tool result(s), saved ${compactResult.tokensSaved.toLocaleString()} tokens (now ~${after.toLocaleString()}). Continuing.`,
           };
           // Intentionally don't re-check the threshold here: even if
           // compaction didn't fully clear us under 80%, one more tool
@@ -1167,6 +1172,49 @@ export function shrinkOversizedToolResults(
     return { ...msg, content: truncateForModel(content, maxChars) };
   });
   return { messages: out, healedCount, healedFrom };
+}
+
+/**
+ * Token-aware variant of `shrinkOversizedToolResults`. Used by live
+ * `/compact` and auto-compact so the shrink cap bounds the REAL
+ * context footprint (CJK at 1 char/token would otherwise survive a
+ * char cap at 2× the intended token cost). Session-load heal still
+ * uses the char version for backward-compat on stored session files.
+ *
+ * Per-message token accounting: we tokenize each shrink candidate
+ * twice (before + after) so `tokensSaved` is exact. At typical log
+ * sizes (≤20 tool results) this is bounded; at pathological sizes
+ * the `truncateForModelByTokens` call internally never tokenizes the
+ * full input, so worst-case stays bounded too.
+ */
+export function shrinkOversizedToolResultsByTokens(
+  messages: ChatMessage[],
+  maxTokens: number,
+): {
+  messages: ChatMessage[];
+  healedCount: number;
+  tokensSaved: number;
+  charsSaved: number;
+} {
+  let healedCount = 0;
+  let tokensSaved = 0;
+  let charsSaved = 0;
+  const out = messages.map((msg) => {
+    if (msg.role !== "tool") return msg;
+    const content = typeof msg.content === "string" ? msg.content : "";
+    // Fast path: length ≤ maxTokens ⇒ tokens ≤ maxTokens (every token
+    // is ≥1 char). Skip the per-message tokenize for small results.
+    if (content.length <= maxTokens) return msg;
+    const beforeTokens = countTokens(content);
+    if (beforeTokens <= maxTokens) return msg;
+    const truncated = truncateForModelByTokens(content, maxTokens);
+    const afterTokens = countTokens(truncated);
+    healedCount += 1;
+    tokensSaved += Math.max(0, beforeTokens - afterTokens);
+    charsSaved += Math.max(0, content.length - truncated.length);
+    return { ...msg, content: truncated };
+  });
+  return { messages: out, healedCount, tokensSaved, charsSaved };
 }
 
 export function healLoadedMessages(

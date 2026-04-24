@@ -232,7 +232,11 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     summary: "break down where context tokens are going: system / tools / per-turn log",
   },
   { cmd: "retry", summary: "truncate & resend your last message (fresh sample)" },
-  { cmd: "compact", argsHint: "[cap]", summary: "shrink oversized tool results in the log" },
+  {
+    cmd: "compact",
+    argsHint: "[tokens]",
+    summary: "shrink oversized tool results in the log (cap in tokens, default 4000)",
+  },
   { cmd: "sessions", summary: "list saved sessions (current marked with ▸)" },
   { cmd: "forget", summary: "delete the current session from disk" },
   { cmd: "setup", summary: "reminds you to exit and run `reasonix setup`" },
@@ -325,7 +329,7 @@ export function handleSlash(
           "  /branch <N|off>          run N parallel samples (N>=2), pick most confident",
           "  /mcp                     list MCP servers + tools attached to this session",
           "  /setup                   (exit + reconfigure) → run `reasonix setup`",
-          "  /compact [cap]           shrink large tool results in history (default 4k/result)",
+          "  /compact [tokens]        shrink large tool results in history (default 4000 tokens/result)",
           "  /think                   dump the most recent turn's full R1 reasoning (reasoner only)",
           "  /tool [N]                list tool calls (or dump full output of #N, 1=most recent)",
           "  /memory [sub]            show pinned memory (REASONIX.md + ~/.reasonix/memory).",
@@ -585,21 +589,22 @@ export function handleSlash(
     }
 
     case "compact": {
-      // Manual companion to the automatic heal-on-load. Re-applies
-      // truncation with a tighter cap (4k chars per tool result) and
-      // rewrites the session file so the shrink persists. Useful when
-      // the ctx gauge in StatsPanel goes yellow/red mid-session and
-      // the user wants to keep chatting without /forget'ing everything.
+      // Manual companion to the automatic 60%/80% auto-compact. Re-
+      // applies token-aware truncation with a tighter cap (default 4000
+      // tokens per tool result) and rewrites the session file so the
+      // shrink persists. Useful when the ctx gauge in StatsPanel goes
+      // yellow/red mid-session and the user wants to keep chatting
+      // without /forget'ing everything.
       const tight = Number.parseInt(args[0] ?? "", 10);
-      const cap = Number.isFinite(tight) && tight >= 500 ? tight : 4000;
-      const { healedCount, charsSaved } = loop.compact(cap);
+      const cap = Number.isFinite(tight) && tight >= 100 ? tight : 4000;
+      const { healedCount, tokensSaved, charsSaved } = loop.compact(cap);
       if (healedCount === 0) {
         return {
-          info: `▸ nothing to compact — no tool result in history exceeds ${cap.toLocaleString()} chars.`,
+          info: `▸ nothing to compact — no tool result in history exceeds ${cap.toLocaleString()} tokens.`,
         };
       }
       return {
-        info: `▸ compacted ${healedCount} tool result(s), saved ${charsSaved.toLocaleString()} chars (~${Math.round(charsSaved / 4).toLocaleString()} tokens). Session file rewritten.`,
+        info: `▸ compacted ${healedCount} tool result(s) to ${cap.toLocaleString()} tokens each, saved ${tokensSaved.toLocaleString()} tokens (${charsSaved.toLocaleString()} chars). Session file rewritten.`,
       };
     }
 
