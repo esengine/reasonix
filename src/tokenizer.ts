@@ -328,6 +328,29 @@ export function estimateConversationTokens(
   return total;
 }
 
+/**
+ * Estimate the tokens a full DeepSeek request would cost: the
+ * conversation-side tokens (what `estimateConversationTokens` already
+ * counts) PLUS the serialized tool-spec payload. Tool specs ride in
+ * their own JSON blob in the request body, not folded into any
+ * message's `content`, so they need a separate count to land an
+ * accurate preflight estimate.
+ *
+ * Returned number matches what `/context` displays for "next request"
+ * — reuse this helper anywhere (preflight guard, diagnostics, UI) to
+ * keep the two values from drifting.
+ */
+export function estimateRequestTokens(
+  messages: Array<{ content?: string | null; tool_calls?: unknown }>,
+  toolSpecs?: ReadonlyArray<unknown> | null,
+): number {
+  let total = estimateConversationTokens(messages);
+  if (toolSpecs && toolSpecs.length > 0) {
+    total += countTokens(JSON.stringify(toolSpecs));
+  }
+  return total;
+}
+
 /** Exposed for tests — resets the lazy-load singleton. */
 export function _resetForTests(): void {
   cached = null;

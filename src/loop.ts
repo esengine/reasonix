@@ -28,7 +28,7 @@ import {
   SessionStats,
   type TurnStats,
 } from "./telemetry.js";
-import { countTokens } from "./tokenizer.js";
+import { countTokens, estimateRequestTokens } from "./tokenizer.js";
 import { ToolRegistry } from "./tools.js";
 import type { ChatMessage, ToolCall } from "./types.js";
 
@@ -562,7 +562,43 @@ export class CacheFirstLoop {
           content: `${iter}/${this.maxToolIters} tool calls used — approaching budget. Press Esc to force a summary now.`,
         };
       }
-      const messages = this.buildMessages(pendingUser);
+      let messages = this.buildMessages(pendingUser);
+
+      // Preflight context check. Reactive auto-compact at 60%/80%
+      // keys off the PREVIOUS turn's server-reported prompt_tokens,
+      // so a single new oversized tool result (or a fresh resumed
+      // session) can push this turn's request straight past 131,072
+      // tokens before we ever see a usage number — DeepSeek 400s with
+      // "maximum context length". Here we estimate the outgoing
+      // payload locally and compact preemptively when it's in the red
+      // zone (>95% of the model's context window). One cheap
+      // tokenize-pass per iter, only on our side.
+      {
+        const ctxMax = DEEPSEEK_CONTEXT_TOKENS[this.model] ?? DEFAULT_CONTEXT_TOKENS;
+        const estimate = estimateRequestTokens(messages, this.prefix.toolSpecs);
+        if (estimate / ctxMax > 0.95) {
+          const result = this.compact(1_000);
+          if (result.healedCount > 0) {
+            yield {
+              turn: this._turn,
+              role: "warning",
+              content: `preflight: request ~${estimate.toLocaleString()}/${ctxMax.toLocaleString()} tokens (${Math.round(
+                (estimate / ctxMax) * 100,
+              )}%) — pre-compacted ${result.healedCount} tool result(s), saved ${result.tokensSaved.toLocaleString()} tokens. Sending.`,
+            };
+            // Rebuild with the compacted log so we send the smaller payload.
+            messages = this.buildMessages(pendingUser);
+          } else {
+            yield {
+              turn: this._turn,
+              role: "warning",
+              content: `preflight: request ~${estimate.toLocaleString()}/${ctxMax.toLocaleString()} tokens (${Math.round(
+                (estimate / ctxMax) * 100,
+              )}%) and nothing to auto-compact — DeepSeek will likely 400. Run /forget or /clear to start fresh.`,
+            };
+          }
+        }
+      }
 
       let assistantContent = "";
       let reasoningContent = "";
