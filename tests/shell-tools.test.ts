@@ -239,10 +239,17 @@ describe("registerShellTools — dispatch integration", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("registers run_command", () => {
+  it("registers run_command + background tools", () => {
     const registry = new ToolRegistry();
     registerShellTools(registry, { rootDir: tmp });
-    expect(registry.size).toBe(1);
+    // run_command (sync) + run_background / job_output / stop_job /
+    // list_jobs (background family).
+    expect(registry.size).toBe(5);
+    expect(registry.has("run_command")).toBe(true);
+    expect(registry.has("run_background")).toBe(true);
+    expect(registry.has("job_output")).toBe(true);
+    expect(registry.has("stop_job")).toBe(true);
+    expect(registry.has("list_jobs")).toBe(true);
   });
 
   it("auto-runs allowlisted commands and returns formatted output", async () => {

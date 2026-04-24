@@ -188,4 +188,74 @@ describe("ToolRegistry", () => {
     expect(reg.wasFlattened("deep")).toBe(false);
     expect(reg.specs()[0]!.function.parameters.properties).toHaveProperty("a");
   });
+
+  describe("tool interceptor", () => {
+    it("short-circuits dispatch when interceptor returns a string", async () => {
+      const reg = new ToolRegistry();
+      let fnCalled = false;
+      reg.register({ name: "edit_file", fn: () => ((fnCalled = true), "should not run") });
+      reg.setToolInterceptor((name) => (name === "edit_file" ? "queued" : null));
+      const out = await reg.dispatch("edit_file", '{"path":"foo"}');
+      expect(out).toBe("queued");
+      expect(fnCalled).toBe(false);
+    });
+
+    it("falls through to tool.fn when interceptor returns null", async () => {
+      const reg = new ToolRegistry();
+      reg.register({ name: "read_file", fn: () => "content" });
+      reg.setToolInterceptor(() => null);
+      const out = await reg.dispatch("read_file", "{}");
+      expect(out).toBe("content");
+    });
+
+    it("receives parsed args (including flattened→nested)", async () => {
+      const reg = new ToolRegistry();
+      reg.register({
+        name: "edit_file",
+        fn: () => "ok",
+        parameters: {
+          type: "object",
+          properties: { path: { type: "string" }, search: { type: "string" } },
+          required: ["path"],
+        },
+      });
+      let seen: Record<string, unknown> | null = null;
+      reg.setToolInterceptor((_name, args) => {
+        seen = args;
+        return "captured";
+      });
+      await reg.dispatch("edit_file", '{"path":"a","search":"b"}');
+      expect(seen).toEqual({ path: "a", search: "b" });
+    });
+
+    it("does not fire in plan mode — plan-mode refusal wins", async () => {
+      const reg = new ToolRegistry();
+      let interceptorCalled = false;
+      reg.register({ name: "edit_file", fn: () => "ok" });
+      reg.setToolInterceptor(() => ((interceptorCalled = true), "queued"));
+      reg.setPlanMode(true);
+      const out = await reg.dispatch("edit_file", '{"path":"x"}');
+      expect(JSON.parse(out).error).toMatch(/unavailable in plan mode/);
+      expect(interceptorCalled).toBe(false);
+    });
+
+    it("setToolInterceptor(null) clears a prior install", async () => {
+      const reg = new ToolRegistry();
+      reg.register({ name: "edit_file", fn: () => "fn-output" });
+      reg.setToolInterceptor(() => "queued");
+      expect(await reg.dispatch("edit_file", "{}")).toBe("queued");
+      reg.setToolInterceptor(null);
+      expect(await reg.dispatch("edit_file", "{}")).toBe("fn-output");
+    });
+
+    it("surfaces interceptor throws as structured errors", async () => {
+      const reg = new ToolRegistry();
+      reg.register({ name: "edit_file", fn: () => "ok" });
+      reg.setToolInterceptor(() => {
+        throw new Error("boom");
+      });
+      const out = await reg.dispatch("edit_file", "{}");
+      expect(JSON.parse(out).error).toMatch(/interceptor failed — boom/);
+    });
+  });
 });

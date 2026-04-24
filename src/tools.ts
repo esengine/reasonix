@@ -59,6 +59,22 @@ export interface ToolRegistryOptions {
   autoFlatten?: boolean;
 }
 
+/**
+ * Callback form for `setToolInterceptor` — receives the tool name and
+ * already-parsed arguments; returns a string to short-circuit dispatch
+ * (the returned value becomes the tool result the model sees), or
+ * `null` / `undefined` to fall through to the registered tool fn.
+ *
+ * Used by `reasonix code`'s edit-mode gate: `edit_file` / `write_file`
+ * are intercepted in "review" mode (queued into pendingEdits, returning
+ * "queued for /apply") or handled inline in "auto" mode (snapshot +
+ * apply, then surface an undo banner). Other tools pass through.
+ */
+export type ToolInterceptor = (
+  name: string,
+  args: Record<string, unknown>,
+) => string | null | undefined | Promise<string | null | undefined>;
+
 export class ToolRegistry {
   private readonly _tools = new Map<string, InternalTool>();
   private readonly _autoFlatten: boolean;
@@ -70,6 +86,12 @@ export class ToolRegistry {
    * bounced until the user approves a submitted plan.
    */
   private _planMode = false;
+  /**
+   * Optional hook run after arg parsing but before tool.fn. Lets the TUI
+   * reroute specific tool calls (e.g. edit_file in review mode) without
+   * modifying the tool definitions themselves.
+   */
+  private _interceptor: ToolInterceptor | null = null;
 
   constructor(opts: ToolRegistryOptions = {}) {
     this._autoFlatten = opts.autoFlatten !== false;
@@ -83,6 +105,15 @@ export class ToolRegistry {
   /** True when the registry is currently refusing non-readonly calls. */
   get planMode(): boolean {
     return this._planMode;
+  }
+
+  /**
+   * Install or clear the dispatch interceptor. At most one interceptor
+   * is active at a time — calling twice replaces the previous. Pass
+   * `null` to remove.
+   */
+  setToolInterceptor(fn: ToolInterceptor | null): void {
+    this._interceptor = fn;
   }
 
   register<A, R>(def: ToolDefinition<A, R>): this {
@@ -165,6 +196,22 @@ export class ToolRegistry {
       return JSON.stringify({
         error: `${name}: unavailable in plan mode — this is a read-only exploration phase. Use read_file / list_directory / search_files / directory_tree / web_search / allowlisted shell commands to investigate. Call submit_plan with your proposed plan when you're ready for the user's review.`,
       });
+    }
+
+    // Interceptor runs after plan-mode (so a plan-mode refusal still
+    // wins) but before the real tool fn. A string return is treated as
+    // the full tool result; null / undefined means "not my concern,
+    // fall through." Uncaught throws from the interceptor are surfaced
+    // through the same error path as a failed tool fn below.
+    if (this._interceptor) {
+      try {
+        const short = await this._interceptor(name, args);
+        if (typeof short === "string") return short;
+      } catch (err) {
+        return JSON.stringify({
+          error: `${name}: interceptor failed — ${(err as Error).message}`,
+        });
+      }
     }
 
     try {

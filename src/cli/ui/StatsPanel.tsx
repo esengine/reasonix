@@ -1,5 +1,6 @@
 import { Box, Text, useStdout } from "ink";
 import React from "react";
+import type { EditMode } from "../../config.js";
 import { DEEPSEEK_CONTEXT_TOKENS, DEFAULT_CONTEXT_TOKENS } from "../../telemetry.js";
 import type { SessionSummary } from "../../telemetry.js";
 import { VERSION } from "../../version.js";
@@ -71,6 +72,12 @@ export interface StatsPanelProps {
    */
   planMode?: boolean;
   /**
+   * Edit-gate mode. Surfaced as a small pill in the header so the user
+   * can see at a glance whether edits will be queued for review or
+   * applied immediately. Omitted in chat (non-code) mode.
+   */
+  editMode?: EditMode;
+  /**
    * Account balance fetched once at launch (and optionally refreshed
    * per-turn by the TUI). `null` or absent hides the balance cell
    * entirely — /user/balance failed or the user ran with `--no-config`.
@@ -119,6 +126,7 @@ export function StatsPanel({
   branchBudget,
   reasoningEffort,
   planMode,
+  editMode,
   balance,
   updateAvailable,
   busy,
@@ -145,6 +153,7 @@ export function StatsPanel({
         branchBudget={branchBudget ?? 1}
         reasoningEffort={reasoningEffort}
         planMode={planMode}
+        editMode={editMode}
         turns={summary.turns}
         updateAvailable={updateAvailable}
         narrow={narrow}
@@ -179,6 +188,7 @@ function Header({
   branchBudget,
   reasoningEffort,
   planMode,
+  editMode,
   turns,
   updateAvailable,
   narrow,
@@ -191,6 +201,7 @@ function Header({
   branchBudget: number;
   reasoningEffort?: "high" | "max";
   planMode?: boolean;
+  editMode?: EditMode;
   turns: number;
   updateAvailable?: string | null;
   narrow: boolean;
@@ -216,6 +227,11 @@ function Header({
         {planMode ? (
           <Text color="red" bold>
             {" · PLAN"}
+          </Text>
+        ) : null}
+        {editMode ? (
+          <Text color={editMode === "auto" ? "magenta" : "cyan"} bold>
+            {editMode === "auto" ? " · AUTO" : " · review"}
           </Text>
         ) : null}
       </Box>

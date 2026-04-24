@@ -30,6 +30,7 @@ import { type SpawnOptions, spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import * as pathMod from "node:path";
 import type { ToolRegistry } from "../tools.js";
+import { JobRegistry } from "./jobs.js";
 
 export interface ShellToolsOptions {
   /** Directory to run commands in. Must be an absolute path. */
@@ -58,6 +59,13 @@ export interface ShellToolsOptions {
    * (CI, benchmarks) where a human can't be in the loop to confirm.
    */
   allowAll?: boolean;
+  /**
+   * Background-process registry shared between `run_background`,
+   * `job_output`, `stop_job`, `list_jobs`, and the /jobs /kill slashes.
+   * When omitted, the registrar builds its own — but the caller
+   * usually wants to provide one so the TUI can tail it too.
+   */
+  jobs?: JobRegistry;
 }
 
 const DEFAULT_TIMEOUT_SEC = 60;
@@ -576,6 +584,7 @@ export function registerShellTools(registry: ToolRegistry, opts: ShellToolsOptio
   const rootDir = pathMod.resolve(opts.rootDir);
   const timeoutSec = opts.timeoutSec ?? DEFAULT_TIMEOUT_SEC;
   const maxOutputChars = opts.maxOutputChars ?? DEFAULT_MAX_OUTPUT_CHARS;
+  const jobs = opts.jobs ?? new JobRegistry();
   // Resolved on every dispatch so newly-persisted "always allow"
   // prefixes take effect inside the session that added them, not just
   // on the next launch. Static arrays are wrapped into a constant
@@ -635,7 +644,151 @@ export function registerShellTools(registry: ToolRegistry, opts: ShellToolsOptio
     },
   });
 
+  registry.register({
+    name: "run_background",
+    description:
+      "Spawn a long-running process (dev server, watcher, any command that doesn't naturally exit) and detach. Waits up to `waitSec` seconds for startup (or until the output matches a readiness signal like 'Local:', 'listening on', 'compiled successfully'), then returns the job id + startup preview. The process keeps running; call `job_output` to tail its logs, `stop_job` to kill it, `list_jobs` to see all running jobs. USE THIS — not `run_command` — for: npm/yarn/pnpm run dev, uvicorn / flask run, go run, cargo watch, tsc --watch, webpack serve, anything with 'dev' / 'serve' / 'watch' in the name.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description:
+            "Full command line. Same quoting rules as run_command (no pipes / redirects / chaining).",
+        },
+        waitSec: {
+          type: "integer",
+          description:
+            "Max seconds to wait for startup before returning. 0..30, default 3. A ready-signal match short-circuits this.",
+        },
+      },
+      required: ["command"],
+    },
+    fn: async (args: { command: string; waitSec?: number }, ctx) => {
+      const cmd = args.command.trim();
+      if (!cmd) throw new Error("run_background: empty command");
+      if (!allowAll && !isAllowed(cmd, getExtraAllowed())) {
+        throw new NeedsConfirmationError(cmd);
+      }
+      const result = await jobs.start(cmd, {
+        cwd: rootDir,
+        waitSec: args.waitSec,
+        signal: ctx?.signal,
+      });
+      return formatJobStart(result);
+    },
+  });
+
+  registry.register({
+    name: "job_output",
+    description:
+      "Read the latest output of a background job started with `run_background`. By default returns the tail of the buffer (last 80 lines). Pass `since` (the `byteLength` from a previous call) to stream only new content incrementally. Tells you whether the job is still running, so you can stop polling when it's done.",
+    readOnly: true,
+    parameters: {
+      type: "object",
+      properties: {
+        jobId: { type: "integer", description: "Job id returned by run_background." },
+        since: {
+          type: "integer",
+          description: "Return only output written past this byte offset (for incremental polling).",
+        },
+        tailLines: {
+          type: "integer",
+          description: "Cap the returned slice to the last N lines. Default 80, 0 = unlimited.",
+        },
+      },
+      required: ["jobId"],
+    },
+    fn: async (args: { jobId: number; since?: number; tailLines?: number }) => {
+      const out = jobs.read(args.jobId, {
+        since: args.since,
+        tailLines: args.tailLines ?? 80,
+      });
+      if (!out) return `job ${args.jobId}: not found (use list_jobs)`;
+      return formatJobRead(args.jobId, out);
+    },
+  });
+
+  registry.register({
+    name: "stop_job",
+    description:
+      "Stop a background job started with `run_background`. SIGTERM first; SIGKILL after a short grace period if it doesn't exit cleanly. Returns the final output + exit code. Safe to call on an already-exited job.",
+    parameters: {
+      type: "object",
+      properties: {
+        jobId: { type: "integer" },
+      },
+      required: ["jobId"],
+    },
+    fn: async (args: { jobId: number }) => {
+      const rec = await jobs.stop(args.jobId);
+      if (!rec) return `job ${args.jobId}: not found`;
+      return formatJobStop(rec);
+    },
+  });
+
+  registry.register({
+    name: "list_jobs",
+    description:
+      "List every background job started this session — running and exited — with id, command, pid, status. Use when you've lost track of which job_id corresponds to which process, or to see what's still alive.",
+    readOnly: true,
+    parameters: { type: "object", properties: {} },
+    fn: async () => {
+      const all = jobs.list();
+      if (all.length === 0) return "(no background jobs started this session)";
+      return all.map(formatJobRow).join("\n");
+    },
+  });
+
   return registry;
+}
+
+function formatJobStart(r: import("./jobs.js").JobStartResult): string {
+  const header = r.stillRunning
+    ? `[job ${r.jobId} started · pid ${r.pid ?? "?"} · ${r.readyMatched ? "READY signal matched" : "running (no ready signal yet)"}]`
+    : r.exitCode !== null
+      ? `[job ${r.jobId} exited during startup · exit ${r.exitCode}]`
+      : `[job ${r.jobId} failed to start]`;
+  return r.preview ? `${header}\n${r.preview}` : header;
+}
+
+function formatJobRead(jobId: number, r: import("./jobs.js").JobReadResult): string {
+  const status = r.running
+    ? `running · pid ${r.pid ?? "?"}`
+    : r.exitCode !== null
+      ? `exited ${r.exitCode}`
+      : r.spawnError
+        ? `failed (${r.spawnError})`
+        : "stopped";
+  const header = `[job ${jobId} · ${status} · byteLength=${r.byteLength}]\n$ ${r.command}`;
+  return r.output ? `${header}\n${r.output}` : header;
+}
+
+function formatJobStop(r: import("./jobs.js").JobRecord): string {
+  const running = r.running ? "still running (SIGKILL may be pending)" : `exit ${r.exitCode ?? "?"}`;
+  const tail = tailLines(r.output, 40);
+  const header = `[job ${r.id} stopped · ${running}]\n$ ${r.command}`;
+  return tail ? `${header}\n${tail}` : header;
+}
+
+function formatJobRow(r: import("./jobs.js").JobRecord): string {
+  const age = ((Date.now() - r.startedAt) / 1000).toFixed(1);
+  const state = r.running
+    ? `running   ·  pid ${r.pid ?? "?"}`
+    : r.exitCode !== null
+      ? `exit ${r.exitCode}`
+      : r.spawnError
+        ? `failed`
+        : "stopped";
+  return `  ${String(r.id).padStart(3)}  ${state.padEnd(24)}  ${age}s ago   $ ${r.command}`;
+}
+
+function tailLines(s: string, n: number): string {
+  if (!s) return "";
+  const lines = s.split("\n");
+  if (lines.length <= n) return s;
+  const dropped = lines.length - n;
+  return [`[… ${dropped} earlier lines …]`, ...lines.slice(-n)].join("\n");
 }
 
 export function formatCommandResult(cmd: string, r: RunCommandResult): string {

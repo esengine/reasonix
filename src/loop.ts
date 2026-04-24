@@ -19,6 +19,15 @@ import {
   truncateForModel,
   truncateForModelByTokens,
 } from "./mcp/registry.js";
+
+/**
+ * Threshold above which a single tool-call's `arguments` JSON gets
+ * automatically shrunk as soon as the tool has responded. 800 tokens
+ * (~3 KB) leaves small/typical edits byte-verbatim while catching
+ * whole-file rewrites and sprawling SEARCH/REPLACE payloads that
+ * otherwise re-pay their cost on every subsequent turn's prompt.
+ */
+const ARGS_COMPACT_THRESHOLD_TOKENS = 800;
 import { AppendOnlyLog, type ImmutablePrefix, VolatileScratch } from "./memory.js";
 import { type RepairReport, ToolCallRepair } from "./repair/index.js";
 import { appendSessionMessage, loadSessionMessages, rewriteSession } from "./session.js";
@@ -344,22 +353,83 @@ export class CacheFirstLoop {
    * authored intent we can't mechanically shrink without losing
    * meaning.
    */
+  /**
+   * Conservative args-only shrink fired after every tool response —
+   * strictly about ONE thing: stop oversized `edit_file` / `write_file`
+   * arguments from riding every future turn's prompt.
+   *
+   * Why this is worth doing AUTOMATICALLY (not just on /compact):
+   * Each tool-call arguments string sticks in the log verbatim. On a
+   * coding session with ~10 edits, that's 20-40K tokens of stale
+   * SEARCH/REPLACE text riding along on every turn. Even at a 98.9%
+   * cache hit rate the input cost still adds up linearly (cache-hit
+   * price × tokens × turns). Compacting IMMEDIATELY after the tool
+   * responds means the next turn's prompt is already smaller — the
+   * shrink is a one-time write that saves every future prompt.
+   *
+   * Threshold rationale: 800 tokens ≈ 3 KB. A typical 20-line edit's
+   * args land well under that; massive rewrites (whole-file content,
+   * 100+ line refactors) land above and get the compaction. Small
+   * edits stay byte-verbatim so nothing common-case changes.
+   *
+   * Safety: we ONLY shrink args whose tool has ALREADY responded.
+   * Structurally that's every call in `log.toMessages()` at this
+   * point — the current turn's assistant/tool pairing is by
+   * construction closed by the time we get here (append happens
+   * AFTER dispatch). The in-flight assistant message being built
+   * lives in scratch, not the log, so this pass can't touch it.
+   *
+   * Model impact: the model may occasionally want to reference the
+   * exact SEARCH text of a prior edit — it then reads the file
+   * directly (which shows current state) or looks at the preceding
+   * assistant text (which has its plan). Losing the stale args is a
+   * net win: one extra read_file vs. dragging N KB of stale text
+   * through every subsequent turn.
+   */
+  private compactToolCallArgsAfterResponse(): void {
+    const before = this.log.toMessages();
+    const { messages, healedCount } = shrinkOversizedToolCallArgsByTokens(
+      before,
+      ARGS_COMPACT_THRESHOLD_TOKENS,
+    );
+    if (healedCount === 0) return;
+    this.log.compactInPlace(messages);
+    if (this.sessionName) {
+      try {
+        rewriteSession(this.sessionName, messages);
+      } catch {
+        /* disk full / perms — in-memory compaction still helps this session */
+      }
+    }
+  }
+
   compact(maxTokens = 4000): {
     healedCount: number;
     tokensSaved: number;
     charsSaved: number;
   } {
     const before = this.log.toMessages();
-    // Use `shrinkOversizedToolResultsByTokens` (not `healLoadedMessages`)
-    // — the full heal would also strip a dangling `assistant.tool_calls`
-    // tail, which during an active turn is legitimate state we still
-    // need (tools haven't been dispatched yet). Structural healing is
-    // only appropriate at session LOAD; mid-session `/compact` is
-    // strictly about shrinking oversized tool payloads.
-    const { messages, healedCount, tokensSaved, charsSaved } = shrinkOversizedToolResultsByTokens(
-      before,
-      maxTokens,
-    );
+    // Two-pass shrink: first the tool RESULTS (the classic compact
+    // concern — big read_file output, search_content hits), then the
+    // tool-call ARGS (edit_file / write_file search/replace payloads,
+    // which on a coding session can out-weigh results 2-3x).
+    //
+    // Order matters: we want the args-shrink to see any messages whose
+    // results were just trimmed, so tokensSaved is independently
+    // accumulated from both passes and charsSaved is summed the same
+    // way.
+    //
+    // Using shrink* (not healLoadedMessages) — the full heal would
+    // strip a dangling `assistant.tool_calls` tail, which during an
+    // active turn is legitimate state. Structural healing is only
+    // appropriate at session LOAD; mid-session compact is about
+    // payload shrinkage, not pairing.
+    const resultsPass = shrinkOversizedToolResultsByTokens(before, maxTokens);
+    const argsPass = shrinkOversizedToolCallArgsByTokens(resultsPass.messages, maxTokens);
+    const messages = argsPass.messages;
+    const healedCount = resultsPass.healedCount + argsPass.healedCount;
+    const tokensSaved = resultsPass.tokensSaved + argsPass.tokensSaved;
+    const charsSaved = resultsPass.charsSaved + argsPass.charsSaved;
     if (healedCount > 0) {
       this.log.compactInPlace(messages);
       if (this.sessionName) {
@@ -1081,6 +1151,12 @@ export class CacheFirstLoop {
           name,
           content: result,
         });
+        // Auto-shrink the matching tool_call's args now that the tool
+        // has responded. No-op when args are under the threshold; when
+        // over, the next turn's prompt + cache key carry the compact
+        // marker instead of the raw SEARCH/REPLACE payload. See
+        // compactToolCallArgsAfterResponse for the trade-offs.
+        this.compactToolCallArgsAfterResponse();
         yield {
           turn: this._turn,
           role: "tool",
@@ -1407,6 +1483,106 @@ export function shrinkOversizedToolResultsByTokens(
     return { ...msg, content: truncated };
   });
   return { messages: out, healedCount, tokensSaved, charsSaved };
+}
+
+/**
+ * Shrink fat `assistant.tool_calls[*].function.arguments` payloads.
+ *
+ * Why: tools like `edit_file` / `write_file` ship the full SEARCH /
+ * REPLACE text in the arguments JSON. After the edit is applied the
+ * tool result already tells the model what happened — the giant
+ * arguments string just sits in the log burning prompt tokens every
+ * future turn. On a long coding session, args can eat 2-3x as many
+ * tokens as the tool results they spawned (observed: 45K vs 27K in a
+ * single session). That's the biggest stale-context leak we have.
+ *
+ * Strategy: for each oversized call, parse the JSON, replace long
+ * string fields with `"[…shrunk: N chars, M lines, tool already
+ * responded — see tool result]"`. Keeps valid JSON + the key structure
+ * (so the model still sees which path was edited), drops the body.
+ *
+ * Only mutates assistant messages whose tool_calls are already paired
+ * with tool responses (i.e. historical, not in-flight) — the caller
+ * is responsible for that gate; `fixToolCallPairing` handles structural
+ * safety at session load, and the in-flight tail isn't in the log yet
+ * (lives in the loop's scratch buffer until the turn commits).
+ */
+export function shrinkOversizedToolCallArgsByTokens(
+  messages: ChatMessage[],
+  maxTokens: number,
+): {
+  messages: ChatMessage[];
+  healedCount: number;
+  tokensSaved: number;
+  charsSaved: number;
+} {
+  let healedCount = 0;
+  let tokensSaved = 0;
+  let charsSaved = 0;
+  const out = messages.map((msg) => {
+    if (msg.role !== "assistant" || !Array.isArray(msg.tool_calls)) return msg;
+    let changed = false;
+    const newCalls = msg.tool_calls.map((call) => {
+      const args = call.function?.arguments;
+      if (typeof args !== "string" || args.length <= maxTokens) return call;
+      const beforeTokens = countTokens(args);
+      if (beforeTokens <= maxTokens) return call;
+      const shrunk = shrinkJsonLongStrings(args);
+      const afterTokens = countTokens(shrunk);
+      // Guard: only swap if we actually saved anything. shrinkJsonLongStrings
+      // might produce output that is only marginally shorter when a call's
+      // payload is dominated by many short strings.
+      if (afterTokens >= beforeTokens) return call;
+      changed = true;
+      healedCount += 1;
+      tokensSaved += beforeTokens - afterTokens;
+      charsSaved += args.length - shrunk.length;
+      return { ...call, function: { ...call.function, arguments: shrunk } };
+    });
+    if (!changed) return msg;
+    return { ...msg, tool_calls: newCalls };
+  });
+  return { messages: out, healedCount, tokensSaved, charsSaved };
+}
+
+/**
+ * Replace long string VALUES inside a tool-call arguments JSON with a
+ * compact marker. Keeps top-level keys + short values intact so the
+ * model can still read "path":"src/foo.ts" and the like. Falls back to
+ * whole-string truncation when the input doesn't parse or isn't an
+ * object.
+ *
+ * Threshold: 300 chars — below that it's probably a path / short
+ * identifier we want to keep verbatim. Above, it's body text (SEARCH
+ * / REPLACE / content) that the tool result already reflects.
+ */
+function shrinkJsonLongStrings(jsonStr: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    // Unparseable — truncate the whole string to something small with
+    // a marker. 200 chars keeps the call recognizable in the log without
+    // hauling the full payload forward.
+    const head = jsonStr.slice(0, 200);
+    return `${head}…[shrunk: ${jsonStr.length} chars, unparsed]`;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return jsonStr;
+  }
+  const LONG_THRESHOLD = 300;
+  const input = parsed as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (typeof v === "string" && v.length > LONG_THRESHOLD) {
+      const newlines = v.match(/\n/g)?.length ?? 0;
+      output[k] =
+        `[…shrunk: ${v.length} chars, ${newlines} lines — tool already responded, see result]`;
+    } else {
+      output[k] = v;
+    }
+  }
+  return JSON.stringify(output);
 }
 
 /**

@@ -23,6 +23,7 @@ import { loadProjectShellAllowed } from "../../config.js";
 import { sanitizeName } from "../../session.js";
 import { ToolRegistry } from "../../tools.js";
 import { registerFilesystemTools } from "../../tools/filesystem.js";
+import { JobRegistry } from "../../tools/jobs.js";
 import { registerMemoryTools } from "../../tools/memory.js";
 import { registerPlanTool } from "../../tools/plan.js";
 import { registerShellTools } from "../../tools/shell.js";
@@ -66,6 +67,11 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
   // triggered R1's DSML hallucinations all through 0.4.x.
   const tools = new ToolRegistry();
   registerFilesystemTools(tools, { rootDir });
+  // Background-process registry shared between the shell tools and the
+  // TUI's /jobs + /kill slashes + exit cleanup. One per `reasonix code`
+  // run — orphan prevention on SIGINT / process exit kills everything
+  // it owns, so dev servers don't outlive the Reasonix process.
+  const jobs = new JobRegistry();
   registerShellTools(tools, {
     rootDir,
     // Per-project "always allow" list persisted from prior ShellConfirm
@@ -74,6 +80,7 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
     // via ShellConfirm mid-session takes effect on the next shell call
     // instead of waiting for `/new` or a relaunch.
     extraAllowed: () => loadProjectShellAllowed(rootDir),
+    jobs,
   });
   // `submit_plan` is always in the spec list so the prefix cache stays
   // stable across plan-mode toggles (Pillar 1). The tool itself is a
@@ -94,6 +101,18 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
     `▸ reasonix code: rooted at ${rootDir}, session "${session ?? "(ephemeral)"}" · ${tools.size} native tool(s)\n`,
   );
 
+  // Belt-and-suspenders cleanup: even though spawn(detached:false)
+  // should tie child processes to the parent's lifetime, Windows cmd.exe
+  // wrappers occasionally leak. Kill everything on both clean and
+  // signal-driven exits. 'exit' fires too late for async I/O but is our
+  // only guaranteed last word; the signal handlers do the heavy lifting.
+  const sigShutdown = () => {
+    void jobs.shutdown();
+  };
+  process.once("SIGINT", sigShutdown);
+  process.once("SIGTERM", sigShutdown);
+  process.once("exit", sigShutdown);
+
   await chatCommand({
     model: opts.model ?? "deepseek-v4-pro",
     harvest: opts.harvest ?? false,
@@ -101,7 +120,7 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
     transcript: opts.transcript,
     session,
     seedTools: tools,
-    codeMode: { rootDir },
+    codeMode: { rootDir, jobs },
     forceResume: opts.forceResume,
     forceNew: opts.forceNew,
   });

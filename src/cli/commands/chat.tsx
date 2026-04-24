@@ -51,7 +51,7 @@ export interface ChatOptions {
    * Enable SEARCH/REPLACE edit-block processing after each assistant turn.
    * Set by `reasonix code`; plain `reasonix chat` leaves this off.
    */
-  codeMode?: { rootDir: string };
+  codeMode?: { rootDir: string; jobs?: import("../../tools/jobs.js").JobRegistry };
   /** Skip the session picker — assume "Resume" (backwards-compatible auto-continue). */
   forceResume?: boolean;
   /** Skip the session picker — assume "New" (wipe the session file and start fresh). */

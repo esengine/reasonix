@@ -49,6 +49,28 @@ const DEFAULT_MAX_READ_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_LIST_BYTES = 256 * 1024;
 
 /**
+ * When `read_file` is called without `head` / `tail` / `range`, files
+ * above this line count auto-trim to a head-plus-tail preview instead
+ * of dumping everything into the turn's context. Observed: five
+ * `read_file` calls in one session accounted for ~18K tokens (6.5K +
+ * 3.9K + 3.2K + 2.4K + 1.6K), a sizable chunk of the 27K total in
+ * tool results. Most of those reads wanted ~20 lines near one edit —
+ * the other 480 lines were inventory the model never cites.
+ *
+ * 200 is a deliberate middle ground: typical CLI / config / test
+ * files fit entirely; sprawling service files force the model to say
+ * what it actually wants (`range:"120-180"` or `search_content`).
+ */
+const DEFAULT_AUTO_PREVIEW_LINES = 200;
+/**
+ * When auto-preview triggers, show this many lines at the top
+ * (structure / imports / public API) plus `AUTO_PREVIEW_TAIL_LINES`
+ * at the bottom (often the recently-edited tail).
+ */
+const AUTO_PREVIEW_HEAD_LINES = 80;
+const AUTO_PREVIEW_TAIL_LINES = 40;
+
+/**
  * Directory names skipped by `search_content` unless `include_deps:true`
  * is passed. The intent is "user is asking about THEIR code, not the
  * libraries they depend on" — vendored / generated trees would otherwise
@@ -171,8 +193,11 @@ export function registerFilesystemTools(
 
   registry.register({
     name: "read_file",
-    description:
-      "Read a file under the sandbox root. Returns the full contents (truncated with a notice if larger than the per-call cap). Paths may be relative to the root or absolute-under-root.",
+    description: `Read a file under the sandbox root. To save context, PREFER to scope the read instead of pulling the whole file:
+  - head: N  → first N lines (imports, public API, small configs)
+  - tail: N  → last N lines (recently-added code, log tails)
+  - range: "A-B"  → inclusive line range A..B, 1-indexed (e.g. "120-180" around an edit site)
+When none of these is given AND the file is longer than ${DEFAULT_AUTO_PREVIEW_LINES} lines, the tool auto-returns a head+tail preview with an "N lines omitted" marker rather than dumping everything. If you need the middle, re-call with a range. Prefer search_content to locate a symbol first, then read_file with a range around the hit — one scoped read beats three full-file reads.`,
     readOnly: true,
     parameters: {
       type: "object",
@@ -180,10 +205,15 @@ export function registerFilesystemTools(
         path: { type: "string", description: "Path to read (relative to rootDir or absolute)." },
         head: { type: "integer", description: "If set, return only the first N lines." },
         tail: { type: "integer", description: "If set, return only the last N lines." },
+        range: {
+          type: "string",
+          description:
+            'Inclusive line range like "50-100" or "50-50". 1-indexed. Takes precedence over head/tail when all three are set. Out-of-range requests clamp to file bounds.',
+        },
       },
       required: ["path"],
     },
-    fn: async (args: { path: string; head?: number; tail?: number }) => {
+    fn: async (args: { path: string; head?: number; tail?: number; range?: string }) => {
       const abs = safePath(args.path);
       const stat = await fs.stat(abs);
       if (stat.isDirectory()) {
@@ -191,22 +221,64 @@ export function registerFilesystemTools(
       }
       const raw = await fs.readFile(abs);
       if (raw.length > maxReadBytes) {
-        const head = raw.slice(0, maxReadBytes).toString("utf8");
-        return `${head}\n\n[…truncated ${raw.length - maxReadBytes} bytes — file is ${raw.length} B, cap ${maxReadBytes} B. Retry with head/tail for targeted view.]`;
+        const headBytes = raw.slice(0, maxReadBytes).toString("utf8");
+        return `${headBytes}\n\n[…truncated ${raw.length - maxReadBytes} bytes — file is ${raw.length} B, cap ${maxReadBytes} B. Retry with head/tail/range for targeted view.]`;
       }
       const text = raw.toString("utf8");
+      let lines = text.split(/\r?\n/);
+      // Most files end with '\n' which splits into an empty trailing
+      // entry; drop it so head/tail/range counts match the user's
+      // visible line numbers in an editor.
+      if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
+      const totalLines = lines.length;
+
+      // range wins over head/tail when set — the most precise ask
+      // should dominate. Parse "A-B" strictly; bad formats fall through
+      // to head/tail / auto-preview instead of erroring.
+      if (typeof args.range === "string" && /^\d+\s*-\s*\d+$/.test(args.range)) {
+        const [rawStart, rawEnd] = args.range.split("-").map((s) => Number.parseInt(s, 10));
+        const start = Math.max(1, rawStart ?? 1);
+        const end = Math.min(totalLines, Math.max(start, rawEnd ?? totalLines));
+        const slice = lines.slice(start - 1, end);
+        const label = `[range ${start}-${end} of ${totalLines} lines]`;
+        return `${label}\n${slice.join("\n")}`;
+      }
       if (typeof args.head === "number" && args.head > 0) {
-        return text.split(/\r?\n/).slice(0, args.head).join("\n");
+        const count = Math.min(args.head, totalLines);
+        const slice = lines.slice(0, count);
+        const marker =
+          count < totalLines
+            ? `\n\n[…head ${count} of ${totalLines} lines — call again with range / tail for more]`
+            : "";
+        return slice.join("\n") + marker;
       }
       if (typeof args.tail === "number" && args.tail > 0) {
-        let lines = text.split(/\r?\n/);
-        // Most files end with a final '\n', which splits into an empty
-        // trailing string. Drop it before slicing so tail=2 returns the
-        // last two *real* lines, not "last line + empty".
-        if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
-        return lines.slice(Math.max(0, lines.length - args.tail)).join("\n");
+        const count = Math.min(args.tail, totalLines);
+        const slice = lines.slice(totalLines - count);
+        const marker =
+          count < totalLines
+            ? `[…tail ${count} of ${totalLines} lines — call again with range / head for more]\n\n`
+            : "";
+        return marker + slice.join("\n");
       }
-      return text;
+
+      // No explicit scope + file is small → full content.
+      if (totalLines <= DEFAULT_AUTO_PREVIEW_LINES) return lines.join("\n");
+
+      // No explicit scope + file is large → head + tail preview plus
+      // a marker telling the model how much it missed and how to get
+      // it. This is the single biggest lever on read_file token cost —
+      // historically a 500-line file dumped ~4K tokens into the turn
+      // even when the model only needed 20 of them.
+      const head = lines.slice(0, AUTO_PREVIEW_HEAD_LINES).join("\n");
+      const tail = lines.slice(totalLines - AUTO_PREVIEW_TAIL_LINES).join("\n");
+      const omitted = totalLines - AUTO_PREVIEW_HEAD_LINES - AUTO_PREVIEW_TAIL_LINES;
+      return [
+        `[auto-preview: head ${AUTO_PREVIEW_HEAD_LINES} + tail ${AUTO_PREVIEW_TAIL_LINES} of ${totalLines} lines]`,
+        head,
+        `\n[… ${omitted} lines omitted — call read_file again with range:"A-B" (1-indexed) or head / tail to get the middle]\n`,
+        tail,
+      ].join("\n");
     },
   });
 
@@ -234,22 +306,40 @@ export function registerFilesystemTools(
 
   registry.register({
     name: "directory_tree",
-    description:
-      "Recursively list entries in a directory. Shows indented tree structure with directories marked '/'. Caps output so a huge tree doesn't drown the context.",
+    description: `Recursively list entries in a directory. Shows indented tree structure with directories marked '/'. Budget-aware by default:
+  - maxDepth defaults to 2 (root + one level). A depth-4 tree on a real repo blew ~5K tokens in one call. If you truly need deeper, pass maxDepth:N explicitly.
+  - Skips ${[...SKIP_DIR_NAMES].sort().join(", ")} unless include_deps:true. Traversing into node_modules / .git / dist is almost always token-waste.
+  - Large subtrees (>50 children) auto-collapse to "[N files, M dirs hidden — list_directory <path> to inspect]" so one huge folder can't dominate the output.
+Prefer \`list_directory\` for a single-level view, \`search_files\` to find specific paths, and \`search_content\` to find code.`,
     readOnly: true,
     parameters: {
       type: "object",
       properties: {
         path: { type: "string", description: "Root of the tree (default: sandbox root)." },
-        maxDepth: { type: "integer", description: "Max recursion depth (default 4)." },
+        maxDepth: {
+          type: "integer",
+          description:
+            "Max recursion depth (default 2). Depth 0 shows only the top-level entries; depth 2 is usually enough to see module structure.",
+        },
+        include_deps: {
+          type: "boolean",
+          description:
+            "When true, also traverse node_modules / .git / dist / build / etc. Off by default — most exploration questions are about the user's own code.",
+        },
       },
     },
-    fn: async (args: { path?: string; maxDepth?: number }) => {
+    fn: async (args: { path?: string; maxDepth?: number; include_deps?: boolean }) => {
       const startAbs = safePath(args.path ?? ".");
-      const maxDepth = typeof args.maxDepth === "number" ? args.maxDepth : 4;
+      const maxDepth = typeof args.maxDepth === "number" ? args.maxDepth : 2;
+      const includeDeps = args.include_deps === true;
       const lines: string[] = [];
       let totalBytes = 0;
       let truncated = false;
+      // Per-directory child cap — long fixture / asset folders (200+
+      // snapshots) would otherwise dominate; the collapse keeps the
+      // overall shape visible. Modest: normal source dirs have <50
+      // entries.
+      const PER_DIR_CHILD_CAP = 50;
       const walk = async (dir: string, depth: number): Promise<void> => {
         if (truncated) return;
         if (depth > maxDepth) return;
@@ -260,10 +350,33 @@ export function registerFilesystemTools(
           return;
         }
         entries.sort((a, b) => a.name.localeCompare(b.name));
+        let emitted = 0;
         for (const e of entries) {
           if (truncated) return;
+          // Dep-skip applies only to DIRECTORIES (a file named
+          // "node_modules" is fine to list). Anything in the skip set
+          // still shows up as a single node with a trailing " (skipped)"
+          // hint so the model knows the dir exists but wasn't walked.
+          const skip = e.isDirectory() && !includeDeps && SKIP_DIR_NAMES.has(e.name);
+          if (emitted >= PER_DIR_CHILD_CAP) {
+            const remaining = entries.length - emitted;
+            let restFiles = 0;
+            let restDirs = 0;
+            for (const r of entries.slice(emitted)) {
+              if (r.isDirectory()) restDirs++;
+              else restFiles++;
+            }
+            const indent = "  ".repeat(depth);
+            lines.push(
+              `${indent}[… ${remaining} entries hidden (${restDirs} dirs, ${restFiles} files) — list_directory on this path to see all]`,
+            );
+            return;
+          }
           const indent = "  ".repeat(depth);
-          const line = e.isDirectory() ? `${indent}${e.name}/` : `${indent}${e.name}`;
+          const suffix = skip ? " (skipped — pass include_deps:true to traverse)" : "";
+          const line = e.isDirectory()
+            ? `${indent}${e.name}/${suffix}`
+            : `${indent}${e.name}`;
           totalBytes += line.length + 1;
           if (totalBytes > maxListBytes) {
             lines.push(`  [… tree truncated at ${maxListBytes} bytes …]`);
@@ -271,7 +384,8 @@ export function registerFilesystemTools(
             return;
           }
           lines.push(line);
-          if (e.isDirectory()) {
+          emitted++;
+          if (e.isDirectory() && !skip) {
             await walk(pathMod.join(dir, e.name), depth + 1);
           }
         }

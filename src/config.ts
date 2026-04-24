@@ -21,6 +21,23 @@ import { dirname, join } from "node:path";
 /** One of the preset bundles (model + harvest + branch combo). */
 export type PresetName = "fast" | "smart" | "max";
 
+/**
+ * How `reasonix code` handles model-issued edits:
+ *   - "review" — queue the edit into pendingEdits; user /apply or `y` commits.
+ *   - "auto"   — apply immediately, snapshot for /undo, show a short undo
+ *                banner so the user can roll back with one keystroke.
+ * Persisted so `/mode auto` survives a relaunch. Missing → "review".
+ */
+export type EditMode = "review" | "auto";
+
+/**
+ * reasoning_effort cap for the model. "max" is the agent-class default;
+ * "high" is cheaper / faster. Persisted so `/effort high` survives a
+ * relaunch — earlier versions silently reverted to "max" on every new
+ * session, which burned budget unexpectedly.
+ */
+export type ReasoningEffort = "high" | "max";
+
 export interface ReasonixConfig {
   apiKey?: string;
   baseUrl?: string;
@@ -29,6 +46,22 @@ export interface ReasonixConfig {
    * Maps to model + harvest + branch combos (see presets.ts). Missing → "fast".
    */
   preset?: PresetName;
+  /**
+   * Edit-gate mode for `reasonix code`. See EditMode doc. Absent → "review".
+   */
+  editMode?: EditMode;
+  /**
+   * Set to `true` the first time we've shown the "Shift+Tab cycles
+   * review/AUTO" onboarding tip in `reasonix code`. Once seen, we stop
+   * posting the tip — the bottom status bar carries the knowledge
+   * forward without further nagging.
+   */
+  editModeHintShown?: boolean;
+  /**
+   * Last reasoning_effort chosen via `/effort`. Loaded on launch so
+   * "high" stays "high" — default is "max" when unset.
+   */
+  reasoningEffort?: ReasoningEffort;
   /**
    * Default MCP server specs to bridge on every `reasonix chat`, in the
    * same `"name=cmd args..."` format that `--mcp` takes. Stored as strings
@@ -143,6 +176,57 @@ export function addProjectShellAllowed(
   const existing = cfg.projects[rootDir].shellAllowed ?? [];
   if (existing.includes(trimmed)) return;
   cfg.projects[rootDir].shellAllowed = [...existing, trimmed];
+  writeConfig(cfg, path);
+}
+
+/**
+ * Read the persisted edit-mode. Unknown values fall back to "review" so
+ * a user who hand-edits the file into an invalid state still gets the
+ * safe default. `reasonix code` calls this at launch and the App lets
+ * `/mode` / Shift+Tab flip it.
+ */
+export function loadEditMode(path: string = defaultConfigPath()): EditMode {
+  const v = readConfig(path).editMode;
+  return v === "auto" ? "auto" : "review";
+}
+
+/** Persist the edit mode so `/mode auto` survives a relaunch. */
+export function saveEditMode(mode: EditMode, path: string = defaultConfigPath()): void {
+  const cfg = readConfig(path);
+  cfg.editMode = mode;
+  writeConfig(cfg, path);
+}
+
+/** True when the onboarding tip for the review/AUTO gate has been shown. */
+export function editModeHintShown(path: string = defaultConfigPath()): boolean {
+  return readConfig(path).editModeHintShown === true;
+}
+
+/**
+ * Read the persisted reasoning_effort. Unknown / missing values fall
+ * back to "max" so the agent-class default is never silently overridden
+ * by a hand-edited bad value in config.json.
+ */
+export function loadReasoningEffort(path: string = defaultConfigPath()): ReasoningEffort {
+  const v = readConfig(path).reasoningEffort;
+  return v === "high" ? "high" : "max";
+}
+
+/** Persist the reasoning_effort cap so `/effort high` survives a relaunch. */
+export function saveReasoningEffort(
+  effort: ReasoningEffort,
+  path: string = defaultConfigPath(),
+): void {
+  const cfg = readConfig(path);
+  cfg.reasoningEffort = effort;
+  writeConfig(cfg, path);
+}
+
+/** Mark the onboarding tip as shown so subsequent launches skip it. */
+export function markEditModeHintShown(path: string = defaultConfigPath()): void {
+  const cfg = readConfig(path);
+  if (cfg.editModeHintShown === true) return;
+  cfg.editModeHintShown = true;
   writeConfig(cfg, path);
 }
 

@@ -15,6 +15,7 @@ import {
   parseEditBlocks,
   restoreSnapshots,
   snapshotBeforeEdits,
+  toWholeFileEditBlock,
 } from "../src/code/edit-blocks.js";
 
 describe("parseEditBlocks", () => {
@@ -234,6 +235,36 @@ describe("snapshotBeforeEdits + restoreSnapshots", () => {
     const results = restoreSnapshots(fakeSnap, root);
     expect(results[0]!.status).toBe("path-escape");
     expect(existsSync(join(root, "..", "escape.txt"))).toBe(false);
+  });
+});
+
+describe("toWholeFileEditBlock", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "reasonix-whole-"));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("captures existing content as SEARCH for overwrites", () => {
+    writeFileSync(join(root, "hello.txt"), "old content\n", "utf8");
+    const block = toWholeFileEditBlock("hello.txt", "new content\n", root);
+    expect(block.search).toBe("old content\n");
+    expect(block.replace).toBe("new content\n");
+    // Round-trip: applying this block swaps the whole file.
+    const [res] = applyEditBlocks([block], root);
+    expect(res!.status).toBe("applied");
+    expect(readFileSync(join(root, "hello.txt"), "utf8")).toBe("new content\n");
+  });
+
+  it("leaves SEARCH empty when the file doesn't exist (create-new sentinel)", () => {
+    const block = toWholeFileEditBlock("new.txt", "fresh\n", root);
+    expect(block.search).toBe("");
+    expect(block.replace).toBe("fresh\n");
+    const [res] = applyEditBlocks([block], root);
+    expect(res!.status).toBe("created");
+    expect(readFileSync(join(root, "new.txt"), "utf8")).toBe("fresh\n");
   });
 });
 

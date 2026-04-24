@@ -11,6 +11,13 @@ export interface ShellConfirmProps {
    * "always allow". Typically the first 1-2 tokens of `command`.
    */
   allowPrefix: string;
+  /**
+   * Which tool is asking. `run_background` spawns via JobRegistry and
+   * returns early; `run_command` (default) blocks until the process
+   * exits. Shown as a hint in the modal so the user knows whether
+   * approving will block the TUI or not.
+   */
+  kind?: "run_command" | "run_background";
   onChoose: (choice: ShellConfirmChoice) => void;
 }
 
@@ -25,14 +32,24 @@ export interface ShellConfirmProps {
  * Arrow keys + Enter. No y/n hotkey — too easy to trigger by accident
  * when the user was mid-typing a response.
  */
-export function ShellConfirm({ command, allowPrefix, onChoose }: ShellConfirmProps) {
+export function ShellConfirm({ command, allowPrefix, kind, onChoose }: ShellConfirmProps) {
+  const isBackground = kind === "run_background";
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginY={1}>
       <Box>
         <Text bold color="yellow">
-          ▸ model wants to run a shell command
+          {isBackground
+            ? "▸ model wants to start a BACKGROUND process"
+            : "▸ model wants to run a shell command"}
         </Text>
       </Box>
+      {isBackground ? (
+        <Box>
+          <Text dimColor>
+            {"  (long-running: dev server / watcher; keeps running after approval, /kill to stop)"}
+          </Text>
+        </Box>
+      ) : null}
       <Box>
         <Text color="yellow" dimColor>
           {"──────────────────────────────────────────"}

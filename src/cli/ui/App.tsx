@@ -8,7 +8,7 @@ import {
   listFilesWithStatsSync,
   rankPickerCandidates,
 } from "../../at-mentions.js";
-import { formatAllBlockDiffs } from "../../code/diff-preview.js";
+import { formatAllBlockDiffs, formatEditBlockDiff } from "../../code/diff-preview.js";
 import {
   type ApplyResult,
   type EditBlock,
@@ -17,9 +17,20 @@ import {
   parseEditBlocks,
   restoreSnapshots,
   snapshotBeforeEdits,
+  toWholeFileEditBlock,
 } from "../../code/edit-blocks.js";
 import { clearPendingEdits, loadPendingEdits, savePendingEdits } from "../../code/pending-edits.js";
-import { addProjectShellAllowed } from "../../config.js";
+import {
+  type EditMode,
+  type ReasoningEffort,
+  addProjectShellAllowed,
+  editModeHintShown,
+  loadEditMode,
+  loadReasoningEffort,
+  markEditModeHintShown,
+  saveEditMode,
+  saveReasoningEffort,
+} from "../../config.js";
 import { type ResolvedHook, formatHookOutcomeMessage, loadHooks, runHooks } from "../../hooks.js";
 import { CacheFirstLoop, DeepSeekClient, ImmutablePrefix } from "../../index.js";
 import type { LoopEvent } from "../../loop.js";
@@ -38,6 +49,7 @@ import { appendUsage } from "../../usage.js";
 import { VERSION, compareVersions, getLatestVersion } from "../../version.js";
 import { AtMentionSuggestions } from "./AtMentionSuggestions.js";
 import { type DisplayEvent, EventRow } from "./EventLog.js";
+import { EditConfirm, type EditReviewChoice } from "./EditConfirm.js";
 import { PlanConfirm, type PlanConfirmChoice } from "./PlanConfirm.js";
 import { PlanRefineInput } from "./PlanRefineInput.js";
 import { PromptInput } from "./PromptInput.js";
@@ -92,9 +104,11 @@ export interface AppProps {
   };
   /**
    * When set, parse SEARCH/REPLACE blocks from assistant responses and
-   * apply them to disk under `rootDir`. Set by `reasonix code`.
+   * apply them to disk under `rootDir`. Set by `reasonix code`. The
+   * optional `jobs` registry enables /jobs + /kill slashes in the TUI
+   * and the status-bar "N jobs running" indicator.
    */
-  codeMode?: { rootDir: string };
+  codeMode?: { rootDir: string; jobs?: import("../../tools/jobs.js").JobRegistry };
 }
 
 /**
@@ -104,6 +118,54 @@ export interface AppProps {
  * enough room to finish a repaint before the next one arrives.
  */
 const FLUSH_INTERVAL_MS = 100;
+
+/**
+ * One batch of edits that actually landed on disk — durable enough for
+ * `/undo`, `/history`, and `/show` within a session. Not persisted
+ * across restarts: restoring pre-apply content from a process that
+ * crashed last week is git's job, not ours.
+ */
+interface EditHistoryEntry {
+  /** Sequence number within the session, stable for `/show <id>`. */
+  id: number;
+  /** Epoch ms when the entry was opened (first edit landed). */
+  at: number;
+  /**
+   * Short tag for what produced the batch — "auto" (auto-mode tool
+   * call), "auto-text" (auto-mode text SEARCH/REPLACE at turn end),
+   * "review-apply" (user-approved modal edit or /apply flush).
+   */
+  source: string;
+  /** Edit blocks included in this batch, in arrival order. */
+  blocks: EditBlock[];
+  /** Per-block outcome — some may be "not-found" if SEARCH drifted. */
+  results: ApplyResult[];
+  /**
+   * First-snapshot-per-path wins: this is what `/undo` restores to.
+   * Deduped so multi-edit turns still roll back to pre-turn state.
+   */
+  snapshots: EditSnapshot[];
+  /**
+   * Paths within this entry that have already been reverted (via
+   * `/undo <id>`, `/undo <id> <path>`, or the newest-non-undone /undo
+   * shortcut). Per-path instead of entry-level so a batch can be
+   * partially undone — user reverts src/foo.ts out of a 3-file batch
+   * without rolling back the other two.
+   */
+  undoneFiles: Set<string>;
+}
+
+/** True when every path in the entry has been undone. */
+function isEntryFullyUndone(e: EditHistoryEntry): boolean {
+  return e.snapshots.length > 0 && e.snapshots.every((s) => e.undoneFiles.has(s.path));
+}
+
+/** Per-entry three-state status label for display. */
+function entryStatus(e: EditHistoryEntry): "applied" | "UNDONE" | "PARTIAL" {
+  if (e.undoneFiles.size === 0) return "applied";
+  if (isEntryFullyUndone(e)) return "UNDONE";
+  return "PARTIAL";
+}
 
 /**
  * True when the user has opted out of live spinner/streaming rows.
@@ -203,22 +265,99 @@ export function App({
   // scripts that `cd $REASONIX_CWD` (or read `cwd` from the JSON
   // envelope) land in the project root, not the user's shell home.
   const hookCwd = codeMode?.rootDir ?? process.cwd();
-  // Snapshots of every file the *last* edit batch touched, keyed by
-  // nothing more than "most recent". `/undo` restores from this ref
-  // and nulls it out — one level of undo, Aider-style. Multi-step
-  // undo would need a proper history stack and a clear policy for
-  // when the stack clears; v1 keeps it simple.
-  const lastEditSnapshots = useRef<EditSnapshot[] | null>(null);
+  // Session-scoped edit history. Each entry is one turn's worth of
+  // applied edits (first-snapshot-per-path wins so `/undo` restores the
+  // state at turn start). `/undo` walks back through non-undone entries
+  // newest-first; `/history` lists them; `/show <id>` dumps a stored
+  // diff. Not persisted to disk — cross-session rollback is what git
+  // is for. On /new we KEEP the history because disk state still
+  // correlates: wiping the chat doesn't un-apply the files.
+  const editHistory = useRef<EditHistoryEntry[]>([]);
+  const nextHistoryId = useRef(1);
+  // Mutable pointer to the in-progress entry (if any). Populated when
+  // the first edit of a turn lands, sealed implicitly when a new turn
+  // starts (handleSubmit nulls this). Subsequent edits in the same turn
+  // append into the same entry so `/undo` rolls back the whole batch.
+  const currentTurnEntry = useRef<EditHistoryEntry | null>(null);
   // Pending edit blocks awaiting `/apply` or `/discard`. We do NOT
   // auto-apply — v0.4.1 showed that "model proposed, so apply" turns
   // analysis into unintended edits. The user explicitly confirms now.
   const pendingEdits = useRef<EditBlock[]>([]);
+  // Reactive mirror of `pendingEdits.current.length`. Refs don't trigger
+  // re-renders, but the bottom mode-status bar needs to show the queue
+  // size live — this keeps the number in sync whenever the queue grows
+  // (interceptor / text-SEARCH parse / checkpoint restore) or clears
+  // (/apply / /discard / /new).
+  const [pendingCount, setPendingCount] = useState(0);
+  const syncPendingCount = useCallback(() => {
+    setPendingCount(pendingEdits.current.length);
+  }, []);
+  // Edit-gate mode. `review` (default) queues edits into pendingEdits;
+  // `auto` applies them immediately and exposes an undo banner. Shift+
+  // Tab cycles, `/mode <review|auto>` sets explicitly. Persisted so
+  // toggling once survives a relaunch.
+  const [editMode, setEditMode] = useState<EditMode>(() =>
+    codeMode ? loadEditMode() : "review",
+  );
+  // Interceptor closure reads the live mode through this ref — so we
+  // install the registry hook once (in useEffect below) and avoid tearing
+  // down + reattaching it every time the user cycles modes.
+  const editModeRef = useRef<EditMode>(editMode);
+  useEffect(() => {
+    editModeRef.current = editMode;
+    if (codeMode) saveEditMode(editMode);
+  }, [editMode, codeMode]);
+  // Post-auto-apply banner: rendered at the bottom for 5 seconds,
+  // dismissible with `u` (which triggers the same code path as /undo).
+  // `expiresAt` drives the countdown in the banner itself; the timer
+  // below clears the state unconditionally when the window ends.
+  const [undoBanner, setUndoBanner] = useState<{
+    results: ApplyResult[];
+    expiresAt: number;
+  } | null>(null);
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Current per-edit confirmation prompt (review mode, tool-call path).
+  // Non-null → EditConfirm modal renders, interceptor is suspended on
+  // `editReviewResolveRef.current`, other live rows hide. User picks a
+  // choice → handleEditReviewChoose resolves the promise, interceptor
+  // resumes and returns the tool result the model will see.
+  const [pendingEditReview, setPendingEditReview] = useState<EditBlock | null>(null);
+  const editReviewResolveRef = useRef<((c: EditReviewChoice) => void) | null>(null);
+  // Per-turn override: set by "apply-rest-of-turn" so subsequent edits
+  // in the SAME turn skip the modal and land like AUTO. Resets to "ask"
+  // at handleSubmit entry so the next user turn starts fresh.
+  const turnEditPolicyRef = useRef<"ask" | "apply-all">("ask");
+  // Visual highlight on the bottom mode bar for ~1.2s after Shift+Tab /
+  // /mode flips the mode — a soft "yes, it changed" signal so the user
+  // doesn't have to scan the header to confirm the toggle landed.
+  const [modeFlash, setModeFlash] = useState(false);
+  const modeFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevEditModeRef = useRef<EditMode>(editMode);
+  useEffect(() => {
+    if (prevEditModeRef.current === editMode) return;
+    prevEditModeRef.current = editMode;
+    setModeFlash(true);
+    if (modeFlashTimeoutRef.current) clearTimeout(modeFlashTimeoutRef.current);
+    modeFlashTimeoutRef.current = setTimeout(() => {
+      setModeFlash(false);
+      modeFlashTimeoutRef.current = null;
+    }, 1200);
+  }, [editMode]);
   // Shell command the model asked to run that wasn't on the auto-run
   // allowlist. Non-null renders the ShellConfirm modal and disables
   // the prompt input; the user picks Run once / Always allow in this
   // project / Deny and we feed the result back as a synthetic user
   // message so the model sees what happened.
-  const [pendingShell, setPendingShell] = useState<string | null>(null);
+  const [pendingShell, setPendingShell] = useState<{
+    command: string;
+    /**
+     * Which tool surfaced the NeedsConfirmationError. Drives post-
+     * approval dispatch: `run_command` uses the synchronous runCommand
+     * (waits for exit); `run_background` spawns via JobRegistry and
+     * returns after a ready-signal / waitSec window.
+     */
+    kind: "run_command" | "run_background";
+  } | null>(null);
   // Plan text the model submitted via `submit_plan` while plan mode
   // was active. Non-null renders PlanConfirm; user picks Approve /
   // Refine / Cancel and we drive the loop from there. Separate from
@@ -520,6 +659,10 @@ export function App({
       session,
       hooks: hookList,
       hookCwd,
+      // Restore the user's last-chosen effort cap. Without this a
+      // `/effort high` silently reverted to `max` on relaunch — the
+      // loop's constructor default wins over persisted state.
+      reasoningEffort: loadReasoningEffort(),
     });
     loopRef.current = l;
     return l;
@@ -705,6 +848,7 @@ export function App({
       const restored = loadPendingEdits(session);
       if (restored && restored.length > 0) {
         pendingEdits.current = restored;
+        syncPendingCount();
         setHistorical((prev) => [
           ...prev,
           {
@@ -715,7 +859,29 @@ export function App({
         ]);
       }
     }
-  }, [session, loop, codeMode]);
+    // One-time onboarding tip for the edit-gate keybindings. New users
+    // wouldn't otherwise discover Shift+Tab (it's in /keys and the
+    // bottom status bar, but both require looking). Shown exactly once
+    // per install; the config flag suppresses re-display on every
+    // relaunch. Skips chat mode — those shortcuts don't apply there.
+    if (codeMode && !editModeHintShown()) {
+      setHistorical((prev) => [
+        ...prev,
+        {
+          id: `sys-edittip-${Date.now()}`,
+          role: "info",
+          text:
+            "▸ TIP: edit-gate keybindings\n" +
+            "    y / n       accept or drop pending edits\n" +
+            "    Shift+Tab   switch review ↔ AUTO (persisted; AUTO applies instantly)\n" +
+            "    u           undo the last auto-applied batch (within the 5s banner)\n" +
+            "  Current mode is shown in the bottom status bar. Run /keys anytime for the full list.\n" +
+            "  (This tip shows once — suppressed after.)",
+        },
+      ]);
+      markEditModeHintShown();
+    }
+  }, [session, loop, codeMode, syncPendingCount]);
 
   // Esc during busy → forward to the loop as an abort signal. The loop
   // finishes the tool call in flight (we can't kill subprocess stdio
@@ -726,11 +892,75 @@ export function App({
   // Also handles ↑/↓ shell-style history while idle. We don't use
   // ink-text-input's (absent) history support; parent-level useInput
   // is simpler and lets us own the cursor semantics.
-  useInput((_input, key) => {
+  useInput((chKey, key) => {
     if (key.escape && busy) {
       if (abortedThisTurn.current) return;
       abortedThisTurn.current = true;
+      // If an edit-review modal is up, resolve its promise first so the
+      // interceptor unblocks — otherwise the tool call hangs past the
+      // loop's abort and the next turn can't start. Esc during modal =
+      // "reject this edit" (safe default — nothing lands on disk).
+      const resolve = editReviewResolveRef.current;
+      if (resolve) {
+        editReviewResolveRef.current = null;
+        setPendingEditReview(null);
+        resolve("reject");
+      }
       loop.abort();
+      return;
+    }
+    // Edit-mode cycle: Shift+Tab flips review ↔ auto. Available any
+    // time a modal isn't up — including mid-turn — so the user can
+    // switch gears without abandoning the in-flight request. Prefer
+    // this to typing `/mode <x>`; one keystroke, no command parsing.
+    if (
+      codeMode &&
+      key.shift &&
+      key.tab &&
+      !pendingShell &&
+      !pendingPlan &&
+      !stagedInput &&
+      !pendingEditReview
+    ) {
+      setEditMode((m) => {
+        const next: EditMode = m === "auto" ? "review" : "auto";
+        setHistorical((prev) => [
+          ...prev,
+          {
+            id: `mode-${Date.now()}`,
+            role: "info",
+            text:
+              next === "auto"
+                ? "▸ edit mode: AUTO — edits apply immediately; press u within 5s to undo"
+                : "▸ edit mode: review — edits queue for /apply (or y) / /discard (or n)",
+          },
+        ]);
+        return next;
+      });
+      return;
+    }
+    // Undo banner keybind: `u` rolls back the last auto-apply. Gated
+    // on an empty prompt buffer so typing "user" into the input doesn't
+    // steal from the first keystroke. 5-second window; after that the
+    // banner self-dismisses and /undo remains the only path.
+    if (
+      codeMode &&
+      input.length === 0 &&
+      (chKey === "u" || chKey === "U") &&
+      !pendingShell &&
+      !pendingPlan &&
+      !stagedInput &&
+      !pendingEditReview &&
+      // Fire when EITHER the banner is up OR there's any non-undone
+      // history entry — the keybind is useful long after the 5-second
+      // banner expires, which users rightly want.
+      (undoBanner || editHistory.current.some((e) => !isEntryFullyUndone(e)))
+    ) {
+      const out = codeUndo([]);
+      setHistorical((prev) => [
+        ...prev,
+        { id: `undo-${Date.now()}`, role: "info", text: out },
+      ]);
       return;
     }
     if (busy) return;
@@ -828,21 +1058,369 @@ export function App({
   });
 
   /**
-   * Callback wired into the `/undo` slash command. Restores the files
-   * last edit batch to their pre-edit state and reports per-file
-   * results. Only available when running in code mode — the slash
-   * handler gates on this callback's presence.
+   * Record a batch of successfully-applied edits into the session's
+   * edit history. If the current turn already has an open entry,
+   * append into it (first-wins-per-path so `/undo` restores the
+   * pre-turn state, not an intermediate half-edit). Otherwise open a
+   * new entry. Called by: the tool-call interceptor's auto / review-
+   * approved path, the text-block auto-apply at assistant_final, and
+   * `/apply` when flushing queued text blocks in review mode.
    */
-  const codeUndo = useCallback((): string => {
+  const recordEdit = useCallback(
+    (
+      source: string,
+      blocks: readonly EditBlock[],
+      results: readonly ApplyResult[],
+      snaps: readonly EditSnapshot[],
+    ) => {
+      if (snaps.length === 0) return;
+      let entry = currentTurnEntry.current;
+      if (!entry) {
+        entry = {
+          id: nextHistoryId.current++,
+          at: Date.now(),
+          source,
+          blocks: [],
+          results: [],
+          snapshots: [],
+          undoneFiles: new Set<string>(),
+        };
+        currentTurnEntry.current = entry;
+        editHistory.current.push(entry);
+      }
+      entry.blocks.push(...blocks);
+      entry.results.push(...results);
+      const seen = new Set(entry.snapshots.map((s) => s.path));
+      for (const s of snaps) {
+        if (!seen.has(s.path)) entry.snapshots.push(s);
+      }
+    },
+    [],
+  );
+
+  /**
+   * Show the post-auto-apply undo banner for 5 seconds. Overwrites any
+   * prior banner (the snapshot ref already spans the whole turn, so one
+   * banner is enough) and replaces the auto-dismiss timer so multiple
+   * edits inside a single turn don't prematurely expire the window.
+   */
+  const armUndoBanner = useCallback((results: ApplyResult[]) => {
+    setUndoBanner({ results, expiresAt: Date.now() + 5000 });
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    undoTimeoutRef.current = setTimeout(() => {
+      setUndoBanner(null);
+      undoTimeoutRef.current = null;
+    }, 5000);
+  }, []);
+
+  /**
+   * `/undo` — revert applied edits.
+   *   `/undo`                → newest non-fully-undone entry, all its
+   *                            remaining (non-undone) files.
+   *   `/undo <id>`           → that specific entry's remaining files.
+   *   `/undo <id> <path>`    → just that one file in that entry.
+   * Works as long as the session is alive; no 5-second banner limit.
+   */
+  const codeUndo = useCallback(
+    (args: readonly string[] = []): string => {
+      if (!codeMode) return "not in code mode";
+      const root = codeMode.rootDir;
+
+      const revert = (entry: EditHistoryEntry, paths: readonly string[]): string => {
+        const subset = entry.snapshots.filter((s) => paths.includes(s.path));
+        if (subset.length === 0) {
+          return `batch #${entry.id}: nothing to undo (already restored or path not in batch)`;
+        }
+        const results = restoreSnapshots(subset, root);
+        for (const s of subset) entry.undoneFiles.add(s.path);
+        if (currentTurnEntry.current === entry && isEntryFullyUndone(entry)) {
+          currentTurnEntry.current = null;
+        }
+        if (undoTimeoutRef.current) {
+          clearTimeout(undoTimeoutRef.current);
+          undoTimeoutRef.current = null;
+        }
+        setUndoBanner(null);
+        const when = new Date(entry.at).toISOString().replace("T", " ").slice(11, 19);
+        const scope = subset.length === 1 ? subset[0]!.path : `${subset.length} file(s)`;
+        const header = `▸ undo: reverted ${scope} from batch #${entry.id} (${when})`;
+        return [header, ...formatUndoRows(results)].join("\n");
+      };
+
+      const idArg = args[0];
+      const pathArg = args[1];
+
+      if (!idArg) {
+        // No args — newest non-fully-undone entry, all remaining files.
+        for (let i = editHistory.current.length - 1; i >= 0; i--) {
+          const e = editHistory.current[i]!;
+          if (isEntryFullyUndone(e)) continue;
+          const remaining = e.snapshots
+            .map((s) => s.path)
+            .filter((p) => !e.undoneFiles.has(p));
+          return revert(e, remaining);
+        }
+        return "nothing to undo — every batch in the session history is already undone";
+      }
+
+      const id = Number.parseInt(idArg, 10);
+      if (!Number.isFinite(id)) {
+        return "usage: /undo [id] [path]   (omit id for newest; id from /history; path from /show <id>)";
+      }
+      const entry = editHistory.current.find((e) => e.id === id);
+      if (!entry) return `no edit #${id} — run /history to see valid ids`;
+
+      if (!pathArg) {
+        const remaining = entry.snapshots
+          .map((s) => s.path)
+          .filter((p) => !entry.undoneFiles.has(p));
+        if (remaining.length === 0) return `batch #${id} is already fully undone`;
+        return revert(entry, remaining);
+      }
+
+      // Per-file undo.
+      const snap = entry.snapshots.find((s) => s.path === pathArg);
+      if (!snap) {
+        const files = [...new Set(entry.blocks.map((b) => b.path))];
+        return `batch #${id} doesn't include "${pathArg}" — files in this batch: ${files.join(", ")}`;
+      }
+      if (entry.undoneFiles.has(pathArg)) {
+        return `${pathArg} in batch #${id} is already undone`;
+      }
+      return revert(entry, [pathArg]);
+    },
+    [codeMode],
+  );
+
+  /**
+   * `/history` — list every edit batch this session. Each entry's id
+   * is the token for `/show <id>` and the target of per-batch undo.
+   */
+  const codeHistory = useCallback((): string => {
     if (!codeMode) return "not in code mode";
-    const snaps = lastEditSnapshots.current;
-    if (!snaps || snaps.length === 0) {
-      return "nothing to undo — no recent edit batch to restore";
+    const entries = editHistory.current;
+    if (entries.length === 0) return "no edits recorded this session yet";
+    const lines = ["Edit history (oldest first):"];
+    for (const e of entries) {
+      const when = new Date(e.at).toISOString().replace("T", " ").slice(11, 19);
+      const files = new Set(e.blocks.map((b) => b.path));
+      const fileList = [...files].join(", ");
+      const fileSummary = fileList.length > 60 ? `${fileList.slice(0, 60)}…` : fileList;
+      const status = entryStatus(e);
+      const statusText =
+        status === "applied" ? "applied" : status === "PARTIAL" ? "PARTIAL" : "UNDONE ";
+      lines.push(
+        `  #${String(e.id).padStart(3)}  ${when}  ${statusText}  ${e.source.padEnd(12)} ${files.size} file · ${e.blocks.length} block   ${fileSummary}`,
+      );
     }
-    const results = restoreSnapshots(snaps, codeMode.rootDir);
-    lastEditSnapshots.current = null;
-    return formatUndoResults(results);
+    lines.push("");
+    lines.push(
+      "/show <id>            → per-file summary    ·    /show <id> <path>  → full diff of one file",
+    );
+    lines.push(
+      "/undo                 → newest non-undone   ·    /undo <id> [path]  → target a specific batch or file",
+    );
+    return lines.join("\n");
   }, [codeMode]);
+
+  /**
+   * `/show` — inspect a stored edit batch.
+   *   `/show`                → newest non-fully-undone entry, per-file summary.
+   *   `/show <id>`           → that entry's per-file summary.
+   *   `/show <id> <path>`    → full diff of one file in that entry.
+   * The diff is what the model proposed and what got applied; run
+   * `git diff` for "current disk state vs HEAD".
+   */
+  const codeShowEdit = useCallback(
+    (args: readonly string[] = []): string => {
+      if (!codeMode) return "not in code mode";
+      const entries = editHistory.current;
+      if (entries.length === 0) return "no edits recorded this session — /history is empty";
+
+      const idArg = args[0];
+      const pathArg = args[1];
+
+      let entry: EditHistoryEntry | undefined;
+      if (!idArg) {
+        entry =
+          [...entries].reverse().find((e) => !isEntryFullyUndone(e)) ?? entries[entries.length - 1];
+      } else {
+        const id = Number.parseInt(idArg, 10);
+        if (!Number.isFinite(id)) {
+          return "usage: /show [id] [path]   (omit id for newest; path from the per-file summary)";
+        }
+        entry = entries.find((e) => e.id === id);
+        if (!entry) return `no edit #${id} — run /history to see valid ids`;
+      }
+      if (!entry) return "unexpected: history lookup failed";
+
+      if (pathArg) {
+        // Full diff of one file.
+        const fileBlocks = entry.blocks.filter((b) => b.path === pathArg);
+        if (fileBlocks.length === 0) {
+          const files = [...new Set(entry.blocks.map((b) => b.path))];
+          return `batch #${entry.id} doesn't include "${pathArg}" — files in this batch: ${files.join(", ")}`;
+        }
+        const when = new Date(entry.at).toISOString().replace("T", " ").slice(11, 19);
+        const state = entry.undoneFiles.has(pathArg) ? "UNDONE" : "applied";
+        const header = `▸ edit #${entry.id} · ${when} · ${pathArg} · ${state} · ${fileBlocks.length} block(s)`;
+        const diff = formatAllBlockDiffs(fileBlocks, { maxLines: 60, contextLines: 2 });
+        const footer = entry.undoneFiles.has(pathArg)
+          ? `(already reverted — /history shows the batch-level status)`
+          : `/undo ${entry.id} ${pathArg}  → revert just this file`;
+        return [header, ...diff, "", footer].join("\n");
+      }
+
+      // Per-file summary for the whole entry.
+      const when = new Date(entry.at).toISOString().replace("T", " ").slice(11, 19);
+      const files = [...new Set(entry.blocks.map((b) => b.path))];
+      const status = entryStatus(entry);
+      const header = `▸ edit #${entry.id} · ${when} · ${entry.source} · ${status} · ${files.length} file(s)`;
+      const countLines = (s: string) => (s.length === 0 ? 0 : (s.match(/\n/g)?.length ?? 0) + 1);
+      const fileLines = files.map((path) => {
+        const fileBlocks = entry!.blocks.filter((b) => b.path === path);
+        let removed = 0;
+        let added = 0;
+        for (const b of fileBlocks) {
+          removed += countLines(b.search);
+          added += countLines(b.replace);
+        }
+        const state = entry!.undoneFiles.has(path) ? "UNDONE" : "applied";
+        return `  ${state.padEnd(7)}  -${String(removed).padStart(3)}/+${String(added).padStart(3)}   ${path}  (${fileBlocks.length} block${fileBlocks.length === 1 ? "" : "s"})`;
+      });
+      return [
+        header,
+        ...fileLines,
+        "",
+        `/show ${entry.id} <path>   → full diff of one file`,
+        `/undo ${entry.id} <path>   → revert just that file   ·   /undo ${entry.id} → revert whole batch`,
+      ].join("\n");
+    },
+    [codeMode],
+  );
+
+  // Edit-gate interceptor. Reroutes `edit_file` / `write_file` tool
+  // calls through the review queue (in `review` mode) or the auto-apply
+  // snapshot/banner path (in `auto` mode) so the model's tool usage
+  // respects the same gate as its text-form SEARCH/REPLACE output.
+  // Without this, edit_file bypasses `/apply` entirely — which was the
+  // bug that made the preview flow feel absent pre-0.5.24.
+  //
+  // `editModeRef` is read inside the closure so mode cycles don't need
+  // to reinstall the hook. Cleanup clears the slot on unmount so a
+  // follow-up App instance (tests, HMR) starts with a fresh registry.
+  useEffect(() => {
+    if (!tools || !codeMode) return;
+    tools.setToolInterceptor(async (name, args) => {
+      if (name !== "edit_file" && name !== "write_file") return null;
+      const rawPath = typeof args.path === "string" ? args.path : "";
+      if (!rawPath) return null;
+      // Mirror filesystem.ts safePath's leading-slash tolerance so
+      // `/src/foo.ts` doesn't get misrouted through applyEditBlock's
+      // rootDir-escape check.
+      let relPath = rawPath;
+      while (relPath.startsWith("/") || relPath.startsWith("\\")) {
+        relPath = relPath.slice(1);
+      }
+      if (!relPath) return null;
+
+      let block: EditBlock;
+      if (name === "edit_file") {
+        const search = typeof args.search === "string" ? args.search : "";
+        const replace = typeof args.replace === "string" ? args.replace : "";
+        if (!search) return null; // let the tool fn surface the "empty search" error
+        block = { path: relPath, search, replace, offset: 0 };
+      } else {
+        // write_file: capture the current content (if any) as SEARCH so
+        // the queued block is a literal whole-file overwrite. For new
+        // files SEARCH stays empty — applyEditBlock's create-new sentinel.
+        const content = typeof args.content === "string" ? args.content : "";
+        block = toWholeFileEditBlock(relPath, content, codeMode.rootDir);
+      }
+
+      // Helper: apply the current block + record into history + arm
+      // undo + echo a row. Used by auto mode AND by the various
+      // "apply" branches of the review modal so we don't duplicate
+      // the snapshot/apply/banner logic.
+      const applyNow = (): string => {
+        const snaps = snapshotBeforeEdits([block], codeMode.rootDir);
+        const results = applyEditBlocks([block], codeMode.rootDir);
+        const good = results.some((r) => r.status === "applied" || r.status === "created");
+        if (good) {
+          recordEdit("auto", [block], results, snaps);
+          armUndoBanner(results);
+        }
+        setHistorical((prev) => [
+          ...prev,
+          {
+            id: `ae-${Date.now()}-${Math.random()}`,
+            role: "info",
+            text: formatEditResults(results),
+          },
+        ]);
+        return formatEditResults(results);
+      };
+
+      if (editModeRef.current === "auto") return applyNow();
+
+      // review mode, tool-call path: suspend the interceptor on the
+      // per-edit modal unless the user has already hit "apply-rest-of-
+      // turn" earlier in the same turn. Text-form SEARCH/REPLACE blocks
+      // in assistant_final still queue for end-of-turn preview — they
+      // land all at once with no mid-stream opportunity to prompt.
+      if (turnEditPolicyRef.current === "apply-all") return applyNow();
+
+      const choice = await new Promise<EditReviewChoice>((resolveChoice) => {
+        editReviewResolveRef.current = resolveChoice;
+        setPendingEditReview(block);
+      });
+      // Clear the pending-review slot synchronously so a rapid-fire next
+      // tool call doesn't race the React state settling.
+      editReviewResolveRef.current = null;
+      setPendingEditReview(null);
+
+      if (choice === "reject") {
+        setHistorical((prev) => [
+          ...prev,
+          {
+            id: `er-${Date.now()}-${Math.random()}`,
+            role: "info",
+            text: `▸ rejected edit to ${block.path}`,
+          },
+        ]);
+        return `User rejected this edit to ${block.path}. Don't retry the same SEARCH/REPLACE — either try a different approach or ask the user what they want instead.`;
+      }
+      if (choice === "apply-rest-of-turn") {
+        turnEditPolicyRef.current = "apply-all";
+        setHistorical((prev) => [
+          ...prev,
+          {
+            id: `er-${Date.now()}-${Math.random()}`,
+            role: "info",
+            text: "▸ auto-approving remaining edits for this turn",
+          },
+        ]);
+        return applyNow();
+      }
+      if (choice === "flip-to-auto") {
+        setEditMode("auto");
+        setHistorical((prev) => [
+          ...prev,
+          {
+            id: `er-${Date.now()}-${Math.random()}`,
+            role: "info",
+            text: "▸ flipped to AUTO mode for the rest of the session (persisted)",
+          },
+        ]);
+        return applyNow();
+      }
+      // "apply"
+      return applyNow();
+    });
+    return () => {
+      tools.setToolInterceptor(null);
+    };
+  }, [tools, codeMode, session, recordEdit, armUndoBanner, syncPendingCount, setEditMode]);
 
   /**
    * /apply callback — write pending edit blocks to disk, snapshot
@@ -857,11 +1435,12 @@ export function App({
     const snaps = snapshotBeforeEdits(blocks, codeMode.rootDir);
     const results = applyEditBlocks(blocks, codeMode.rootDir);
     const anyApplied = results.some((r) => r.status === "applied" || r.status === "created");
-    if (anyApplied) lastEditSnapshots.current = snaps;
+    if (anyApplied) recordEdit("review-apply", blocks, results, snaps);
     pendingEdits.current = [];
     clearPendingEdits(session ?? null);
+    syncPendingCount();
     return formatEditResults(results);
-  }, [codeMode, session]);
+  }, [codeMode, session, syncPendingCount, recordEdit]);
 
   /**
    * /discard callback — forget the pending edits without touching
@@ -873,8 +1452,9 @@ export function App({
     if (count === 0) return "nothing pending to discard.";
     pendingEdits.current = [];
     clearPendingEdits(session ?? null);
+    syncPendingCount();
     return `▸ discarded ${count} pending edit block(s). Nothing was written to disk.`;
-  }, [session]);
+  }, [session, syncPendingCount]);
 
   const prefixHash = loop.prefix.fingerprint;
 
@@ -1045,6 +1625,8 @@ export function App({
           codeUndo: codeMode ? codeUndo : undefined,
           codeApply: codeMode ? codeApply : undefined,
           codeDiscard: codeMode ? codeDiscard : undefined,
+          codeHistory: codeMode ? codeHistory : undefined,
+          codeShowEdit: codeMode ? codeShowEdit : undefined,
           codeRoot: codeMode?.rootDir,
           pendingEditCount: codeMode ? pendingEdits.current.length : undefined,
           toolHistory: () => toolHistoryRef.current,
@@ -1052,6 +1634,14 @@ export function App({
           planMode,
           setPlanMode: codeMode ? togglePlanMode : undefined,
           clearPendingPlan: codeMode ? clearPendingPlan : undefined,
+          editMode: codeMode ? editMode : undefined,
+          setEditMode: codeMode ? setEditMode : undefined,
+          jobs: codeMode?.jobs,
+          postInfo: (text: string) =>
+            setHistorical((prev) => [
+              ...prev,
+              { id: `sys-late-${Date.now()}-${Math.random()}`, role: "info", text },
+            ]),
           reloadHooks: () => {
             const fresh = loadHooks({ projectRoot: codeMode?.rootDir });
             setHookList(fresh);
@@ -1095,6 +1685,7 @@ export function App({
           if (codeMode) {
             pendingEdits.current = [];
             clearPendingEdits(session ?? null);
+            syncPendingCount();
           }
           return;
         }
@@ -1103,6 +1694,7 @@ export function App({
           if (codeMode) {
             pendingEdits.current = [];
             clearPendingEdits(session ?? null);
+            syncPendingCount();
           }
           return;
         }
@@ -1194,6 +1786,16 @@ export function App({
       setStreaming({ id: assistantId, role: "assistant", text: "", streaming: true });
       setBusy(true);
       abortedThisTurn.current = false;
+      // Seal the in-progress history entry so this turn's edits open
+      // a new one — prior turns are preserved intact for /history and
+      // `/undo` to walk back through independently.
+      if (codeMode) {
+        currentTurnEntry.current = null;
+      }
+      // Reset per-turn edit policy so "apply-rest-of-turn" from the
+      // previous turn doesn't carry over silently. User expects each
+      // new prompt to start with the normal review gate re-armed.
+      turnEditPolicyRef.current = "ask";
 
       const flush = () => {
         if (!contentBuf.current && !reasoningBuf.current && !toolCallBuildBuf.current) return;
@@ -1337,10 +1939,10 @@ export function App({
             reasoningBuf.current = "";
             toolCallBuildBuf.current = null;
             if (codeMode && finalText && !ev.forcedSummary) {
-              // Parse SEARCH/REPLACE blocks but DO NOT write them to
-              // disk. Store as pending — the user has to say /apply
-              // explicitly. This prevents "analyze the project" from
-              // silently drifting into "edit the project".
+              // Parse SEARCH/REPLACE blocks from assistant text. What
+              // happens next depends on the edit mode: `review` queues
+              // them for user confirmation; `auto` snapshots + applies
+              // immediately, arming the undo banner.
               //
               // `ev.forcedSummary` gates us out entirely: if the loop
               // had to force a summary (budget / aborted / context-
@@ -1348,20 +1950,44 @@ export function App({
               // Blocks dropped in a forced summary are display-only.
               const blocks = parseEditBlocks(finalText);
               if (blocks.length > 0) {
-                pendingEdits.current = blocks;
-                // Checkpoint the queue so a crash / Ctrl+C between
-                // "blocks parsed" and "user /apply" doesn't lose the
-                // edits. On next launch App.tsx's restore effect reads
-                // this file. /apply + /discard clear it explicitly.
-                savePendingEdits(session ?? null, blocks);
-                setHistorical((prev) => [
-                  ...prev,
-                  {
-                    id: `pending-${Date.now()}`,
-                    role: "info",
-                    text: formatPendingPreview(blocks),
-                  },
-                ]);
+                if (editModeRef.current === "auto") {
+                  const snaps = snapshotBeforeEdits(blocks, codeMode.rootDir);
+                  const results = applyEditBlocks(blocks, codeMode.rootDir);
+                  const good = results.some(
+                    (r) => r.status === "applied" || r.status === "created",
+                  );
+                  if (good) {
+                    recordEdit("auto-text", blocks, results, snaps);
+                    armUndoBanner(results);
+                  }
+                  setHistorical((prev) => [
+                    ...prev,
+                    {
+                      id: `applied-${Date.now()}`,
+                      role: "info",
+                      text: formatEditResults(results),
+                    },
+                  ]);
+                } else {
+                  // Append rather than replace — tool-call edits from
+                  // earlier in the same turn may already be queued via
+                  // the registry interceptor.
+                  pendingEdits.current = [...pendingEdits.current, ...blocks];
+                  // Checkpoint the queue so a crash / Ctrl+C between
+                  // "blocks parsed" and "user /apply" doesn't lose the
+                  // edits. On next launch App.tsx's restore effect reads
+                  // this file. /apply + /discard clear it explicitly.
+                  savePendingEdits(session ?? null, pendingEdits.current);
+                  syncPendingCount();
+                  setHistorical((prev) => [
+                    ...prev,
+                    {
+                      id: `pending-${Date.now()}`,
+                      role: "info",
+                      text: formatPendingPreview(pendingEdits.current),
+                    },
+                  ]);
+                }
               }
             }
           } else if (ev.role === "tool_start") {
@@ -1417,14 +2043,17 @@ export function App({
             // is tracked — a second rejection overwrites the first.
             if (
               codeMode &&
-              ev.toolName === "run_command" &&
+              (ev.toolName === "run_command" || ev.toolName === "run_background") &&
               ev.content.includes('"NeedsConfirmationError:') &&
               ev.toolArgs
             ) {
               try {
                 const parsed = JSON.parse(ev.toolArgs) as { command?: unknown };
                 if (typeof parsed.command === "string" && parsed.command.trim()) {
-                  setPendingShell(parsed.command.trim());
+                  setPendingShell({
+                    command: parsed.command.trim(),
+                    kind: ev.toolName as "run_command" | "run_background",
+                  });
                 }
               } catch {
                 /* malformed args — skip the prompt */
@@ -1535,6 +2164,10 @@ export function App({
       pickSlashArg,
       togglePlanMode,
       writeTranscript,
+      recordEdit,
+      armUndoBanner,
+      editMode,
+      syncPendingCount,
     ],
   );
 
@@ -1550,8 +2183,9 @@ export function App({
    */
   const handleShellConfirm = useCallback(
     async (choice: ShellConfirmChoice) => {
-      const cmd = pendingShell;
-      if (!cmd || !codeMode) return;
+      const pending = pendingShell;
+      if (!pending || !codeMode) return;
+      const { command: cmd, kind } = pending;
       setPendingShell(null);
 
       let synthetic: string;
@@ -1576,20 +2210,60 @@ export function App({
         }
         setHistorical((prev) => [
           ...prev,
-          { id: `sh-run-${Date.now()}`, role: "info", text: `▸ running: ${cmd}` },
+          {
+            id: `sh-run-${Date.now()}`,
+            role: "info",
+            text: kind === "run_background" ? `▸ starting (background): ${cmd}` : `▸ running: ${cmd}`,
+          },
         ]);
-        let body: string;
-        try {
-          const res = await runCommand(cmd, { cwd: codeMode.rootDir });
-          body = formatCommandResult(cmd, res);
-        } catch (err) {
-          body = `$ ${cmd}\n[failed to spawn] ${(err as Error).message}`;
+        if (kind === "run_background" && codeMode.jobs) {
+          // Spawn through the JobRegistry so the process keeps running
+          // after this handler resolves; the synthetic message tells the
+          // model the job id so it can call job_output / stop_job next.
+          let startedOk = false;
+          let jobId: number | null = null;
+          let preview = "";
+          try {
+            const res = await codeMode.jobs.start(cmd, { cwd: codeMode.rootDir });
+            startedOk = true;
+            jobId = res.jobId;
+            preview = res.preview;
+            const header = res.stillRunning
+              ? `[job ${res.jobId} started · pid ${res.pid ?? "?"} · ${res.readyMatched ? "READY signal matched" : "running"}]`
+              : res.exitCode !== null
+                ? `[job ${res.jobId} exited during startup · exit ${res.exitCode}]`
+                : `[job ${res.jobId} failed to start]`;
+            const body = preview ? `${header}\n${preview}` : header;
+            setHistorical((prev) => [
+              ...prev,
+              { id: `sh-out-${Date.now()}`, role: "info", text: body },
+            ]);
+            synthetic = `I approved the background spawn. ${header}\n\nStartup preview:\n\n${preview || "(no output yet)"}\n\nThe process is still running — use job_output to read newer logs, stop_job to halt it.`;
+          } catch (err) {
+            const msg = `$ ${cmd}\n[failed to start] ${(err as Error).message}`;
+            setHistorical((prev) => [
+              ...prev,
+              { id: `sh-out-${Date.now()}`, role: "info", text: msg },
+            ]);
+            synthetic = `I approved the background spawn but it failed to start:\n\n${msg}`;
+          }
+          void startedOk; // appease "assigned but never used" — retained for future hook
+          void jobId;
+        } else {
+          // Foreground (run_command) — synchronous; waits for exit.
+          let body: string;
+          try {
+            const res = await runCommand(cmd, { cwd: codeMode.rootDir });
+            body = formatCommandResult(cmd, res);
+          } catch (err) {
+            body = `$ ${cmd}\n[failed to spawn] ${(err as Error).message}`;
+          }
+          setHistorical((prev) => [
+            ...prev,
+            { id: `sh-out-${Date.now()}`, role: "info", text: body },
+          ]);
+          synthetic = `I ran the command you requested. Output:\n\n${body}`;
         }
-        setHistorical((prev) => [
-          ...prev,
-          { id: `sh-out-${Date.now()}`, role: "info", text: body },
-        ]);
-        synthetic = `I ran the command you requested. Output:\n\n${body}`;
       }
 
       // If the prior turn is still streaming ("please confirm" chatter),
@@ -1753,7 +2427,7 @@ export function App({
   }, [stagedInput]);
 
   return (
-    <TickerProvider disabled={PLAIN_UI || !!pendingPlan || !!pendingShell}>
+    <TickerProvider disabled={PLAIN_UI || !!pendingPlan || !!pendingShell || !!pendingEditReview}>
       <Box flexDirection="column">
         <StatsPanel
           summary={summary}
@@ -1763,6 +2437,7 @@ export function App({
           branchBudget={loop.branchOptions.budget}
           reasoningEffort={loop.reasoningEffort}
           planMode={planMode}
+          editMode={codeMode ? editMode : undefined}
           balance={balance}
           busy={busy}
           updateAvailable={updateAvailable}
@@ -1777,24 +2452,48 @@ export function App({
           attention. They come back naturally once the user chooses and
           the next turn begins.
         */}
-        {!PLAIN_UI && !pendingShell && !pendingPlan && !stagedInput && streaming ? (
+        {!PLAIN_UI &&
+        !pendingShell &&
+        !pendingPlan &&
+        !stagedInput &&
+        !pendingEditReview &&
+        streaming ? (
           <Box marginY={1}>
             <EventRow event={streaming} projectRoot={hookCwd} />
           </Box>
         ) : null}
-        {!PLAIN_UI && !pendingShell && !pendingPlan && !stagedInput && ongoingTool ? (
+        {!PLAIN_UI &&
+        !pendingShell &&
+        !pendingPlan &&
+        !stagedInput &&
+        !pendingEditReview &&
+        ongoingTool ? (
           <OngoingToolRow tool={ongoingTool} progress={toolProgress} />
         ) : null}
-        {!PLAIN_UI && !pendingShell && !pendingPlan && !stagedInput && subagentActivity ? (
+        {!PLAIN_UI &&
+        !pendingShell &&
+        !pendingPlan &&
+        !stagedInput &&
+        !pendingEditReview &&
+        subagentActivity ? (
           <SubagentRow activity={subagentActivity} />
         ) : null}
         {!PLAIN_UI &&
         !pendingShell &&
         !pendingPlan &&
         !stagedInput &&
+        !pendingEditReview &&
         !ongoingTool &&
         statusLine ? (
           <StatusRow text={statusLine} />
+        ) : null}
+        {!PLAIN_UI &&
+        undoBanner &&
+        !pendingShell &&
+        !pendingPlan &&
+        !stagedInput &&
+        !pendingEditReview ? (
+          <UndoBanner banner={undoBanner} />
         ) : null}
         {/*
           Belt-and-suspenders fallback: if we're busy but NONE of the
@@ -1808,6 +2507,7 @@ export function App({
         !pendingShell &&
         !pendingPlan &&
         !stagedInput &&
+        !pendingEditReview &&
         busy &&
         !streaming &&
         !ongoingTool &&
@@ -1828,12 +2528,34 @@ export function App({
           />
         ) : pendingShell ? (
           <ShellConfirm
-            command={pendingShell}
-            allowPrefix={derivePrefix(pendingShell)}
+            command={pendingShell.command}
+            allowPrefix={derivePrefix(pendingShell.command)}
+            kind={pendingShell.kind}
             onChoose={handleShellConfirm}
+          />
+        ) : pendingEditReview ? (
+          <EditConfirm
+            block={pendingEditReview}
+            onChoose={(choice) => {
+              const resolve = editReviewResolveRef.current;
+              if (resolve) {
+                editReviewResolveRef.current = null;
+                resolve(choice);
+              }
+            }}
           />
         ) : (
           <>
+            {codeMode ? (
+              <ModeStatusBar
+                editMode={editMode}
+                pendingCount={pendingCount}
+                flash={modeFlash}
+                planMode={planMode}
+                undoArmed={!!undoBanner || editHistory.current.some((e) => !isEntryFullyUndone(e))}
+                jobs={codeMode.jobs}
+              />
+            ) : null}
             <PromptInput
               value={input}
               onChange={setInput}
@@ -1895,6 +2617,107 @@ function StatusRow({ text }: { text: string }) {
       <Text color="magenta">{SPINNER_FRAMES[tick % SPINNER_FRAMES.length]}</Text>
       <Text color="magenta">{` ${text}`}</Text>
       <Text dimColor>{` ${elapsed}s`}</Text>
+    </Box>
+  );
+}
+
+/**
+ * One-line bottom status bar showing the current edit mode, pending
+ * queue size (review only), an undo hint (auto only / after /apply),
+ * and the Shift+Tab nudge. Rendered immediately above PromptInput so
+ * the mode is always in peripheral vision when the user's eyes are at
+ * the prompt. Flashes briefly on mode change so Shift+Tab gives a
+ * visible acknowledgment without the user having to scan the header.
+ *
+ * The plan-mode pill takes precedence — when plan mode is on, writes
+ * are bounced regardless of edit mode, so surfacing it is more useful
+ * than the review/auto toggle.
+ */
+function ModeStatusBar({
+  editMode,
+  pendingCount,
+  flash,
+  planMode,
+  undoArmed,
+  jobs,
+}: {
+  editMode: EditMode;
+  pendingCount: number;
+  flash: boolean;
+  planMode: boolean;
+  undoArmed: boolean;
+  jobs?: import("../../tools/jobs.js").JobRegistry;
+}) {
+  // Subscribe to tick so the jobs count stays live — the registry is
+  // mutated outside React, so we need a periodic repaint to catch it.
+  // No-op when there's no registry (chat mode / tests).
+  useTick();
+  const running = jobs?.runningCount() ?? 0;
+  const jobsTag =
+    running > 0 ? (
+      <Text color="yellow" bold>{`  ·  ⏵ ${running} job${running === 1 ? "" : "s"}`}</Text>
+    ) : null;
+  if (planMode) {
+    return (
+      <Box paddingX={1}>
+        <Text color="red" bold inverse={flash}>
+          {"▸ PLAN"}
+        </Text>
+        <Text dimColor>{"  writes gated — submit_plan + approval required  ·  /plan off to leave"}</Text>
+        {jobsTag}
+      </Box>
+    );
+  }
+  const label = editMode === "auto" ? "AUTO" : "review";
+  const color = editMode === "auto" ? "magenta" : "cyan";
+  const mid =
+    editMode === "auto"
+      ? undoArmed
+        ? "edits apply immediately  ·  u = undo last batch"
+        : "edits apply immediately  ·  5s undo window after each batch"
+      : pendingCount > 0
+        ? `${pendingCount} queued  ·  y = /apply  ·  n = /discard`
+        : "edits queue for review  ·  y = /apply  ·  n = /discard";
+  const flip = editMode === "auto" ? "Shift+Tab → review" : "Shift+Tab → AUTO";
+  return (
+    <Box paddingX={1}>
+      <Text color={color} bold inverse={flash}>
+        {`▸ ${label}`}
+      </Text>
+      <Text dimColor>{`  ${mid}  ·  ${flip}`}</Text>
+      {jobsTag}
+    </Box>
+  );
+}
+
+/**
+ * "Just auto-applied N edits — press u to undo" banner. Rendered below
+ * the live rows after an auto-mode edit batch lands, visible for 5s.
+ * `useTick` drives a crude live countdown so the user sees the window
+ * shrinking. State cleanup (the banner disappearing) happens in the
+ * parent's setTimeout — the component is purely display.
+ */
+function UndoBanner({
+  banner,
+}: {
+  banner: { results: ApplyResult[]; expiresAt: number };
+}) {
+  useTick();
+  const remainingMs = Math.max(0, banner.expiresAt - Date.now());
+  const remainingSec = Math.ceil(remainingMs / 1000);
+  const ok = banner.results.filter(
+    (r) => r.status === "applied" || r.status === "created",
+  ).length;
+  const total = banner.results.length;
+  return (
+    <Box marginY={1} borderStyle="round" borderColor="magenta" paddingX={1}>
+      <Text color="magenta" bold>{"✓ auto-applied "}</Text>
+      <Text color="magenta">{`${ok}/${total} edit${total === 1 ? "" : "s"}`}</Text>
+      <Text dimColor>{" · press "}</Text>
+      <Text color="magenta" bold>{"u"}</Text>
+      <Text dimColor>{" to undo  ("}</Text>
+      <Text color={remainingSec <= 1 ? "red" : "magenta"}>{`${remainingSec}s`}</Text>
+      <Text dimColor>{")"}</Text>
     </Box>
   );
 }
@@ -2061,6 +2884,19 @@ function formatPendingPreview(blocks: EditBlock[]): string {
   return [header, ...diffLines].join("\n");
 }
 
+/**
+ * Render one tool-call-queued edit block as an inline preview row. Fires
+ * once per intercepted edit_file / write_file call in review mode so the
+ * user sees edits accrue in real time rather than only at turn end.
+ */
+function formatQueuedEditPreview(block: EditBlock): string {
+  const removed = block.search === "" ? 0 : (block.search.match(/\n/g)?.length ?? 0) + 1;
+  const added = block.replace === "" ? 0 : (block.replace.match(/\n/g)?.length ?? 0) + 1;
+  const tag = block.search === "" ? "NEW " : "    ";
+  const header = `▸ queued  ${tag}${block.path}  (-${removed} +${added} lines)  · /apply or y to commit`;
+  return [header, ...formatEditBlockDiff(block)].join("\n");
+}
+
 function formatUndoResults(results: ApplyResult[]): string {
   const lines = results.map((r) => {
     const mark = r.status === "applied" ? "✓" : "✗";
@@ -2068,6 +2904,16 @@ function formatUndoResults(results: ApplyResult[]): string {
     return `  ${mark} ${r.path}${detail}`;
   });
   return [`▸ undo: restored ${results.length} file(s) to pre-edit state`, ...lines].join("\n");
+}
+
+/** Per-file rows for the multi-level `/undo` output, without the
+ *  single-batch header (the caller prepends its own). */
+function formatUndoRows(results: ApplyResult[]): string[] {
+  return results.map((r) => {
+    const mark = r.status === "applied" ? "✓" : "✗";
+    const detail = r.message ? ` (${r.message})` : "";
+    return `  ${mark} ${r.path}${detail}`;
+  });
 }
 
 function describeRepair(repair: {

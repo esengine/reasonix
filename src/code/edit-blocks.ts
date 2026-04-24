@@ -153,6 +153,31 @@ export function applyEditBlocks(blocks: EditBlock[], rootDir: string): ApplyResu
   return blocks.map((b) => applyEditBlock(b, rootDir));
 }
 
+/**
+ * Build an EditBlock that represents a whole-file overwrite. If the
+ * target exists, SEARCH = current content so applyEditBlock replaces
+ * the whole thing when committed; if it doesn't, SEARCH is empty (the
+ * create-new sentinel). Used by the edit-mode gate when routing a
+ * `write_file` tool call through the review queue without executing
+ * the write inline.
+ */
+export function toWholeFileEditBlock(
+  path: string,
+  content: string,
+  rootDir: string,
+): EditBlock {
+  const abs = resolve(rootDir, path);
+  let search = "";
+  if (existsSync(abs)) {
+    try {
+      search = readFileSync(abs, "utf8");
+    } catch {
+      search = "";
+    }
+  }
+  return { path, search, replace: content, offset: 0 };
+}
+
 // ---------- snapshot / restore (for /undo) ----------
 
 export interface EditSnapshot {

@@ -4,12 +4,18 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addProjectShellAllowed,
+  editModeHintShown,
   isPlausibleKey,
   loadApiKey,
+  loadEditMode,
   loadProjectShellAllowed,
+  loadReasoningEffort,
+  markEditModeHintShown,
   readConfig,
   redactKey,
   saveApiKey,
+  saveEditMode,
+  saveReasoningEffort,
   searchEnabled,
   writeConfig,
 } from "../src/config.js";
@@ -165,5 +171,54 @@ describe("config", () => {
     addProjectShellAllowed("/a", "", path);
     addProjectShellAllowed("/a", "   ", path);
     expect(loadProjectShellAllowed("/a", path)).toEqual([]);
+  });
+
+  it("loadEditMode defaults to 'review' when unset", () => {
+    expect(loadEditMode(path)).toBe("review");
+  });
+
+  it("saveEditMode + loadEditMode round-trip 'auto'", () => {
+    saveEditMode("auto", path);
+    expect(loadEditMode(path)).toBe("auto");
+    // Doesn't clobber other fields in the config.
+    expect(readConfig(path).editMode).toBe("auto");
+  });
+
+  it("loadEditMode coerces unknown values back to 'review'", () => {
+    writeConfig({ editMode: "garbage" as any }, path);
+    expect(loadEditMode(path)).toBe("review");
+  });
+
+  it("loadReasoningEffort defaults to 'max' when unset", () => {
+    expect(loadReasoningEffort(path)).toBe("max");
+  });
+
+  it("saveReasoningEffort + loadReasoningEffort round-trip 'high'", () => {
+    saveReasoningEffort("high", path);
+    expect(loadReasoningEffort(path)).toBe("high");
+    expect(readConfig(path).reasoningEffort).toBe("high");
+  });
+
+  it("loadReasoningEffort coerces unknown values back to 'max'", () => {
+    writeConfig({ reasoningEffort: "turbo" as any }, path);
+    expect(loadReasoningEffort(path)).toBe("max");
+  });
+
+  it("saveReasoningEffort doesn't clobber other persisted fields", () => {
+    saveEditMode("auto", path);
+    saveReasoningEffort("high", path);
+    expect(loadEditMode(path)).toBe("auto");
+    expect(loadReasoningEffort(path)).toBe("high");
+  });
+
+  it("editModeHintShown defaults to false and toggles on markEditModeHintShown", () => {
+    expect(editModeHintShown(path)).toBe(false);
+    markEditModeHintShown(path);
+    expect(editModeHintShown(path)).toBe(true);
+    // Idempotent — calling again doesn't rewrite or clobber other fields.
+    saveEditMode("auto", path);
+    markEditModeHintShown(path);
+    expect(editModeHintShown(path)).toBe(true);
+    expect(loadEditMode(path)).toBe("auto");
   });
 });

@@ -33,7 +33,11 @@ describe("filesystem tools (built-in, sandbox-enforced)", () => {
 
     it("honors head=N to return only the first N lines", async () => {
       const out = await tools.dispatch("read_file", JSON.stringify({ path: "hello.txt", head: 2 }));
-      expect(out).toBe("line 1\nline 2");
+      // Head output now includes an "N of M lines" marker so the model
+      // knows it didn't get the whole file. The actual content still
+      // leads the string, un-escaped.
+      expect(out).toMatch(/^line 1\nline 2/);
+      expect(out).toMatch(/head 2 of 3 lines/);
     });
 
     it("honors tail=N", async () => {
@@ -41,6 +45,56 @@ describe("filesystem tools (built-in, sandbox-enforced)", () => {
       expect(out).toContain("line 2");
       expect(out).toContain("line 3");
       expect(out).not.toContain("line 1");
+      expect(out).toMatch(/tail 2 of 3 lines/);
+    });
+
+    it("range='A-B' returns the inclusive line range", async () => {
+      // Write a bigger file so the range slice is distinguishable from
+      // the head/tail paths and the auto-preview cutover.
+      await fs.writeFile(
+        join(root, "big.txt"),
+        Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n"),
+      );
+      const out = await tools.dispatch(
+        "read_file",
+        JSON.stringify({ path: "big.txt", range: "3-5" }),
+      );
+      expect(out).toMatch(/\[range 3-5 of 10 lines\]/);
+      expect(out).toContain("line 3");
+      expect(out).toContain("line 5");
+      expect(out).not.toContain("line 2");
+      expect(out).not.toContain("line 6");
+    });
+
+    it("range clamps out-of-range values to the file bounds", async () => {
+      const out = await tools.dispatch(
+        "read_file",
+        JSON.stringify({ path: "hello.txt", range: "2-99" }),
+      );
+      expect(out).toMatch(/\[range 2-3 of 3 lines\]/);
+      expect(out).toContain("line 2");
+      expect(out).toContain("line 3");
+    });
+
+    it("auto-previews large files when no scope is given", async () => {
+      // File larger than DEFAULT_AUTO_PREVIEW_LINES (200) triggers the
+      // head+tail preview + omitted-lines marker.
+      const bigLines = Array.from({ length: 250 }, (_, i) => `line ${i + 1}`);
+      await fs.writeFile(join(root, "huge.txt"), bigLines.join("\n"));
+      const out = await tools.dispatch("read_file", JSON.stringify({ path: "huge.txt" }));
+      expect(out).toMatch(/auto-preview: head 80 \+ tail 40 of 250 lines/);
+      expect(out).toMatch(/130 lines omitted/);
+      expect(out).toContain("line 1");
+      expect(out).toContain("line 80");
+      expect(out).toContain("line 211");
+      expect(out).toContain("line 250");
+      expect(out).not.toContain("line 100");
+      expect(out).not.toContain("line 200");
+    });
+
+    it("returns full content when file is at or below the auto-preview threshold", async () => {
+      const out = await tools.dispatch("read_file", JSON.stringify({ path: "hello.txt" }));
+      expect(out).toBe("line 1\nline 2\nline 3");
     });
 
     it("rejects paths outside the sandbox root", async () => {
@@ -96,6 +150,58 @@ describe("filesystem tools (built-in, sandbox-enforced)", () => {
       // With depth 0 we list the top level only — no descent into src/.
       expect(out).toContain("src/");
       expect(out).not.toContain("index.ts");
+    });
+
+    it("directory_tree skips node_modules / .git / dist by default", async () => {
+      await fs.mkdir(join(root, "node_modules", "foo"), { recursive: true });
+      await fs.writeFile(join(root, "node_modules", "foo", "dep.js"), "// dep\n");
+      await fs.mkdir(join(root, ".git"), { recursive: true });
+      await fs.writeFile(join(root, ".git", "HEAD"), "ref\n");
+      await fs.mkdir(join(root, "dist"), { recursive: true });
+      await fs.writeFile(join(root, "dist", "out.js"), "// out\n");
+      const out = await tools.dispatch("directory_tree", JSON.stringify({ path: "." }));
+      // Skip markers show the dir exists but don't walk into it.
+      expect(out).toMatch(/node_modules\/\s+\(skipped/);
+      expect(out).toMatch(/\.git\/\s+\(skipped/);
+      expect(out).toMatch(/dist\/\s+\(skipped/);
+      expect(out).not.toContain("dep.js");
+      expect(out).not.toContain("HEAD");
+      expect(out).not.toContain("out.js");
+    });
+
+    it("directory_tree traverses deps when include_deps:true", async () => {
+      await fs.mkdir(join(root, "node_modules", "foo"), { recursive: true });
+      await fs.writeFile(join(root, "node_modules", "foo", "dep.js"), "// dep\n");
+      const out = await tools.dispatch(
+        "directory_tree",
+        JSON.stringify({ path: ".", include_deps: true, maxDepth: 3 }),
+      );
+      expect(out).toContain("dep.js");
+      expect(out).not.toMatch(/skipped/);
+    });
+
+    it("directory_tree default maxDepth is 2", async () => {
+      await fs.mkdir(join(root, "a", "b", "c"), { recursive: true });
+      await fs.writeFile(join(root, "a", "b", "c", "deep.txt"), "x\n");
+      await fs.writeFile(join(root, "a", "b", "shallow.txt"), "y\n");
+      const out = await tools.dispatch("directory_tree", JSON.stringify({ path: "." }));
+      // depth 2 shows a/, a/b/, a/b/shallow.txt — but NOT a/b/c's children.
+      expect(out).toContain("shallow.txt");
+      expect(out).toContain("c/");
+      expect(out).not.toContain("deep.txt");
+    });
+
+    it("directory_tree collapses directories with >50 entries", async () => {
+      await fs.mkdir(join(root, "huge"), { recursive: true });
+      for (let i = 0; i < 60; i++) {
+        await fs.writeFile(join(root, "huge", `f${String(i).padStart(3, "0")}.txt`), "x");
+      }
+      const out = await tools.dispatch(
+        "directory_tree",
+        JSON.stringify({ path: "huge", maxDepth: 1 }),
+      );
+      expect(out).toMatch(/\[… \d+ entries hidden/);
+      expect(out).toMatch(/list_directory/);
     });
   });
 

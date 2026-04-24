@@ -265,7 +265,10 @@ describe("handleSlash", () => {
       content: "ERROR: line failed with detail and context\n".repeat(2000),
     });
     const r = handleSlash("compact", [], loop);
-    expect(r.info).toMatch(/compacted 1 tool result/);
+    // Slash message now covers both passes (tool results + tool-call
+    // args); the "1 payload" and a token-saved count are what matters
+    // for this test's invariant.
+    expect(r.info).toMatch(/compacted 1 payload/);
     expect(r.info).toMatch(/saved [\d,]+ tokens/);
     // After compaction the tool content should be much smaller than
     // the original 84KB, comfortably under the cap's char worst-case.

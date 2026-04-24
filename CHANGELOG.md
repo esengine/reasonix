@@ -3,6 +3,84 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.24] — 2026-04-24
+
+**Headline:** `reasonix code` gets a proper review gate, background
+process support, and aggressive context hygiene so long coding
+sessions stop bleeding money.
+
+### Added
+
+- **Edit-gate modes (review / auto)** — `edit_file` and `write_file`
+  tool calls now route through a user gate. `review` (default) pops
+  an `EditConfirm` modal with a scrollable diff + `y/n/a/A/Esc`
+  keys; `auto` applies immediately and arms a 5-second undo banner.
+  `Shift+Tab` cycles, `/mode` sets explicitly. Persisted to
+  `~/.reasonix/config.json`.
+- **Session edit history** — every applied batch lands in an
+  in-memory ring. `/history` lists them, `/show [id] [path]` dumps
+  a stored diff (per-file when path given), `/undo [id] [path]`
+  rolls back at any granularity (latest batch, specific batch,
+  single file inside a batch). `u` keybind reaches back past the
+  5-second banner as long as history has a non-undone entry.
+- **Background processes** — new `run_background` / `job_output` /
+  `stop_job` / `list_jobs` tools for dev servers and watchers. Spawn
+  returns after a ready-signal match (`listening on`, `Local:`,
+  `compiled successfully`, …) or `waitSec` seconds. `/jobs` /
+  `/kill <id>` / `/logs <id>` surface them to the user. Cleanup on
+  SIGINT / SIGTERM / exit kills every child.
+- **Per-edit review modal (`src/cli/ui/EditConfirm.tsx`)** — diff
+  viewport sized to terminal rows; `↑↓/j/k/Space/PgUp/PgDn/g/G`
+  scroll a big diff in place. `a` applies rest of turn, `A` flips
+  to AUTO for the session.
+- **Bottom mode status bar** — always-visible line above the prompt
+  shows mode / pending count / Shift+Tab hint / running-jobs tag;
+  flashes on mode change.
+- **Onboarding tip** — first `reasonix code` launch after upgrade
+  posts the edit-gate keybindings once; suppressed after via the
+  `editModeHintShown` flag.
+
+### Changed
+
+- **`read_file`** — adds `range:"A-B"` param (1-indexed, inclusive).
+  Files longer than 200 lines with no scope return an auto-preview
+  (head 80 + tail 40 + "N lines omitted" marker) instead of dumping
+  everything. One `read_file` used to burn 6.5K tokens on a fat
+  file; scoped reads cut that 3-5×.
+- **`directory_tree`** — default `maxDepth` 4 → 2; skips
+  `node_modules`, `.git`, `dist`, `build`, `out`, `.next`, `.nuxt`,
+  `target`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`,
+  `.mypy_cache`, `.cache`, `coverage` unless `include_deps:true`;
+  collapses any directory past 50 children with a nudge toward
+  `list_directory`.
+- **Auto-compact tool-call args** — after every `tool` response, the
+  loop shrinks that call's `arguments` JSON if it exceeds 800
+  tokens. Paths and short fields stay verbatim; long SEARCH /
+  REPLACE / content strings get replaced with a `[…shrunk: N chars,
+  M lines — tool already responded, see result]` marker. Cuts
+  stale-args drag across every subsequent turn.
+- **`/compact`** — now covers both tool results (existing) and
+  tool-call args (new) in one pass.
+- **`reasoningEffort` persistence** — `/effort high` now writes the
+  choice to `~/.reasonix/config.json` and the loop picks it up at
+  launch. Earlier versions silently reverted to `max` every relaunch.
+- **Prompt scope discipline** — code-mode prompt tells the model to
+  stop after "run / start / launch" tasks instead of proactively
+  refactoring, running tsc, or chasing unused imports.
+
+### Fixed
+
+- **`run_background` confirmation path** — TUI now pops the shell
+  confirm modal for `run_background` (not just `run_command`). A
+  `kind` field on `pendingShell` routes approval to
+  `JobRegistry.start()` so approving doesn't synchronously block on
+  a dev server that never exits.
+- **`/kill` actually kills the tree** — Windows `taskkill /T /F`,
+  POSIX `process.kill(-pid, …)` on a detached child. Earlier
+  `SIGTERM` only killed the `npm.cmd` wrapper; `node → vite →
+  esbuild` survived. `/kill` also posts a late "job N exit M" row
+  when the stop resolves, so the user doesn't have to poll `/jobs`.
+
 ## [0.4.24] — 2026-04-22
 
 **Headline:** `reasonix stats` is now a cross-session cost dashboard.

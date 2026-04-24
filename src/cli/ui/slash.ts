@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { type EditMode, saveReasoningEffort } from "../../config.js";
 import {
   HOOK_EVENTS,
   type HookEvent,
@@ -6,6 +7,7 @@ import {
   globalSettingsPath,
   projectSettingsPath,
 } from "../../hooks.js";
+import type { JobRegistry } from "../../tools/jobs.js";
 import type { CacheFirstLoop } from "../../loop.js";
 import type { McpClient } from "../../mcp/client.js";
 import type { InspectionReport } from "../../mcp/inspect.js";
@@ -54,8 +56,9 @@ export interface SlashContext {
    * Callback for `/undo` — provided by the TUI when it's running in
    * code mode. Returns a human-readable report of what was restored.
    * Absent outside code mode → `/undo` replies "not available here".
+   * Accepts slash args: `[id]`, `[id, path]`.
    */
-  codeUndo?: () => string;
+  codeUndo?: (args: readonly string[]) => string;
   /**
    * Callback for `/apply` — commits pending edit blocks to disk. Returns
    * a report of what landed. Absent → `/apply` replies "nothing pending"
@@ -67,6 +70,19 @@ export interface SlashContext {
    * touching disk.
    */
   codeDiscard?: () => string;
+  /**
+   * Callback for `/history` — returns a human-readable list of every
+   * edit batch this session, newest last. Includes entry ids (for
+   * `/show`) and undone status.
+   */
+  codeHistory?: () => string;
+  /**
+   * Callback for `/show [id] [path]` — with no args, shows a per-file
+   * summary of the newest non-undone entry. With id only, the entry's
+   * per-file summary. With id + path, the full diff of that single
+   * file in that entry.
+   */
+  codeShowEdit?: (args: readonly string[]) => string;
   /**
    * Root directory passed by `reasonix code`. Enables `/commit`, which
    * runs `git add -A && git commit` in this directory. Missing → `/commit`
@@ -107,6 +123,30 @@ export interface SlashContext {
    * mode doesn't have plan mode.
    */
   planMode?: boolean;
+  /**
+   * Current edit-gate mode (`review` or `auto`). Surfaced in `/status`,
+   * toggled by `/mode`, also flipped by the Shift+Tab keybind in the
+   * TUI. Absent → not in `reasonix code`.
+   */
+  editMode?: EditMode;
+  /**
+   * Set the edit-gate mode. Callback rather than raw state so App can
+   * also persist the choice to config and echo the change in historical.
+   */
+  setEditMode?: (mode: EditMode) => void;
+  /**
+   * Background-process registry backing /jobs / /kill / /logs. Present
+   * iff the session is a `reasonix code` run. Slash handlers expect
+   * synchronous info strings, but stop_job is async — we return a
+   * "stopping, watch /jobs" info and let the registry do its thing.
+   */
+  jobs?: JobRegistry;
+  /**
+   * Async-late append to the historical log. /kill uses this to
+   * surface "job N stopped" the moment stop() actually resolves,
+   * rather than leaving the user to poll /jobs themselves.
+   */
+  postInfo?: (text: string) => void;
   /**
    * Callback the `/plan` slash uses to flip plan mode on/off. Also
    * mirrors the state to the underlying ToolRegistry so dispatch
@@ -295,7 +335,8 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     cmd: "compact",
     argsHint: "[tokens]",
-    summary: "shrink oversized tool results in the log (cap in tokens, default 4000)",
+    summary:
+      "shrink oversized tool results AND tool-call args (edit_file search/replace) in the log; cap in tokens, default 4000",
   },
   { cmd: "keys", summary: "show all keyboard shortcuts and prompt prefixes" },
   { cmd: "sessions", summary: "list saved sessions (current marked with ▸)" },
@@ -308,6 +349,17 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   { cmd: "apply", summary: "commit pending edit blocks to disk", contextual: "code" },
   { cmd: "discard", summary: "drop pending edit blocks without writing", contextual: "code" },
   { cmd: "undo", summary: "roll back the last applied edit batch", contextual: "code" },
+  {
+    cmd: "history",
+    summary: "list every edit batch this session (ids for /show, undone markers)",
+    contextual: "code",
+  },
+  {
+    cmd: "show",
+    argsHint: "[id]",
+    summary: "dump a stored edit diff (omit id for newest non-undone)",
+    contextual: "code",
+  },
   {
     cmd: "commit",
     argsHint: '"msg"',
@@ -324,6 +376,26 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     cmd: "apply-plan",
     summary: "force-approve a pending / in-text plan (fallback if picker was missed)",
+    contextual: "code",
+  },
+  {
+    cmd: "mode",
+    argsHint: "[review|auto]",
+    summary: "edit-gate: review (queue for /apply) or auto (apply+undo banner). Shift+Tab cycles.",
+    contextual: "code",
+    argCompleter: ["review", "auto"],
+  },
+  { cmd: "jobs", summary: "list background jobs started by run_background", contextual: "code" },
+  {
+    cmd: "kill",
+    argsHint: "<id>",
+    summary: "stop a background job by id (SIGTERM → SIGKILL after grace)",
+    contextual: "code",
+  },
+  {
+    cmd: "logs",
+    argsHint: "<id> [lines]",
+    summary: "tail a background job's output (default last 80 lines)",
     contextual: "code",
   },
 ];
@@ -457,6 +529,8 @@ export function handleSlash(
           "  Backspace              delete left;  Delete   delete under cursor",
           "  Esc                    abort the in-flight turn",
           "  y / n                  accept / reject pending edits (code mode)",
+          "  Shift+Tab              cycle edit gate: review ↔ AUTO (code mode, persists to config)",
+          "  u                      undo the latest non-undone edit batch (session-wide, not just banner)",
           "",
           "Prompt prefixes:",
           "  /<name>                slash command; Tab/Enter picks from the suggestion list",
@@ -506,10 +580,16 @@ export function handleSlash(
           "  /retry                   truncate & resend your last message (fresh sample from the model)",
           "  /apply                   (code mode) commit the pending edit blocks to disk",
           "  /discard                 (code mode) drop pending edits without writing",
-          "  /undo                    (code mode) roll back the last applied edit batch",
+          "  /undo                    (code mode) roll back the latest non-undone edit batch",
+          "  /history                 (code mode) list every edit batch this session",
+          "  /show [id]               (code mode) dump a stored edit diff (newest when id omitted)",
           '  /commit "msg"            (code mode) git add -A && git commit -m "msg"',
           "  /plan [on|off]           (code mode) toggle read-only plan mode; writes gated behind submit_plan + your approval",
           "  /apply-plan              (code mode) force-approve pending/in-text plan (fallback)",
+          "  /mode [review|auto]      (code mode) edit-gate: queue edits for /apply or apply instantly (Shift+Tab cycles, u undoes within 5s)",
+          "  /jobs                    (code mode) list background processes (run_background) — running and exited",
+          "  /kill <id>               (code mode) stop a background job by id (SIGTERM → SIGKILL)",
+          "  /logs <id> [lines]       (code mode) tail a background job's output (default 80 lines)",
           "  /sessions                list saved sessions (current is marked with ▸)",
           "  /forget                  delete the current session from disk",
           "  /new                     start fresh: drop all context + clear scrollback",
@@ -696,7 +776,21 @@ export function handleSlash(
           info: "/undo is only available inside `reasonix code` — chat mode doesn't apply edits.",
         };
       }
-      return { info: ctx.codeUndo() };
+      return { info: ctx.codeUndo(args) };
+    }
+
+    case "history": {
+      if (!ctx.codeHistory) {
+        return { info: "/history is only available inside `reasonix code`." };
+      }
+      return { info: ctx.codeHistory() };
+    }
+
+    case "show": {
+      if (!ctx.codeShowEdit) {
+        return { info: "/show is only available inside `reasonix code`." };
+      }
+      return { info: ctx.codeShowEdit(args) };
     }
 
     case "apply": {
@@ -737,6 +831,110 @@ export function handleSlash(
       }
       return {
         info: "▸ plan mode OFF — write tools are live again. Model can still propose plans autonomously for large tasks.",
+      };
+    }
+
+    case "jobs": {
+      if (!ctx.jobs) {
+        return { info: "/jobs is only available inside `reasonix code`." };
+      }
+      const rows = ctx.jobs.list();
+      if (rows.length === 0) {
+        return { info: "no background jobs yet — use run_background to start one" };
+      }
+      const lines = ["Background jobs:"];
+      for (const r of rows) {
+        const age = ((Date.now() - r.startedAt) / 1000).toFixed(1);
+        const state = r.running
+          ? `running   · pid ${r.pid ?? "?"}`
+          : r.exitCode !== null
+            ? `exit ${r.exitCode}`
+            : r.spawnError
+              ? "failed"
+              : "stopped";
+        lines.push(
+          `  ${String(r.id).padStart(3)}  ${state.padEnd(20)}  ${age.padStart(6)}s ago   $ ${r.command}`,
+        );
+      }
+      lines.push("");
+      lines.push("/kill <id> to stop one · /logs <id> [lines] to tail output");
+      return { info: lines.join("\n") };
+    }
+
+    case "kill": {
+      if (!ctx.jobs) return { info: "/kill is only available inside `reasonix code`." };
+      const id = Number.parseInt(args[0] ?? "", 10);
+      if (!Number.isFinite(id)) return { info: "usage: /kill <id>   (see /jobs for ids)" };
+      const rec = ctx.jobs.list().find((r) => r.id === id);
+      if (!rec) return { info: `job ${id}: not found` };
+      if (!rec.running) return { info: `job ${id} already exited (${rec.exitCode ?? "?"})` };
+      // Fire-and-forget: the registry waits for grace + SIGKILL
+      // internally; returning immediately keeps the slash synchronous
+      // so the user's prompt doesn't lock up for 2s on every /kill.
+      // The postInfo callback lands a follow-up row in historical when
+      // the kill actually completes, so the user sees "job N stopped"
+      // without polling /jobs.
+      const jobsRef = ctx.jobs;
+      void (async () => {
+        const final = await jobsRef.stop(id);
+        if (!final) return;
+        const status = final.running
+          ? "still alive after SIGKILL (!) — report this as a bug"
+          : final.exitCode !== null
+            ? `exit ${final.exitCode}`
+            : "stopped";
+        ctx.postInfo?.(`▸ job ${id} ${status}`);
+      })();
+      return {
+        info: `▸ stopping job ${id} (tree kill: SIGTERM → SIGKILL after 2s grace; Windows: taskkill /T /F)`,
+      };
+    }
+
+    case "logs": {
+      if (!ctx.jobs) return { info: "/logs is only available inside `reasonix code`." };
+      const id = Number.parseInt(args[0] ?? "", 10);
+      if (!Number.isFinite(id)) {
+        return { info: "usage: /logs <id> [lines]   (default last 80 lines)" };
+      }
+      const requested = Number.parseInt(args[1] ?? "", 10);
+      const tail = Number.isFinite(requested) && requested > 0 ? requested : 80;
+      const out = ctx.jobs.read(id, { tailLines: tail });
+      if (!out) return { info: `job ${id}: not found` };
+      const status = out.running
+        ? `running · pid ${out.pid ?? "?"}`
+        : out.exitCode !== null
+          ? `exited ${out.exitCode}`
+          : out.spawnError
+            ? `failed (${out.spawnError})`
+            : "stopped";
+      const header = `[job ${id} · ${status}]\n$ ${out.command}`;
+      return { info: out.output ? `${header}\n${out.output}` : header };
+    }
+
+    case "mode": {
+      if (!ctx.setEditMode) {
+        return {
+          info: "/mode is only available inside `reasonix code`.",
+        };
+      }
+      const raw = (args[0] ?? "").toLowerCase();
+      const current = ctx.editMode ?? "review";
+      let target: EditMode;
+      if (raw === "review") target = "review";
+      else if (raw === "auto") target = "auto";
+      else if (raw === "") {
+        // Bare /mode toggles, mirroring Shift+Tab. Users who just want
+        // to see current mode without flipping can read /status.
+        target = current === "auto" ? "review" : "auto";
+      } else {
+        return { info: "usage: /mode <review|auto>   (Shift+Tab also cycles)" };
+      }
+      ctx.setEditMode(target);
+      return {
+        info:
+          target === "auto"
+            ? "▸ edit mode: AUTO — edits apply immediately; press u within 5s to undo, or /undo later"
+            : "▸ edit mode: review — edits queue for /apply (or y) / /discard (or n)",
       };
     }
 
@@ -788,11 +986,11 @@ export function handleSlash(
       const { healedCount, tokensSaved, charsSaved } = loop.compact(cap);
       if (healedCount === 0) {
         return {
-          info: `▸ nothing to compact — no tool result in history exceeds ${cap.toLocaleString()} tokens.`,
+          info: `▸ nothing to compact — no tool result or tool-call args in history exceed ${cap.toLocaleString()} tokens.`,
         };
       }
       return {
-        info: `▸ compacted ${healedCount} tool result(s) to ${cap.toLocaleString()} tokens each, saved ${tokensSaved.toLocaleString()} tokens (${charsSaved.toLocaleString()} chars). Session file rewritten.`,
+        info: `▸ compacted ${healedCount} payload(s) to ${cap.toLocaleString()} tokens each (tool results + tool-call args), saved ${tokensSaved.toLocaleString()} tokens (${charsSaved.toLocaleString()} chars). Session file rewritten.`,
       };
     }
 
@@ -922,6 +1120,12 @@ export function handleSlash(
       const pendingLine =
         pending > 0 ? `  edits   ${pending} pending (/apply to commit, /discard to drop)` : "";
       const planLine = ctx.planMode ? "  plan    ON — writes gated (submit_plan + approval)" : "";
+      const modeLine =
+        ctx.editMode === "auto"
+          ? "  mode    AUTO — edits apply immediately (u to undo within 5s · Shift+Tab to flip)"
+          : ctx.editMode === "review"
+            ? "  mode    review — edits queue for /apply or y  (Shift+Tab to flip)"
+            : "";
       const lines = [
         `  model   ${loop.model}`,
         `  flags   harvest=${loop.harvestEnabled ? "on" : "off"} · branch=${branchBudget > 1 ? branchBudget : "off"} · stream=${loop.stream ? "on" : "off"} · effort=${loop.reasoningEffort}`,
@@ -931,6 +1135,7 @@ export function handleSlash(
       ];
       if (pendingLine) lines.push(pendingLine);
       if (planLine) lines.push(planLine);
+      if (modeLine) lines.push(modeLine);
       return { info: lines.join("\n") };
     }
 
@@ -1030,14 +1235,21 @@ export function handleSlash(
       const raw = (args[0] ?? "").toLowerCase();
       if (raw === "") {
         return {
-          info: `reasoning_effort → ${loop.reasoningEffort}  (use /effort high for cheaper/faster, /effort max for the agent-class default)`,
+          info: `reasoning_effort → ${loop.reasoningEffort}  (use /effort high for cheaper/faster, /effort max for the agent-class default · persisted across relaunches)`,
         };
       }
       if (raw !== "high" && raw !== "max") {
         return { info: "usage: /effort <high|max>" };
       }
       loop.configure({ reasoningEffort: raw });
-      return { info: `reasoning_effort → ${raw}` };
+      // Persist so the next launch starts with this value instead of
+      // reverting to the constructor default.
+      try {
+        saveReasoningEffort(raw);
+      } catch {
+        /* disk full / perms — runtime change still took effect */
+      }
+      return { info: `reasoning_effort → ${raw} (persisted)` };
     }
 
     default:
