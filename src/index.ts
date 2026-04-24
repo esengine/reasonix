@@ -6,9 +6,17 @@ export type { ChatResponse, StreamChunk, DeepSeekClientOptions } from "./client.
 export {
   CacheFirstLoop,
   formatLoopError,
+  fixToolCallPairing,
   healLoadedMessages,
+  healLoadedMessagesByTokens,
   stripHallucinatedToolMarkup,
 } from "./loop.js";
+export {
+  AT_MENTION_PATTERN,
+  DEFAULT_AT_MENTION_MAX_BYTES,
+  expandAtMentions,
+} from "./at-mentions.js";
+export type { AtMentionExpansion, AtMentionOptions } from "./at-mentions.js";
 export type {
   CacheFirstLoopOptions,
   LoopEvent,

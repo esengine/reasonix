@@ -273,9 +273,9 @@ export class CacheFirstLoop {
     this.sessionName = opts.session ?? null;
     if (this.sessionName) {
       const prior = loadSessionMessages(this.sessionName);
-      const { messages, healedCount, healedFrom } = healLoadedMessages(
+      const { messages, healedCount, tokensSaved } = healLoadedMessagesByTokens(
         prior,
-        DEFAULT_MAX_RESULT_CHARS,
+        DEFAULT_MAX_RESULT_TOKENS,
       );
       for (const msg of messages) this.log.append(msg);
       this.resumedMessageCount = messages.length;
@@ -291,7 +291,7 @@ export class CacheFirstLoop {
           /* disk full / perms — skip, in-memory heal still applies */
         }
         process.stderr.write(
-          `▸ session "${this.sessionName}": healed ${healedCount} entr${healedCount === 1 ? "y" : "ies"}${healedFrom > 0 ? ` (was ${healedFrom.toLocaleString()} chars oversized)` : " (dropped dangling tool_calls tail)"}. Rewrote session file.\n`,
+          `▸ session "${this.sessionName}": healed ${healedCount} entr${healedCount === 1 ? "y" : "ies"}${tokensSaved > 0 ? ` (shrunk ${tokensSaved.toLocaleString()} tokens of oversized tool output)` : " (dropped dangling tool_calls tail)"}. Rewrote session file.\n`,
         );
       }
     } else {
@@ -1253,44 +1253,41 @@ export function shrinkOversizedToolResultsByTokens(
   return { messages: out, healedCount, tokensSaved, charsSaved };
 }
 
-export function healLoadedMessages(
-  messages: ChatMessage[],
-  maxChars: number,
-): { messages: ChatMessage[]; healedCount: number; healedFrom: number } {
-  // Pass 1: shrink oversized tool results (original heal purpose).
-  const shrunk = shrinkOversizedToolResults(messages, maxChars);
-  let healedCount = shrunk.healedCount;
-  // Pass 2: enforce tool_calls ↔ tool pairing across the full log.
-  //
-  // DeepSeek rejects two shapes at the API boundary:
-  //   (a) assistant with tool_calls not followed by matching tool
-  //       responses ("insufficient tool messages following tool_calls")
-  //   (b) tool message without a preceding assistant.tool_calls with
-  //       the matching tool_call_id ("must be a response to a preceding
-  //       message with 'tool_calls'")
-  //
-  // Corrupted session files from earlier builds have hit both. Rebuild
-  // the message stream so only well-formed (assistant.tool_calls + all
-  // matching responses) groups survive. Plain user/assistant messages
-  // (no tool_calls) always pass through.
+/**
+ * Enforce tool_calls ↔ tool pairing across a message log. DeepSeek
+ * rejects two shapes at the API boundary:
+ *   (a) assistant with tool_calls not followed by matching tool
+ *       responses ("insufficient tool messages following tool_calls")
+ *   (b) tool message without a preceding assistant.tool_calls with
+ *       the matching tool_call_id ("must be a response to a preceding
+ *       message with 'tool_calls'")
+ *
+ * Corrupted session files from earlier builds have hit both. This pass
+ * rebuilds the message stream so only well-formed (assistant.tool_calls
+ * + all matching responses) groups survive. Plain user/assistant/system
+ * messages (no tool_calls) always pass through.
+ *
+ * Exported so both char-based and token-based heal can compose it.
+ */
+export function fixToolCallPairing(messages: ChatMessage[]): {
+  messages: ChatMessage[];
+  droppedAssistantCalls: number;
+  droppedStrayTools: number;
+} {
   const out: ChatMessage[] = [];
-  const openCallIds = new Set<string>();
   let droppedAssistantCalls = 0;
   let droppedStrayTools = 0;
-  for (let i = 0; i < shrunk.messages.length; i++) {
-    const msg = shrunk.messages[i]!;
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]!;
     if (msg.role === "assistant" && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-      // Look ahead for tool responses matching every id in this
-      // assistant's tool_calls. If all present (in any order, but
-      // contiguous after this message), include the whole group.
       const needed = new Set<string>();
       for (const call of msg.tool_calls) {
         if (call?.id) needed.add(call.id);
       }
       const candidates: ChatMessage[] = [];
       let j = i + 1;
-      while (j < shrunk.messages.length && needed.size > 0) {
-        const nxt = shrunk.messages[j]!;
+      while (j < messages.length && needed.size > 0) {
+        const nxt = messages[j]!;
         if (nxt.role !== "tool") break;
         const id = nxt.tool_call_id ?? "";
         if (!needed.has(id)) break;
@@ -1299,13 +1296,10 @@ export function healLoadedMessages(
         j++;
       }
       if (needed.size === 0) {
-        // Every call has a response — emit the whole group.
         out.push(msg);
         for (const r of candidates) out.push(r);
-        i = j - 1; // for-loop ++ will advance past the last response
+        i = j - 1;
       } else {
-        // Drop the assistant entry and anything that was speculatively
-        // its responses — they'd become stray tool messages.
         droppedAssistantCalls += 1;
         droppedStrayTools += candidates.length;
         i = j - 1;
@@ -1313,17 +1307,51 @@ export function healLoadedMessages(
       continue;
     }
     if (msg.role === "tool") {
-      // Any tool message that reaches here did NOT get consumed by
-      // the assistant-with-tool_calls branch above, so it's stray.
-      // Drop it — surfacing it would 400 the next API call.
       droppedStrayTools += 1;
       continue;
     }
-    // Plain user/assistant/system message — pass through.
     out.push(msg);
   }
-  healedCount += droppedAssistantCalls + droppedStrayTools;
-  return { messages: out, healedCount, healedFrom: shrunk.healedFrom };
+  return { messages: out, droppedAssistantCalls, droppedStrayTools };
+}
+
+export function healLoadedMessages(
+  messages: ChatMessage[],
+  maxChars: number,
+): { messages: ChatMessage[]; healedCount: number; healedFrom: number } {
+  const shrunk = shrinkOversizedToolResults(messages, maxChars);
+  const paired = fixToolCallPairing(shrunk.messages);
+  const healedCount = shrunk.healedCount + paired.droppedAssistantCalls + paired.droppedStrayTools;
+  return { messages: paired.messages, healedCount, healedFrom: shrunk.healedFrom };
+}
+
+/**
+ * Token-aware counterpart of {@link healLoadedMessages}. Used at
+ * session-load time so resumed sessions come back capped at the same
+ * token budget (not char budget) as live tool results — CJK text no
+ * longer slips past at 2× the intended token cost when re-hydrated.
+ *
+ * Still does the same structural pass for tool_calls ↔ tool pairing;
+ * that logic is orthogonal to the truncation cap.
+ */
+export function healLoadedMessagesByTokens(
+  messages: ChatMessage[],
+  maxTokens: number,
+): {
+  messages: ChatMessage[];
+  healedCount: number;
+  tokensSaved: number;
+  charsSaved: number;
+} {
+  const shrunk = shrinkOversizedToolResultsByTokens(messages, maxTokens);
+  const paired = fixToolCallPairing(shrunk.messages);
+  const healedCount = shrunk.healedCount + paired.droppedAssistantCalls + paired.droppedStrayTools;
+  return {
+    messages: paired.messages,
+    healedCount,
+    tokensSaved: shrunk.tokensSaved,
+    charsSaved: shrunk.charsSaved,
+  };
 }
 
 /**

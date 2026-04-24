@@ -1,6 +1,7 @@
 import type { WriteStream } from "node:fs";
 import { Box, Static, Text, useApp, useInput } from "ink";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { expandAtMentions } from "../../at-mentions.js";
 import {
   type ApplyResult,
   type EditBlock,
@@ -844,8 +845,35 @@ export function App({
       // streamRef does no visible work — skip the interval entirely.
       const timer = PLAIN_UI ? null : setInterval(flush, FLUSH_INTERVAL_MS);
 
+      // Expand `@path/to/file.ts` mentions in code mode: the model
+      // gets the inlined content appended under a "Referenced files"
+      // block; the Historical row above keeps the user's verbatim text
+      // so the display doesn't balloon.
+      let modelInput = text;
+      if (codeMode?.rootDir) {
+        const expanded = expandAtMentions(text, codeMode.rootDir);
+        if (expanded.expansions.length > 0) {
+          modelInput = expanded.text;
+          const inlined = expanded.expansions
+            .filter((ex) => ex.ok)
+            .map((ex) => `${ex.path} (${(ex.bytes ?? 0).toLocaleString()} bytes)`);
+          const skipped = expanded.expansions
+            .filter((ex) => !ex.ok)
+            .map((ex) => `${ex.path} (${ex.skip})`);
+          const parts: string[] = [];
+          if (inlined.length > 0) parts.push(`inlined ${inlined.join(", ")}`);
+          if (skipped.length > 0) parts.push(`skipped ${skipped.join(", ")}`);
+          if (parts.length > 0) {
+            setHistorical((prev) => [
+              ...prev,
+              { id: `at-${Date.now()}`, role: "info", text: `▸ @mentions: ${parts.join("; ")}` },
+            ]);
+          }
+        }
+      }
+
       try {
-        for await (const ev of loop.step(text)) {
+        for await (const ev of loop.step(modelInput)) {
           writeTranscript(ev);
           // Status lines are transient — any primary event (streaming
           // starts, a tool fires, etc.) means whatever we were waiting
