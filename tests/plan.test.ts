@@ -6,7 +6,12 @@
 
 import { describe, expect, it } from "vitest";
 import { ToolRegistry } from "../src/tools.js";
-import { PlanCheckpointError, PlanProposedError, registerPlanTool } from "../src/tools/plan.js";
+import {
+  PlanCheckpointError,
+  PlanProposedError,
+  PlanRevisionProposedError,
+  registerPlanTool,
+} from "../src/tools/plan.js";
 
 describe("ToolRegistry plan mode", () => {
   it("starts with plan mode off by default", () => {
@@ -403,5 +408,137 @@ describe("PlanCheckpointError", () => {
     expect(payload.title).toBeUndefined();
     expect(payload.notes).toBeUndefined();
     expect(payload.result).toBe("done");
+  });
+});
+
+describe("PlanRevisionProposedError", () => {
+  it("carries reason / remainingSteps / summary on the instance and in toToolResult()", () => {
+    const err = new PlanRevisionProposedError(
+      "User asked to skip cookie migration.",
+      [
+        { id: "step-3", title: "Skip migration", action: "Document the skip", risk: "low" },
+        { id: "step-4", title: "Update tests", action: "Adjust suite", risk: "med" },
+      ],
+      "Refactor without prod migration",
+    );
+    expect(err.name).toBe("PlanRevisionProposedError");
+    expect(err.remainingSteps).toHaveLength(2);
+    const payload = err.toToolResult();
+    expect(payload.reason).toBe("User asked to skip cookie migration.");
+    expect(payload.summary).toBe("Refactor without prod migration");
+    expect(payload.remainingSteps).toHaveLength(2);
+    expect(payload.error).toMatch(/^PlanRevisionProposedError:/);
+    expect(payload.error).toMatch(/STOP/);
+  });
+
+  it("omits summary from toToolResult when not provided", () => {
+    const err = new PlanRevisionProposedError("a reason", [{ id: "x", title: "y", action: "z" }]);
+    expect(err.toToolResult().summary).toBeUndefined();
+  });
+});
+
+describe("registerPlanTool + revise_plan", () => {
+  it("registers revise_plan as readOnly (it only emits a proposal, no side effects)", () => {
+    const reg = new ToolRegistry();
+    registerPlanTool(reg);
+    expect(reg.has("revise_plan")).toBe(true);
+    expect(reg.get("revise_plan")?.readOnly).toBe(true);
+  });
+
+  it("throws PlanRevisionProposedError with the structured payload", async () => {
+    const reg = new ToolRegistry();
+    const seen: Array<{ reason: string; steps: number }> = [];
+    registerPlanTool(reg, {
+      onPlanRevisionProposed: (reason, steps) => seen.push({ reason, steps: steps.length }),
+    });
+    const out = await reg.dispatch(
+      "revise_plan",
+      JSON.stringify({
+        reason: "User asked to skip step 3.",
+        remainingSteps: [
+          { id: "step-3", title: "skip", action: "do nothing", risk: "low" },
+          { id: "step-4", title: "tests", action: "update", risk: "med" },
+        ],
+      }),
+    );
+    const parsed = JSON.parse(out);
+    expect(parsed.reason).toBe("User asked to skip step 3.");
+    expect(parsed.remainingSteps).toHaveLength(2);
+    expect(parsed.error).toMatch(/^PlanRevisionProposedError:/);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.steps).toBe(2);
+  });
+
+  it("rejects empty reason", async () => {
+    const reg = new ToolRegistry();
+    registerPlanTool(reg);
+    const out = await reg.dispatch(
+      "revise_plan",
+      JSON.stringify({
+        reason: "  ",
+        remainingSteps: [{ id: "x", title: "y", action: "z" }],
+      }),
+    );
+    expect(JSON.parse(out).error).toMatch(/reason is required/);
+  });
+
+  it("rejects empty remainingSteps array", async () => {
+    const reg = new ToolRegistry();
+    registerPlanTool(reg);
+    const out = await reg.dispatch(
+      "revise_plan",
+      JSON.stringify({ reason: "skip everything", remainingSteps: [] }),
+    );
+    expect(JSON.parse(out).error).toMatch(/non-empty array/);
+  });
+
+  it("rejects when sanitization drops all steps", async () => {
+    const reg = new ToolRegistry();
+    registerPlanTool(reg);
+    const out = await reg.dispatch(
+      "revise_plan",
+      JSON.stringify({
+        reason: "ok",
+        remainingSteps: [
+          { id: "", title: "no id", action: "x" },
+          { id: "x", title: "", action: "x" },
+          { id: "y", title: "z", action: "" },
+          "not-an-object",
+        ],
+      }),
+    );
+    expect(JSON.parse(out).error).toMatch(/non-empty array/);
+  });
+
+  it("preserves valid risk levels through revision", async () => {
+    const reg = new ToolRegistry();
+    registerPlanTool(reg);
+    const out = await reg.dispatch(
+      "revise_plan",
+      JSON.stringify({
+        reason: "tighten",
+        remainingSteps: [
+          { id: "a", title: "t", action: "a", risk: "high" },
+          { id: "b", title: "t", action: "a", risk: "low" },
+        ],
+      }),
+    );
+    const parsed = JSON.parse(out);
+    expect(parsed.remainingSteps[0].risk).toBe("high");
+    expect(parsed.remainingSteps[1].risk).toBe("low");
+  });
+
+  it("includes an optional summary when provided", async () => {
+    const reg = new ToolRegistry();
+    registerPlanTool(reg);
+    const out = await reg.dispatch(
+      "revise_plan",
+      JSON.stringify({
+        reason: "ok",
+        remainingSteps: [{ id: "x", title: "y", action: "z" }],
+        summary: "Refactor without migration",
+      }),
+    );
+    expect(JSON.parse(out).summary).toBe("Refactor without migration");
   });
 });

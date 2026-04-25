@@ -85,7 +85,12 @@ export { registerMemoryTools } from "./tools/memory.js";
 export type { MemoryToolsOptions } from "./tools/memory.js";
 export { ChoiceRequestedError, registerChoiceTool } from "./tools/choice.js";
 export type { ChoiceOption, ChoiceToolOptions } from "./tools/choice.js";
-export { PlanCheckpointError, PlanProposedError, registerPlanTool } from "./tools/plan.js";
+export {
+  PlanCheckpointError,
+  PlanProposedError,
+  PlanRevisionProposedError,
+  registerPlanTool,
+} from "./tools/plan.js";
 export type { PlanStep, PlanStepRisk, PlanToolOptions, StepCompletion } from "./tools/plan.js";
 export { forkRegistryExcluding, registerSubagentTool } from "./tools/subagent.js";
 export type {

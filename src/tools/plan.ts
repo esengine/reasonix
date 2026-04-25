@@ -104,6 +104,12 @@ export interface PlanToolOptions {
    * and avoids JSON parsing for consumers that don't need it.
    */
   onStepCompleted?: (update: StepCompletion) => void;
+  /**
+   * Optional preview callback fired when the model proposes a plan
+   * revision via `revise_plan`. Same earlier-than-event timing as
+   * the other on* hooks.
+   */
+  onPlanRevisionProposed?: (reason: string, remainingSteps: PlanStep[], summary?: string) => void;
 }
 
 /**
@@ -152,6 +158,54 @@ export class PlanCheckpointError extends Error {
     };
     if (this.title) payload.title = this.title;
     if (this.notes) payload.notes = this.notes;
+    return payload;
+  }
+}
+
+/**
+ * Thrown by `revise_plan`. Carries the proposed remaining-step list,
+ * a one-sentence reason, and an optional updated summary out to the
+ * TUI. Mirrors PlanProposedError / PlanCheckpointError. The picker
+ * shows a diff between the current remaining steps and the proposed
+ * ones; the user accepts (replaces) or rejects (keeps current).
+ *
+ * Why a separate tool from submit_plan: revising is surgical (replace
+ * the tail of an in-flight plan), submitting is a fresh proposal.
+ * Different intent, different UI. Calling submit_plan again mid-
+ * execution would reset the whole plan including done steps, which
+ * is heavier than usually needed.
+ */
+export class PlanRevisionProposedError extends Error {
+  readonly reason: string;
+  readonly remainingSteps: PlanStep[];
+  readonly summary?: string;
+  constructor(reason: string, remainingSteps: PlanStep[], summary?: string) {
+    super(
+      "PlanRevisionProposedError: revision submitted. STOP calling tools now — the TUI has paused for the user to review your proposed change. Wait for their next message; it will say 'revision accepted' (proceed with the new step list), 'revision rejected' (keep the original plan and continue), or 'revision cancelled' (drop the proposal entirely). Don't call any tools in the meantime.",
+    );
+    this.name = "PlanRevisionProposedError";
+    this.reason = reason;
+    this.remainingSteps = remainingSteps;
+    this.summary = summary;
+  }
+
+  toToolResult(): {
+    error: string;
+    reason: string;
+    remainingSteps: PlanStep[];
+    summary?: string;
+  } {
+    const payload: {
+      error: string;
+      reason: string;
+      remainingSteps: PlanStep[];
+      summary?: string;
+    } = {
+      error: `${this.name}: ${this.message}`,
+      reason: this.reason,
+      remainingSteps: this.remainingSteps,
+    };
+    if (this.summary) payload.summary = this.summary;
     return payload;
   }
 }
@@ -283,6 +337,65 @@ export function registerPlanTool(registry: ToolRegistry, opts: PlanToolOptions =
       if (notes) update.notes = notes;
       opts.onStepCompleted?.(update);
       throw new PlanCheckpointError({ stepId, title, result, notes });
+    },
+  });
+  registry.register({
+    name: "revise_plan",
+    description:
+      "Surgically replace the REMAINING steps of an in-flight plan. Call this when the user has given feedback at a checkpoint that warrants a structured plan change — skip a step, swap two steps, add a new step, change risk, etc. Pass: `reason` (one sentence why), `remainingSteps` (the new tail of the plan, replacing whatever steps haven't been done yet), and optional `summary` (updated one-line plan summary). Done steps are NEVER touched — keep them out of `remainingSteps`. The TUI shows a diff (removed in red, kept in gray, added in green) and the user accepts or rejects. Don't call this for trivial mid-step adjustments — just keep executing. Don't call submit_plan for revisions either — that resets the whole plan including completed steps. Use submit_plan only when the entire approach has changed; use revise_plan when the tail needs editing.",
+    readOnly: true,
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description:
+            "One sentence explaining why you're revising — what the user asked for, what changed your assessment.",
+        },
+        remainingSteps: {
+          type: "array",
+          description:
+            "The new tail of the plan — what should run from here on. Each entry: {id, title, action, risk?}. Use stable ids; reuse old ids when a step is just being adjusted, generate new ones for genuinely new steps.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Stable id." },
+              title: { type: "string", description: "Short imperative title." },
+              action: { type: "string", description: "One-sentence concrete action." },
+              risk: {
+                type: "string",
+                enum: ["low", "med", "high"],
+                description: "Self-assessed risk; same scale as submit_plan.",
+              },
+            },
+            required: ["id", "title", "action"],
+          },
+        },
+        summary: {
+          type: "string",
+          description:
+            "Optional. Updated one-line plan summary if the overall framing has shifted.",
+        },
+      },
+      required: ["reason", "remainingSteps"],
+    },
+    fn: async (args: { reason: string; remainingSteps: unknown; summary?: string }) => {
+      const reason = (args?.reason ?? "").trim();
+      if (!reason) {
+        throw new Error(
+          "revise_plan: reason is required — write one sentence explaining the change.",
+        );
+      }
+      const remainingSteps = sanitizeSteps(args?.remainingSteps);
+      if (!remainingSteps || remainingSteps.length === 0) {
+        throw new Error(
+          "revise_plan: remainingSteps must be a non-empty array of well-formed steps. If the user wants to STOP rather than continue, don't revise — the picker has its own Stop option.",
+        );
+      }
+      const summary =
+        typeof args?.summary === "string" ? args.summary.trim() || undefined : undefined;
+      opts.onPlanRevisionProposed?.(reason, remainingSteps, summary);
+      throw new PlanRevisionProposedError(reason, remainingSteps, summary);
     },
   });
   return registry;

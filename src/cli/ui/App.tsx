@@ -42,6 +42,7 @@ import { ModeStatusBar, OngoingToolRow, StatusRow, SubagentRow, UndoBanner } fro
 import { type CheckpointChoice, PlanCheckpointConfirm } from "./PlanCheckpointConfirm.js";
 import { PlanConfirm, type PlanConfirmChoice } from "./PlanConfirm.js";
 import { PlanRefineInput } from "./PlanRefineInput.js";
+import { PlanReviseConfirm, type ReviseChoice } from "./PlanReviseConfirm.js";
 import { PromptInput } from "./PromptInput.js";
 import { ShellConfirm, type ShellConfirmChoice, derivePrefix } from "./ShellConfirm.js";
 import { SlashArgPicker } from "./SlashArgPicker.js";
@@ -301,6 +302,17 @@ export function App({
     title?: string;
     completed: number;
     total: number;
+  } | null>(null);
+  // Plan revision proposal from `revise_plan`. Non-null mounts the
+  // PlanReviseConfirm picker showing a step-level diff. Accept replaces
+  // remaining steps in planStepsRef; Reject drops the proposal and the
+  // model continues with the original plan. The model is most likely
+  // to call this in response to the user's checkpoint Revise feedback,
+  // but it can fire at any tool-dispatch moment.
+  const [pendingRevision, setPendingRevision] = useState<{
+    reason: string;
+    remainingSteps: PlanStep[];
+    summary?: string;
   } | null>(null);
   // Branching question from `ask_choice`. Non-null mounts ChoiceConfirm;
   // user picks an option (synthetic "user picked <id>"), types a
@@ -638,7 +650,8 @@ export function App({
       !pendingCheckpoint &&
       !stagedCheckpointRevise &&
       !pendingChoice &&
-      !stagedChoiceCustom
+      !stagedChoiceCustom &&
+      !pendingRevision
     ) {
       setEditMode((m) => {
         const next: EditMode = m === "auto" ? "review" : "auto";
@@ -673,6 +686,7 @@ export function App({
       !stagedCheckpointRevise &&
       !pendingChoice &&
       !stagedChoiceCustom &&
+      !pendingRevision &&
       // Fire when EITHER the banner is up OR there's any non-undone
       // history entry — the keybind is useful long after the 5-second
       // banner expires, which users rightly want.
@@ -1586,6 +1600,43 @@ export function App({
                 /* malformed payload — skip the picker */
               }
             }
+            // revise_plan fires with PlanRevisionProposedError. The
+            // registry serialized {error, reason, remainingSteps,
+            // summary?} via toToolResult; we mount the diff picker.
+            if (
+              ev.toolName === "revise_plan" &&
+              ev.content.includes('"PlanRevisionProposedError:')
+            ) {
+              try {
+                const parsed = JSON.parse(ev.content) as {
+                  reason?: unknown;
+                  remainingSteps?: unknown;
+                  summary?: unknown;
+                };
+                const reason = typeof parsed.reason === "string" ? parsed.reason.trim() : "";
+                const remainingSteps = Array.isArray(parsed.remainingSteps)
+                  ? (parsed.remainingSteps as PlanStep[]).filter(
+                      (s) =>
+                        s &&
+                        typeof s.id === "string" &&
+                        s.id.trim() &&
+                        typeof s.title === "string" &&
+                        s.title.trim() &&
+                        typeof s.action === "string" &&
+                        s.action.trim(),
+                    )
+                  : [];
+                if (reason && remainingSteps.length > 0) {
+                  const summary =
+                    typeof parsed.summary === "string"
+                      ? parsed.summary.trim() || undefined
+                      : undefined;
+                  setPendingRevision({ reason, remainingSteps, summary });
+                }
+              } catch {
+                /* malformed payload — skip the picker */
+              }
+            }
             // ask_choice fires with ChoiceRequestedError. We parse the
             // structured payload, mount ChoiceConfirm, and let the
             // user drive the next step. Same toToolResult protocol as
@@ -2092,7 +2143,7 @@ export function App({
       const label = snap.title ? `${snap.stepId} · ${snap.title}` : snap.stepId;
       const trimmed = feedback.trim();
       const synthetic = trimmed
-        ? `Step ${label} is complete. Before running the next step, adjust based on this user feedback:\n\n${trimmed}\n\nIf the feedback only tweaks execution, continue with the updated guidance. If it invalidates the remaining plan, call submit_plan again with a revised plan instead of continuing.`
+        ? `Step ${label} is complete. Before running the next step, adjust based on this user feedback:\n\n${trimmed}\n\nIf the feedback only tweaks how you execute (extra constraints, style preferences), continue with the updated guidance. If it changes which steps run (skip a step, swap two steps, add a new step), call \`revise_plan\` with the updated remainingSteps — that pops a diff picker the user can accept or reject. Only call submit_plan again if the entire approach has fundamentally changed.`
         : `Step ${label} is complete. Continue with the current plan.`;
       const marker = trimmed
         ? `▸ revising after ${label} — ${trimmed.length > 50 ? `${trimmed.slice(0, 50)}…` : trimmed}`
@@ -2207,6 +2258,79 @@ export function App({
     if (snap) setPendingChoice(snap);
   }, [stagedChoiceCustom]);
 
+  /**
+   * PlanReviseConfirm callback. Accept splices the new remaining
+   * steps onto the done prefix and continues. Reject drops the
+   * proposal and tells the model to stick with the original plan.
+   */
+  const handleReviseConfirm = useCallback(
+    async (choice: ReviseChoice) => {
+      const snap = pendingRevision;
+      if (!snap) return;
+      setPendingRevision(null);
+      if (choice === "reject") {
+        const synthetic =
+          "The user rejected the proposed plan revision. Don't apply it. Continue executing the original plan from the next pending step. If you genuinely cannot proceed without the change, stop and explain in plain text why.";
+        setHistorical((prev) => [
+          ...prev,
+          { id: `revise-reject-${Date.now()}`, role: "info", text: "▸ revision rejected" },
+        ]);
+        if (busy) {
+          loop.abort();
+          setQueuedSubmit(synthetic);
+        } else {
+          await handleSubmit(synthetic);
+        }
+        return;
+      }
+      // Accept: keep the done-step prefix from the existing plan, replace
+      // the rest with the proposed remainingSteps. completedStepIds
+      // stays intact — done work isn't undone.
+      const completed = completedStepIdsRef.current;
+      const oldSteps = planStepsRef.current ?? [];
+      const donePrefix = oldSteps.filter((s) => completed.has(s.id));
+      const merged: PlanStep[] = [...donePrefix];
+      for (const s of snap.remainingSteps) {
+        if (completed.has(s.id)) continue; // already done — don't re-queue
+        merged.push(s);
+      }
+      planStepsRef.current = merged;
+      const removedCount = oldSteps.filter(
+        (s) => !completed.has(s.id) && !snap.remainingSteps.some((n) => n.id === s.id),
+      ).length;
+      const addedCount = snap.remainingSteps.filter(
+        (s) => !oldSteps.some((o) => o.id === s.id),
+      ).length;
+      const marker = `▸ revision accepted — −${removedCount} +${addedCount}: ${snap.reason}`;
+      setHistorical((prev) => [
+        ...prev,
+        { id: `revise-accept-${Date.now()}`, role: "info", text: marker },
+      ]);
+      const synthetic = `Revision accepted. The remaining plan is now:\n${snap.remainingSteps
+        .map((s, i) => `  ${i + 1}. ${s.id} · ${s.title} — ${s.action}`)
+        .join(
+          "\n",
+        )}\n\nContinue executing from the next pending step. Call mark_step_complete after each one as before.`;
+      if (busy) {
+        loop.abort();
+        setQueuedSubmit(synthetic);
+      } else {
+        await handleSubmit(synthetic);
+      }
+    },
+    [pendingRevision, busy, loop, handleSubmit],
+  );
+
+  // Ref-wrap to keep PlanReviseConfirm's React.memo from re-rendering.
+  const handleReviseConfirmRef = useRef(handleReviseConfirm);
+  useEffect(() => {
+    handleReviseConfirmRef.current = handleReviseConfirm;
+  }, [handleReviseConfirm]);
+  const stableHandleReviseConfirm = useCallback(
+    async (choice: ReviseChoice) => handleReviseConfirmRef.current(choice),
+    [],
+  );
+
   return (
     <TickerProvider
       disabled={
@@ -2217,7 +2341,8 @@ export function App({
         !!pendingCheckpoint ||
         !!stagedCheckpointRevise ||
         !!pendingChoice ||
-        !!stagedChoiceCustom
+        !!stagedChoiceCustom ||
+        !!pendingRevision
       }
     >
       <Box flexDirection="column">
@@ -2298,7 +2423,8 @@ export function App({
         !pendingCheckpoint &&
         !stagedCheckpointRevise &&
         !pendingChoice &&
-        !stagedChoiceCustom ? (
+        !stagedChoiceCustom &&
+        !pendingRevision ? (
           <UndoBanner banner={undoBanner} />
         ) : null}
         {/*
@@ -2346,6 +2472,16 @@ export function App({
             options={pendingChoice.options}
             allowCustom={pendingChoice.allowCustom}
             onChoose={stableHandleChoiceConfirm}
+          />
+        ) : pendingRevision ? (
+          <PlanReviseConfirm
+            reason={pendingRevision.reason}
+            oldRemaining={(planStepsRef.current ?? []).filter(
+              (s) => !completedStepIdsRef.current.has(s.id),
+            )}
+            newRemaining={pendingRevision.remainingSteps}
+            summary={pendingRevision.summary}
+            onChoose={stableHandleReviseConfirm}
           />
         ) : pendingCheckpoint ? (
           <PlanCheckpointConfirm
