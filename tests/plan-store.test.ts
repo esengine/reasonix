@@ -16,6 +16,7 @@ function writeFixture(path: string, content: string): void {
   writeFileSync(path, content);
 }
 import {
+  archivePlanState,
   clearPlanState,
   loadPlanState,
   planStatePath,
@@ -159,6 +160,53 @@ describe("plan-store roundtrip", () => {
     const path = planStatePath("../etc/passwd");
     expect(path).toMatch(/\.plan\.json$/);
     expect(path).not.toMatch(/\.\.[\\/]etc/);
+  });
+});
+
+describe("archivePlanState", () => {
+  it("returns null when no active plan exists", () => {
+    expect(archivePlanState("never-touched")).toBeNull();
+  });
+
+  it("renames the active plan to a timestamped .done.json", () => {
+    savePlanState("done-test", [{ id: "x", title: "y", action: "z" }], ["x"]);
+    const before = loadPlanState("done-test");
+    expect(before).not.toBeNull();
+    const archive = archivePlanState("done-test");
+    expect(archive).not.toBeNull();
+    expect(archive).toMatch(/\.done\.json$/);
+    // Active plan is gone after archive
+    expect(loadPlanState("done-test")).toBeNull();
+  });
+
+  it("preserves the original payload in the archive", async () => {
+    const steps = [
+      { id: "step-1", title: "extract", action: "split tokens", risk: "med" as const },
+    ];
+    savePlanState("payload-test", steps, ["step-1"]);
+    const archive = archivePlanState("payload-test");
+    expect(archive).not.toBeNull();
+    const fs = await import("node:fs");
+    const raw = fs.readFileSync(archive!, "utf8");
+    const parsed = JSON.parse(raw);
+    expect(parsed.steps).toEqual(steps);
+    expect(parsed.completedStepIds).toEqual(["step-1"]);
+    expect(parsed.version).toBe(1);
+  });
+
+  it("two archives within the same millisecond don't collide", () => {
+    // Random suffix prevents filename collision when consecutive
+    // mark_step_complete calls finalize a plan and immediately a new
+    // submit_plan + complete cycle archives again. Hard to literally
+    // race in a test; we settle for archiving twice rapidly and
+    // checking we got two different paths.
+    savePlanState("race-1", [{ id: "x", title: "y", action: "z" }], ["x"]);
+    const a = archivePlanState("race-1");
+    savePlanState("race-1", [{ id: "x", title: "y", action: "z" }], ["x"]);
+    const b = archivePlanState("race-1");
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(a).not.toBe(b);
   });
 });
 

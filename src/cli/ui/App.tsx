@@ -12,6 +12,7 @@ import {
 } from "../../code/edit-blocks.js";
 import { clearPendingEdits, loadPendingEdits, savePendingEdits } from "../../code/pending-edits.js";
 import {
+  archivePlanState,
   clearPlanState,
   loadPlanState,
   relativeTime,
@@ -1769,6 +1770,26 @@ export function App({
                       },
                     },
                   ]);
+                  // Auto-archive when every step in the plan is now
+                  // done. Renaming the active plan.json to a timestamped
+                  // .done.json keeps it as a historical artifact while
+                  // freeing the active slot so the next session starts
+                  // fresh. The completed in-memory state stays put for
+                  // the rest of THIS session in case the model wants
+                  // to reference it (e.g. summary on Stop).
+                  if (session && total > 0 && completed >= total) {
+                    const archive = archivePlanState(session);
+                    if (archive) {
+                      setHistorical((prev) => [
+                        ...prev,
+                        {
+                          id: `plan-archived-${Date.now()}`,
+                          role: "info",
+                          text: `▸ plan complete — all ${total} step${total === 1 ? "" : "s"} done · archived`,
+                        },
+                      ]);
+                    }
+                  }
                   // The error-tagged payload means the tool threw
                   // PlanCheckpointError — loop has paused. Mount the
                   // picker so the user drives what happens next.

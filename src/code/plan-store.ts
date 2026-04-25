@@ -23,7 +23,14 @@
  * meaningful.
  */
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { sanitizeName, sessionsDir } from "../session.js";
 import type { PlanStep } from "../tools/plan.js";
@@ -115,6 +122,43 @@ export function clearPlanState(sessionName: string): void {
     if (existsSync(path)) unlinkSync(path);
   } catch {
     /* nothing to do — leftover file is harmless, will be overwritten next save */
+  }
+}
+
+/**
+ * Move the active plan to a timestamped .done.json archive when the
+ * model has marked every step complete. Future Time-Travel replay
+ * will load these archives; for now the archive just exists as a
+ * historical artifact and frees the active plan.json so the next
+ * session starts fresh.
+ *
+ * Returns the archive path on success, or null if there was nothing
+ * to archive (no active plan) / the rename failed (logged to stderr,
+ * not propagated — losing the archive is annoying but shouldn't
+ * crash the TUI).
+ *
+ * The timestamp uses ISO 8601 with a millisecond suffix and `:` and
+ * `.` swapped for `-` so the filename is filesystem-safe on Windows.
+ * Two archives created within the same millisecond would collide;
+ * we append a short random suffix to dodge that.
+ */
+export function archivePlanState(sessionName: string): string | null {
+  const active = planStatePath(sessionName);
+  if (!existsSync(active)) return null;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const suffix = Math.random().toString(36).slice(2, 6);
+  const archive = join(
+    sessionsDir(),
+    `${sanitizeName(sessionName)}.plan.${stamp}-${suffix}.done.json`,
+  );
+  try {
+    renameSync(active, archive);
+    return archive;
+  } catch (err) {
+    process.stderr.write(
+      `▸ plan-store: failed to archive plan for "${sessionName}": ${(err as Error).message}\n`,
+    );
+    return null;
   }
 }
 
