@@ -149,6 +149,17 @@ function RoleGlyph({
   );
 }
 
+/**
+ * Pad continuation lines so wrapped multi-line text aligns under the
+ * glyph indent instead of jumping back to column 0. Header is `glyph
+ * (1 col) + "  " (2 cols)`, so subsequent lines need 3 leading spaces
+ * to land under the body's first character.
+ */
+function indentContinuationLines(text: string): string {
+  if (!text.includes("\n")) return text;
+  return text.split("\n").join("\n   ");
+}
+
 export const EventRow = React.memo(function EventRow({
   event,
   projectRoot,
@@ -162,7 +173,7 @@ export const EventRow = React.memo(function EventRow({
         <RoleGlyph glyph={ROLE_GLYPH.user} color="cyan" />
         <Text>
           {"  "}
-          {event.text}
+          {indentContinuationLines(event.text)}
         </Text>
       </Box>
     );
@@ -249,7 +260,7 @@ export const EventRow = React.memo(function EventRow({
         <RoleGlyph glyph={ROLE_GLYPH.error} color="red" />
         <Text color="red">
           {"  "}
-          {event.text}
+          {indentContinuationLines(event.text)}
         </Text>
       </Box>
     );
@@ -394,7 +405,7 @@ export const EventRow = React.memo(function EventRow({
         <RoleGlyph glyph={ROLE_GLYPH.warning} color="yellow" />
         <Text color="yellow">
           {"  "}
-          {event.text}
+          {indentContinuationLines(event.text)}
         </Text>
       </Box>
     );

@@ -35,9 +35,9 @@ export interface ShellConfirmProps {
 export function ShellConfirm({ command, allowPrefix, kind, onChoose }: ShellConfirmProps) {
   const isBackground = kind === "run_background";
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginY={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1} marginY={1}>
       <Box>
-        <Text bold color="yellow">
+        <Text bold color="red">
           {isBackground
             ? "▸ model wants to start a BACKGROUND process"
             : "▸ model wants to run a shell command"}
@@ -51,7 +51,7 @@ export function ShellConfirm({ command, allowPrefix, kind, onChoose }: ShellConf
         </Box>
       ) : null}
       <Box>
-        <Text color="yellow" dimColor>
+        <Text color="red" dimColor>
           {"──────────────────────────────────────────"}
         </Text>
       </Box>

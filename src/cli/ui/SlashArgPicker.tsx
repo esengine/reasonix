@@ -39,7 +39,7 @@ export function SlashArgPicker({
   // Hint mode: a single dim row explaining the argsHint + summary.
   if (kind === "hint") {
     return (
-      <Box paddingX={1}>
+      <Box paddingX={1} marginTop={1}>
         <Text dimColor>
           {"  "}
           <Text bold>/{spec.cmd}</Text>
@@ -52,7 +52,7 @@ export function SlashArgPicker({
   if (matches === null) return null;
   if (matches.length === 0) {
     return (
-      <Box flexDirection="column" paddingX={1}>
+      <Box flexDirection="column" paddingX={1} marginTop={1}>
         <Text dimColor>
           {"  "}
           <Text bold>/{spec.cmd}</Text>
@@ -71,7 +71,7 @@ export function SlashArgPicker({
   const hiddenAbove = windowStart;
   const hiddenBelow = total - windowStart - shown.length;
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column" paddingX={1} marginTop={1}>
       <Text dimColor>
         {"  "}
         <Text bold>/{spec.cmd}</Text>

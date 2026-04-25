@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React as a runtime value (classic transform compiles JSX to React.createElement)
 import React, { useRef, useState } from "react";
 import { type MultilineKey, lineAndColumn, processMultilineKey } from "./multiline-keys.js";
@@ -274,9 +274,24 @@ export function PromptInput({
     { isActive: !disabled },
   );
 
+  // Narrow-terminal mode: drop the `you ›` (6 col) prefix to a `›` (2
+  // col) marker so the writable area on 80-col terminals reclaims 4
+  // cols. Threshold of 90 keeps the friendly `you ›` on anything that
+  // resembles a normal terminal; modern laptops tend to default to
+  // 100+ cols, narrow ones (split panes, embedded shells) tend to be
+  // <=90. Continuation indent shrinks proportionally so wrapped lines
+  // still align under the prompt arrow.
+  const { stdout } = useStdout();
+  const cols = stdout?.columns ?? 80;
+  const narrow = cols <= 90;
+  const promptPrefix = narrow ? "› " : "you › ";
+  const continuationIndent = narrow ? " " : "     ";
+  const placeholderActive = narrow
+    ? "type a message, or /command"
+    : "type a message, or /command  ·  [Shift+Enter] / [Ctrl+J] newline";
   const effectivePlaceholder = disabled
-    ? (placeholder ?? "…waiting for response…  ·  [Esc] to stop")
-    : (placeholder ?? "type a message, or /command  ·  [Shift+Enter] / [Ctrl+J] newline");
+    ? (placeholder ?? "…waiting for response…")
+    : (placeholder ?? placeholderActive);
 
   const lines = value.length > 0 ? value.split("\n") : [""];
   const borderColor = disabled ? "gray" : "cyan";
@@ -298,63 +313,70 @@ export function PromptInput({
   const showHugeBufferHints = lines.length > 20;
 
   return (
-    <Box borderStyle="round" borderColor={borderColor} paddingX={1} flexDirection="column">
-      {renderItems.map((item, renderIdx) => {
-        if (item.kind === "skip") {
+    <>
+      <Box borderStyle="round" borderColor={borderColor} paddingX={1} flexDirection="column">
+        {renderItems.map((item, renderIdx) => {
+          if (item.kind === "skip") {
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable — skip markers are derived from a fixed-size window over `lines`
+              <Box key={`skip-${renderIdx}`}>
+                <Text dimColor>{continuationIndent}</Text>
+                <Text
+                  dimColor
+                >{`[… ${item.linesHidden} line${item.linesHidden === 1 ? "" : "s"} hidden — full content kept, submitted on Enter …]`}</Text>
+              </Box>
+            );
+          }
+          const line = item.line;
+          const i = item.originalIndex;
+          const isFirst = i === 0;
+          const showPlaceholder = isFirst && value.length === 0;
+          const isCursorLine = i === cursorLine;
           return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: stable — skip markers are derived from a fixed-size window over `lines`
-            <Box key={`skip-${renderIdx}`}>
-              <Text dimColor>{"     "}</Text>
-              <Text
-                dimColor
-              >{`[… ${item.linesHidden} line${item.linesHidden === 1 ? "" : "s"} hidden — full content kept, submitted on Enter …]`}</Text>
+            <Box key={`ln-${i}`}>
+              {isFirst ? (
+                <Text bold color={borderColor}>
+                  {promptPrefix}
+                </Text>
+              ) : (
+                <Text dimColor>{continuationIndent}</Text>
+              )}
+              {showPlaceholder ? (
+                <>
+                  {isCursorLine && !disabled ? (
+                    <Text color={borderColor}>{showCursor ? "▌" : " "}</Text>
+                  ) : null}
+                  <Text dimColor>{effectivePlaceholder}</Text>
+                </>
+              ) : isCursorLine && !disabled ? (
+                <LineWithCursor
+                  line={line}
+                  col={cursorCol}
+                  showCursor={showCursor}
+                  borderColor={borderColor}
+                  pastes={pastesRef.current}
+                />
+              ) : (
+                <RenderLine line={line} pastes={pastesRef.current} />
+              )}
             </Box>
           );
-        }
-        const line = item.line;
-        const i = item.originalIndex;
-        const isFirst = i === 0;
-        const showPlaceholder = isFirst && value.length === 0;
-        const isCursorLine = i === cursorLine;
-        return (
-          <Box key={`ln-${i}`}>
-            {isFirst ? (
-              <Text bold color={borderColor}>
-                you ›{" "}
-              </Text>
-            ) : (
-              <Text dimColor>{"     "}</Text>
-            )}
-            {showPlaceholder ? (
-              <>
-                {isCursorLine && !disabled ? (
-                  <Text color={borderColor}>{showCursor ? "▌" : " "}</Text>
-                ) : null}
-                <Text dimColor>{effectivePlaceholder}</Text>
-              </>
-            ) : isCursorLine && !disabled ? (
-              <LineWithCursor
-                line={line}
-                col={cursorCol}
-                showCursor={showCursor}
-                borderColor={borderColor}
-                pastes={pastesRef.current}
-              />
-            ) : (
-              <RenderLine line={line} pastes={pastesRef.current} />
-            )}
+        })}
+        {showHugeBufferHints && !disabled ? (
+          <Box>
+            <Text dimColor>{continuationIndent}</Text>
+            <Text dimColor>
+              {`[${lines.length} lines · PageUp/PageDown jump to top/bottom · Ctrl+U clear · Ctrl+W del word]`}
+            </Text>
           </Box>
-        );
-      })}
-      {showHugeBufferHints && !disabled ? (
-        <Box>
-          <Text dimColor>{"     "}</Text>
-          <Text dimColor>
-            {`[${lines.length} lines · PageUp/PageDown jump to top/bottom · Ctrl+U clear · Ctrl+W del word]`}
-          </Text>
+        ) : null}
+      </Box>
+      {disabled ? (
+        <Box paddingX={1}>
+          <Text dimColor>[Esc] to stop</Text>
         </Box>
       ) : null}
-    </Box>
+    </>
   );
 }
 

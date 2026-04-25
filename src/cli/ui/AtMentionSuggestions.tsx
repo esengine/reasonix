@@ -30,7 +30,7 @@ export function AtMentionSuggestions({
   if (matches === null) return null;
   if (matches.length === 0) {
     return (
-      <Box paddingX={1}>
+      <Box paddingX={1} marginTop={1}>
         <Text color="yellow">no files match "@{query}"</Text>
         <Text dimColor>
           {" "}
@@ -47,7 +47,7 @@ export function AtMentionSuggestions({
   const hiddenAbove = windowStart;
   const hiddenBelow = total - windowStart - shown.length;
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column" paddingX={1} marginTop={1}>
       {hiddenAbove > 0 ? <Text dimColor> ↑ {hiddenAbove} more above</Text> : null}
       {shown.map((path, i) => (
         <FileRow key={path} path={path} isSelected={windowStart + i === selectedIndex} />

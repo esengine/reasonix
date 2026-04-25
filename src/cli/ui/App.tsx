@@ -1018,7 +1018,7 @@ export function App({
     if (!codeMode) return "not in code mode";
     const blocks = pendingEdits.current;
     if (blocks.length === 0) {
-      return "nothing pending — the assistant hasn't proposed edits since the last /apply or /discard.";
+      return "nothing pending — the model hasn't proposed edits since the last /apply or /discard.";
     }
     const snaps = snapshotBeforeEdits(blocks, codeMode.rootDir);
     const results = applyEditBlocks(blocks, codeMode.rootDir);

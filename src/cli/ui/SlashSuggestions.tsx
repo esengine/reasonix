@@ -28,7 +28,7 @@ export function SlashSuggestions({
   if (matches === null) return null;
   if (matches.length === 0) {
     return (
-      <Box paddingX={1}>
+      <Box paddingX={1} marginTop={1}>
         <Text color="yellow">no slash command matches that prefix</Text>
         <Text dimColor> — Backspace to edit, or /help for the full list</Text>
       </Box>
@@ -45,7 +45,7 @@ export function SlashSuggestions({
   const hiddenAbove = windowStart;
   const hiddenBelow = total - windowStart - shown.length;
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column" paddingX={1} marginTop={1}>
       {hiddenAbove > 0 ? <Text dimColor> ↑ {hiddenAbove} more above</Text> : null}
       {shown.map((spec, i) => (
         <SuggestionRow key={spec.cmd} spec={spec} isSelected={windowStart + i === selectedIndex} />
