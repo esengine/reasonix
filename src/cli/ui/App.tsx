@@ -2590,7 +2590,9 @@ export function App({
           modal up). Removes the "what do I type?" friction without
           surviving past the first turn.
         */}
-          {historical.length === 0 && !busy && !streaming ? (
+          {!historical.some((e) => e.role === "user" || e.role === "assistant") &&
+          !busy &&
+          !streaming ? (
             <WelcomeBanner inCodeMode={!!codeMode} />
           ) : null}
           {/*
