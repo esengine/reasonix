@@ -305,6 +305,29 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
     process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
   }
 
+  // Resize handler — hard-clear the visible viewport whenever the
+  // terminal width changes. Without this, Ink's eraseLines() counts
+  // the OLD frame using its stored row count (which was right for
+  // the old width) and the NEW frame renders on top — leaving stale
+  // copies of the StatsPanel + metrics at every resize step. We
+  // prepend the listener so our clear runs BEFORE Ink's own resize
+  // handler kicks in; Ink's next render then fills the cleared
+  // viewport instead of overlaying ghosts. Scrollback (\x1b[3J) is
+  // intentionally untouched so chat history above stays scrollable.
+  let lastCols = process.stdout.columns ?? 0;
+  const onResize = () => {
+    if (!process.stdout.isTTY) return;
+    const cols = process.stdout.columns ?? 0;
+    if (cols === lastCols) return;
+    lastCols = cols;
+    process.stdout.write("\x1b[2J\x1b[H");
+  };
+  if (process.stdout.isTTY && typeof process.stdout.prependListener === "function") {
+    process.stdout.prependListener("resize", onResize);
+  } else if (process.stdout.isTTY) {
+    process.stdout.on("resize", onResize);
+  }
+
   const { waitUntilExit } = render(
     <Root
       initialKey={initialKey}
@@ -322,6 +345,7 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
   try {
     await waitUntilExit();
   } finally {
+    process.stdout.removeListener("resize", onResize);
     for (const c of clients) await c.close();
   }
 }

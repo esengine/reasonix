@@ -199,6 +199,40 @@ export function App({
       stdout.write("\u001b[>4m");
     };
   }, [stdout]);
+
+  // Resize-suppression state. While the user is dragging the
+  // terminal corner, OS emits a stream of resize events at high
+  // frequency. Each one would trigger Ink to re-render — and our
+  // per-tick animations (wordmark gradient, prompt bar flow,
+  // cursor blink) keep firing at 120 ms — both with stale
+  // `eraseLines(N)` counts because the previous frame's logical
+  // height is no longer the visible height after wrap reflows.
+  // Result: ghost copies of the StatsPanel pile up.
+  //
+  // Fix: detect resize bursts and freeze the global ticker while
+  // they're in flight. With the ticker frozen, no re-render fires
+  // from animations during the resize storm. Once the user stops
+  // dragging (no resize event for ~400 ms), the ticker resumes
+  // and one clean re-render kicks in. The hard-clear in chat.tsx's
+  // resize listener handles the single transition ghost.
+  const [isResizing, setIsResizing] = useState(false);
+  useEffect(() => {
+    if (!stdout || !stdout.isTTY) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onResize = () => {
+      setIsResizing(true);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        setIsResizing(false);
+        timer = null;
+      }, 400);
+    };
+    stdout.on("resize", onResize);
+    return () => {
+      stdout.off("resize", onResize);
+      if (timer) clearTimeout(timer);
+    };
+  }, [stdout]);
   // Subagent UI wiring: live activity row + sink ref the loop closure
   // captures. Must be declared BEFORE loop construction so the
   // subagentRunner closure can read the ref.
@@ -2555,6 +2589,7 @@ export function App({
       <TickerProvider
         disabled={
           PLAIN_UI ||
+          isResizing ||
           !!pendingPlan ||
           !!pendingShell ||
           !!pendingEditReview ||
