@@ -77,11 +77,84 @@ export function formatEditResults(results: ApplyResult[]): string {
  * at 20 lines per block). Users can eyeball what's about to land
  * BEFORE pressing `y` — the old summary-only view was a common
  * mistake surface.
+ *
+ * Each block gets a `[N]` label so users can target a subset via
+ * `/apply 1` / `/apply 1,3-4` / `/discard 2` instead of being forced
+ * into all-or-nothing.
  */
 export function formatPendingPreview(blocks: EditBlock[]): string {
-  const header = `▸ ${blocks.length} pending edit block(s) — /apply (or y) to commit · /discard (or n) to drop`;
-  const diffLines = formatAllBlockDiffs(blocks);
+  const partial = blocks.length > 1 ? "  ·  /apply N or 1,3-4 for partial" : "";
+  const header = `▸ ${blocks.length} pending edit block(s) — /apply (or y) to commit · /discard (or n) to drop${partial}`;
+  const diffLines = formatAllBlockDiffs(blocks, { numbered: blocks.length > 1 });
   return [header, ...diffLines].join("\n");
+}
+
+/**
+ * Parse a `/apply <N>` / `/discard <N>` argument into a deduplicated,
+ * sorted list of 1-based indices. Accepts:
+ *   - single value: `"3"`         → [3]
+ *   - comma list:   `"1,3,5"`     → [1, 3, 5]
+ *   - range:        `"2-4"`        → [2, 3, 4]
+ *   - mixed:        `"1,3-5,7"`    → [1, 3, 4, 5, 7]
+ *   - whitespace + trailing commas tolerated.
+ *
+ * Bounds-checked against `max` (the count of pending blocks); any
+ * out-of-range or malformed token returns `{ error }` so the caller
+ * can surface a usage hint instead of silently applying the wrong
+ * subset. Empty input returns `{ ok: [] }` so callers can detect
+ * "user passed no indices" and treat that as the all-blocks default.
+ */
+export function parseEditIndices(raw: string, max: number): { ok: number[] } | { error: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { ok: [] };
+  if (max <= 0) return { error: "no pending edits to address" };
+  const seen = new Set<number>();
+  const tokens = trimmed
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  if (tokens.length === 0) return { ok: [] };
+  for (const tok of tokens) {
+    const range = tok.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const a = Number.parseInt(range[1] ?? "", 10);
+      const b = Number.parseInt(range[2] ?? "", 10);
+      if (!Number.isFinite(a) || !Number.isFinite(b) || a < 1 || b < 1) {
+        return { error: `invalid range: "${tok}"` };
+      }
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      if (hi > max) return { error: `index ${hi} out of range (max ${max})` };
+      for (let i = lo; i <= hi; i++) seen.add(i);
+      continue;
+    }
+    if (!/^\d+$/.test(tok)) return { error: `invalid index: "${tok}"` };
+    const n = Number.parseInt(tok, 10);
+    if (!Number.isFinite(n) || n < 1) return { error: `invalid index: "${tok}"` };
+    if (n > max) return { error: `index ${n} out of range (max ${max})` };
+    seen.add(n);
+  }
+  return { ok: [...seen].sort((a, b) => a - b) };
+}
+
+/**
+ * Partition `edits` into the subset addressed by `indices1Based` and
+ * everything else (preserves original order). Pure helper so the
+ * pending-edits queue can be sliced from the slash handler in App.tsx
+ * without any React-state plumbing in the test path.
+ */
+export function partitionEdits<T>(
+  edits: readonly T[],
+  indices1Based: readonly number[],
+): { selected: T[]; remaining: T[] } {
+  const picked = new Set(indices1Based);
+  const selected: T[] = [];
+  const remaining: T[] = [];
+  for (let i = 0; i < edits.length; i++) {
+    if (picked.has(i + 1)) selected.push(edits[i] as T);
+    else remaining.push(edits[i] as T);
+  }
+  return { selected, remaining };
 }
 
 /**

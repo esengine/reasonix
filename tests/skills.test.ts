@@ -320,16 +320,23 @@ describe("Built-in skills", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  it("ships explore + research as subagent-runAs builtins", () => {
+  it("ships explore + research + review as subagent-runAs builtins", () => {
     const store = new SkillStore({ homeDir: home }); // builtins ON
     const names = store.list().map((s) => s.name);
     expect(names).toContain("explore");
     expect(names).toContain("research");
+    expect(names).toContain("review");
     const explore = store.read("explore");
     expect(explore?.runAs).toBe("subagent");
     expect(explore?.scope).toBe("builtin");
     const research = store.read("research");
     expect(research?.runAs).toBe("subagent");
+    const review = store.read("review");
+    expect(review?.runAs).toBe("subagent");
+    expect(review?.scope).toBe("builtin");
+    // Review's body must mention the read-only contract — that's the
+    // load-bearing rule that distinguishes review from "do the change."
+    expect(review?.body).toMatch(/read-only/i);
   });
 
   it("user-authored skills override a builtin with the same name", () => {
@@ -351,5 +358,6 @@ describe("Built-in skills", () => {
     expect(out).toContain("# Skills");
     expect(out).toContain("explore [🧬 subagent]");
     expect(out).toContain("research [🧬 subagent]");
+    expect(out).toContain("review [🧬 subagent]");
   });
 });

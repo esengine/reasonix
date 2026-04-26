@@ -104,8 +104,19 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   { cmd: "new", summary: "start a fresh conversation (clear context + scrollback)" },
   { cmd: "exit", summary: "quit the TUI" },
   // Code-mode only
-  { cmd: "apply", summary: "commit pending edit blocks to disk", contextual: "code" },
-  { cmd: "discard", summary: "drop pending edit blocks without writing", contextual: "code" },
+  {
+    cmd: "apply",
+    argsHint: "[N|N,M|N-M]",
+    summary:
+      "commit pending edit blocks to disk (no arg → all; `1`, `1,3`, or `1-4` → that subset, rest stay pending)",
+    contextual: "code",
+  },
+  {
+    cmd: "discard",
+    argsHint: "[N|N,M|N-M]",
+    summary: "drop pending edit blocks without writing (no arg → all; indices → that subset)",
+    contextual: "code",
+  },
   { cmd: "undo", summary: "roll back the last applied edit batch", contextual: "code" },
   {
     cmd: "history",

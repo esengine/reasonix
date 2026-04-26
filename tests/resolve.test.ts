@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveDefaults } from "../src/cli/resolve.js";
+import { resolveContinueFlag, resolveDefaults } from "../src/cli/resolve.js";
 import { writeConfig } from "../src/config.js";
 
 // resolve.ts reads the real ~/.reasonix/config.json via readConfig().
@@ -126,5 +126,52 @@ describe("resolveDefaults", () => {
 
   it("--branch 99 caps at 8", () => {
     expect(resolveDefaults({ branch: 99 }).branch).toBe(8);
+  });
+});
+
+describe("resolveContinueFlag", () => {
+  it("flag unset → returns the fallback session and does NOT auto-resume", () => {
+    const result = resolveContinueFlag(false, "default", () => undefined);
+    expect(result).toEqual({ session: "default", forceResume: false });
+  });
+
+  it("flag undefined behaves the same as flag=false", () => {
+    const result = resolveContinueFlag(undefined, "default", () => undefined);
+    expect(result).toEqual({ session: "default", forceResume: false });
+  });
+
+  it("flag set + sessions exist → picks newest + forceResume:true", () => {
+    const result = resolveContinueFlag(true, "default", () => ({ name: "code-myproj" }));
+    expect(result).toEqual({ session: "code-myproj", forceResume: true });
+  });
+
+  it("flag set + no sessions → falls back to default + warns once", () => {
+    const warnings: string[] = [];
+    const result = resolveContinueFlag(
+      true,
+      "default",
+      () => undefined,
+      (msg) => warnings.push(msg),
+    );
+    expect(result).toEqual({ session: "default", forceResume: false });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("no saved sessions");
+  });
+
+  it("flag unset → no warning even when sessions are absent", () => {
+    const warnings: string[] = [];
+    resolveContinueFlag(
+      false,
+      "default",
+      () => undefined,
+      (msg) => warnings.push(msg),
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("preserves an undefined fallback (--no-session) when no resume target exists", () => {
+    const result = resolveContinueFlag(true, undefined, () => undefined);
+    expect(result.session).toBeUndefined();
+    expect(result.forceResume).toBe(false);
   });
 });

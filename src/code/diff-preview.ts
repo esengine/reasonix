@@ -23,6 +23,16 @@ export interface DiffPreviewOptions {
   indent?: string;
 }
 
+export interface AllBlockDiffOptions extends DiffPreviewOptions {
+  /**
+   * Prefix each block's path-header with a 1-based `[N]` label. Used by
+   * the pending-edits preview so the user can address individual blocks
+   * via `/apply <N>` / `/discard <N>`. Off by default — single-block
+   * surfaces (modal confirm, /show) don't need numbering.
+   */
+  numbered?: boolean;
+}
+
 /** Render one edit block's diff. Returns an array of formatted lines. */
 export function formatEditBlockDiff(block: EditBlock, opts: DiffPreviewOptions = {}): string[] {
   const contextLines = Math.max(0, opts.contextLines ?? 2);
@@ -90,7 +100,7 @@ export function formatEditBlockDiff(block: EditBlock, opts: DiffPreviewOptions =
  */
 export function formatAllBlockDiffs(
   blocks: readonly EditBlock[],
-  opts: DiffPreviewOptions = {},
+  opts: AllBlockDiffOptions = {},
 ): string[] {
   const out: string[] = [];
   for (let i = 0; i < blocks.length; i++) {
@@ -99,7 +109,8 @@ export function formatAllBlockDiffs(
     const added = countLines(b.replace);
     const tag = b.search === "" ? "NEW " : "    ";
     if (i > 0) out.push("");
-    out.push(`  ${tag}${b.path}  (-${removed} +${added} lines)`);
+    const label = opts.numbered ? `[${i + 1}] ` : "";
+    out.push(`  ${label}${tag}${b.path}  (-${removed} +${added} lines)`);
     out.push(...formatEditBlockDiff(b, opts));
   }
   return out;

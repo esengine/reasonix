@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { readConfig } from "../config.js";
 import { VERSION } from "../index.js";
 import { ESCALATION_CONTRACT } from "../prompt-fragments.js";
+import { listSessions } from "../session.js";
 import { applyMemoryStack } from "../user-memory.js";
 import { chatCommand } from "./commands/chat.js";
 import { codeCommand } from "./commands/code.js";
@@ -15,7 +16,7 @@ import { setupCommand } from "./commands/setup.js";
 import { statsCommand } from "./commands/stats.js";
 import { updateCommand } from "./commands/update.js";
 import { versionCommand } from "./commands/version.js";
-import { resolveDefaults } from "./resolve.js";
+import { resolveContinueFlag, resolveDefaults } from "./resolve.js";
 
 const DEFAULT_SYSTEM = `You are Reasonix, a helpful DeepSeek-powered assistant. Be concise and accurate. Use tools when available.
 
@@ -43,27 +44,38 @@ const program = new Command();
 program
   .name("reasonix")
   .description("DeepSeek-native agent framework — built for cache hits and cheap tokens.")
-  .version(VERSION);
+  .version(VERSION)
+  .option(
+    "-c, --continue",
+    "Resume the most recently used chat session without showing the picker.",
+  );
 
 // `reasonix` with no subcommand → launch the friendliest flow.
 // First run (no config yet) → interactive setup wizard.
 // Otherwise → chat with saved defaults. This is the "one command to
 // rule them all" entry for non-power-users: they don't need to learn
 // `chat` / `setup` / `--mcp` — just type `reasonix`.
-program.action(async () => {
+program.action(async (opts: { continue?: boolean }) => {
   const cfg = readConfig();
   if (!cfg.setupCompleted) {
     await setupCommand({});
     return;
   }
   const defaults = resolveDefaults({});
+  const continueOpts = resolveContinueFlag(
+    opts.continue,
+    defaults.session,
+    () => listSessions()[0],
+    (msg) => process.stderr.write(`${msg}\n`),
+  );
   await chatCommand({
     model: defaults.model,
     system: applyMemoryStack(DEFAULT_SYSTEM, process.cwd()),
     harvest: defaults.harvest,
     branch: defaults.branch,
-    session: defaults.session,
+    session: continueOpts.session,
     mcp: defaults.mcp,
+    forceResume: continueOpts.forceResume,
   });
 });
 
@@ -122,6 +134,10 @@ program
   .option("--session <name>", "Use a named session (default: from config, usually 'default').")
   .option("--no-session", "Disable session persistence for this run (ephemeral chat)")
   .option("-r, --resume", "Skip the session picker — always continue prior messages")
+  .option(
+    "-c, --continue",
+    "Resume the most-recently-used session (any name) without showing the picker.",
+  )
   .option("-n, --new", "Skip the session picker — always wipe prior messages and start fresh")
   .option(
     "--mcp <spec>",
@@ -144,16 +160,28 @@ program
       preset: opts.preset,
       noConfig: opts.config === false,
     });
+    // `-c` is "newest-touched session" + auto-resume; `-r` is "this
+    // session's prior messages, even if you also passed --session".
+    // When both are set we prefer the explicit `--session` + `-r`
+    // (more specific input wins). `-c` only kicks in if `-r` wasn't.
+    const continueOpts = opts.resume
+      ? { session: defaults.session, forceResume: true }
+      : resolveContinueFlag(
+          opts.continue,
+          defaults.session,
+          () => listSessions()[0],
+          (msg) => process.stderr.write(`${msg}\n`),
+        );
     await chatCommand({
       model: defaults.model,
       system: applyMemoryStack(opts.system, process.cwd()),
       transcript: opts.transcript,
       harvest: defaults.harvest,
       branch: defaults.branch,
-      session: defaults.session,
+      session: continueOpts.session,
       mcp: defaults.mcp,
       mcpPrefix: opts.mcpPrefix,
-      forceResume: !!opts.resume,
+      forceResume: continueOpts.forceResume,
       forceNew: !!opts.new,
     });
   });

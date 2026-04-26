@@ -62,16 +62,19 @@ export interface SlashContext {
    */
   codeUndo?: (args: readonly string[]) => string;
   /**
-   * Callback for `/apply` — commits pending edit blocks to disk. Returns
-   * a report of what landed. Absent → `/apply` replies "nothing pending"
-   * or "not available outside code mode".
+   * Callback for `/apply [N|N,M|N-M]` — commits pending edit blocks to
+   * disk. Returns a report of what landed. With no `indices` (or `[]`),
+   * applies every pending block; with explicit 1-based indices, applies
+   * just those and leaves the rest pending. Absent → `/apply` replies
+   * "nothing pending" or "not available outside code mode".
    */
-  codeApply?: () => string;
+  codeApply?: (indices?: readonly number[]) => string;
   /**
-   * Callback for `/discard` — drops the pending edit blocks without
-   * touching disk.
+   * Callback for `/discard [N|N,M|N-M]` — drops the pending edit blocks
+   * without touching disk. Same indices semantics as `codeApply`: empty
+   * means "drop all pending"; explicit indices drop just those.
    */
-  codeDiscard?: () => string;
+  codeDiscard?: (indices?: readonly number[]) => string;
   /**
    * Callback for `/history` — returns a human-readable list of every
    * edit batch this session, newest last. Includes entry ids (for

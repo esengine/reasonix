@@ -1,4 +1,5 @@
 import type { EditMode } from "../../../../config.js";
+import { parseEditIndices } from "../../edit-history.js";
 import type { SlashHandler } from "../dispatch.js";
 import { runGitCommit, stripOuterQuotes } from "../helpers.js";
 
@@ -25,23 +26,47 @@ const show: SlashHandler = (args, _loop, ctx) => {
   return { info: ctx.codeShowEdit(args) };
 };
 
-const apply: SlashHandler = (_args, _loop, ctx) => {
+const apply: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeApply) {
     return {
       info: "/apply is only available inside `reasonix code` (nothing to apply here).",
     };
   }
-  return { info: ctx.codeApply() };
+  const parsed = parseIndicesArg(args, ctx.pendingEditCount ?? 0);
+  if ("error" in parsed) return { info: `/apply: ${parsed.error}` };
+  return { info: ctx.codeApply(parsed.indices) };
 };
 
-const discard: SlashHandler = (_args, _loop, ctx) => {
+const discard: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeDiscard) {
     return {
       info: "/discard is only available inside `reasonix code`.",
     };
   }
-  return { info: ctx.codeDiscard() };
+  const parsed = parseIndicesArg(args, ctx.pendingEditCount ?? 0);
+  if ("error" in parsed) return { info: `/discard: ${parsed.error}` };
+  return { info: ctx.codeDiscard(parsed.indices) };
 };
+
+/**
+ * Bridge between the `args: string[]` shape commander gives us and the
+ * comma-separated index syntax users actually type ("/apply 1,3-4").
+ * The TUI's slash parser splits on whitespace, so `1,3-4` arrives as
+ * `["1,3-4"]` and `1, 3, 4` arrives as `["1,", "3,", "4"]`. Re-joining
+ * with commas + delegating to `parseEditIndices` handles both shapes.
+ *
+ * Empty `args` → `{ indices: [] }` (caller treats as "all").
+ */
+function parseIndicesArg(
+  args: readonly string[],
+  max: number,
+): { indices: readonly number[] } | { error: string } {
+  const raw = args.join(",").replace(/,+/g, ",").replace(/^,|,$/g, "");
+  if (!raw) return { indices: [] };
+  const parsed = parseEditIndices(raw, max);
+  if ("error" in parsed) return { error: parsed.error };
+  return { indices: parsed.ok };
+}
 
 const plan: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.setPlanMode) {

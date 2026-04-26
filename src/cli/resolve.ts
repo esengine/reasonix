@@ -89,3 +89,28 @@ function resolveSession(
   if (typeof configSession === "string" && configSession.length > 0) return configSession;
   return "default";
 }
+
+/**
+ * Resolve the `-c/--continue` flag into a concrete `(session, forceResume)`
+ * pair. When the flag is set we ask `getLatestSession` for the most-recently-
+ * touched saved session and skip the picker; if nothing is on disk we
+ * fall back silently to `fallbackSession` after emitting a single warning
+ * line via `warn`.
+ *
+ * Pure & testable: callers inject the fs lookup. `cli/index.ts` plugs in
+ * `() => listSessions()[0]`; tests pass a deterministic stub.
+ */
+export function resolveContinueFlag(
+  flag: boolean | undefined,
+  fallbackSession: string | undefined,
+  getLatestSession: () => { name: string } | undefined,
+  warn: (msg: string) => void = () => {},
+): { session: string | undefined; forceResume: boolean } {
+  if (!flag) return { session: fallbackSession, forceResume: false };
+  const latest = getLatestSession();
+  if (!latest) {
+    warn("▸ -c/--continue: no saved sessions yet — starting a fresh one.");
+    return { session: fallbackSession, forceResume: false };
+  }
+  return { session: latest.name, forceResume: true };
+}

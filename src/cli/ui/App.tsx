@@ -57,7 +57,13 @@ import { SlashSuggestions } from "./SlashSuggestions.js";
 import { StatsPanel } from "./StatsPanel.js";
 import { WelcomeBanner } from "./WelcomeBanner.js";
 import { detectBangCommand, formatBangUserMessage } from "./bang.js";
-import { describeRepair, formatEditResults, formatPendingPreview } from "./edit-history.js";
+import {
+  describeRepair,
+  formatEditResults,
+  formatPendingPreview,
+  partitionEdits,
+} from "./edit-history.js";
+import { appendProjectMemory, detectHashMemory } from "./hash-memory.js";
 import { useKeystroke } from "./keystroke-context.js";
 import { handleMcpBrowseSlash } from "./mcp-browse.js";
 import { formatLongPaste } from "./paste-collapse.js";
@@ -1093,37 +1099,70 @@ export function App({
 
   /**
    * /apply callback — write pending edit blocks to disk, snapshot
-   * beforehand so /undo still works, report per-file results.
+   * beforehand so /undo still works, report per-file results. With
+   * `indices` (1-based) only those blocks are applied; the rest stay
+   * pending so the user can iterate on them. Empty / undefined indices
+   * apply every pending block (the all-or-nothing original behavior).
    */
-  const codeApply = useCallback((): string => {
-    if (!codeMode) return "not in code mode";
-    const blocks = pendingEdits.current;
-    if (blocks.length === 0) {
-      return "nothing pending — the model hasn't proposed edits since the last /apply or /discard.";
-    }
-    const snaps = snapshotBeforeEdits(blocks, codeMode.rootDir);
-    const results = applyEditBlocks(blocks, codeMode.rootDir);
-    const anyApplied = results.some((r) => r.status === "applied" || r.status === "created");
-    if (anyApplied) recordEdit("review-apply", blocks, results, snaps);
-    pendingEdits.current = [];
-    clearPendingEdits(session ?? null);
-    syncPendingCount();
-    return formatEditResults(results);
-  }, [codeMode, session, syncPendingCount, recordEdit]);
+  const codeApply = useCallback(
+    (indices?: readonly number[]): string => {
+      if (!codeMode) return "not in code mode";
+      const blocks = pendingEdits.current;
+      if (blocks.length === 0) {
+        return "nothing pending — the model hasn't proposed edits since the last /apply or /discard.";
+      }
+      const useSubset = indices !== undefined && indices.length > 0;
+      const { selected, remaining } = useSubset
+        ? partitionEdits(blocks, indices)
+        : { selected: blocks, remaining: [] as EditBlock[] };
+      if (selected.length === 0) {
+        return "▸ no edits matched those indices — nothing applied. Use /apply with no args to commit them all.";
+      }
+      const snaps = snapshotBeforeEdits(selected, codeMode.rootDir);
+      const results = applyEditBlocks(selected, codeMode.rootDir);
+      const anyApplied = results.some((r) => r.status === "applied" || r.status === "created");
+      if (anyApplied) recordEdit("review-apply", selected, results, snaps);
+      pendingEdits.current = remaining;
+      if (remaining.length === 0) clearPendingEdits(session ?? null);
+      else savePendingEdits(session ?? null, remaining);
+      syncPendingCount();
+      const tail =
+        remaining.length > 0
+          ? `\n▸ ${remaining.length} edit block(s) still pending — /apply or /discard to clear them.`
+          : "";
+      return formatEditResults(results) + tail;
+    },
+    [codeMode, session, syncPendingCount, recordEdit],
+  );
 
   /**
    * /discard callback — forget the pending edits without touching
-   * disk. Keeps the conversation going without the user having to
-   * argue the model out of its proposal.
+   * disk. With `indices` (1-based) only those blocks are dropped; the
+   * rest stay pending. Empty / undefined indices drop everything.
    */
-  const codeDiscard = useCallback((): string => {
-    const count = pendingEdits.current.length;
-    if (count === 0) return "nothing pending to discard.";
-    pendingEdits.current = [];
-    clearPendingEdits(session ?? null);
-    syncPendingCount();
-    return `▸ discarded ${count} pending edit block(s). Nothing was written to disk.`;
-  }, [session, syncPendingCount]);
+  const codeDiscard = useCallback(
+    (indices?: readonly number[]): string => {
+      const blocks = pendingEdits.current;
+      if (blocks.length === 0) return "nothing pending to discard.";
+      const useSubset = indices !== undefined && indices.length > 0;
+      const { selected, remaining } = useSubset
+        ? partitionEdits(blocks, indices)
+        : { selected: blocks, remaining: [] as EditBlock[] };
+      if (selected.length === 0) {
+        return "▸ no edits matched those indices — nothing discarded.";
+      }
+      pendingEdits.current = remaining;
+      if (remaining.length === 0) clearPendingEdits(session ?? null);
+      else savePendingEdits(session ?? null, remaining);
+      syncPendingCount();
+      const tail =
+        remaining.length > 0
+          ? `  (${remaining.length} block(s) still pending)`
+          : ". Nothing was written to disk.";
+      return `▸ discarded ${selected.length} pending edit block(s)${tail}`;
+    },
+    [session, syncPendingCount],
+  );
 
   const prefixHash = loop.prefix.fingerprint;
 
@@ -1217,6 +1256,46 @@ export function App({
         setHistorical((prev) => [...prev, { id: `sys-${Date.now()}`, role: "info", text: out }]);
         promptHistory.current.push(text);
         return;
+      }
+
+      // Hash mode — `#note` appends to REASONIX.md so future sessions
+      // pin the note in the immutable prefix. No model round-trip.
+      // `\#literal` is the escape: detectHashMemory returns kind:"escape"
+      // and we fall through to normal submission with the backslash
+      // stripped so the model receives `#literal` verbatim.
+      const hashParse = detectHashMemory(text);
+      if (hashParse?.kind === "memory") {
+        const memRoot = codeMode?.rootDir ?? process.cwd();
+        promptHistory.current.push(text);
+        try {
+          const result = appendProjectMemory(memRoot, hashParse.note);
+          const verb = result.created ? "created" : "appended to";
+          setHistorical((prev) => [
+            ...prev,
+            {
+              id: `hash-${Date.now()}`,
+              role: "info",
+              text: `▸ noted — ${verb} ${result.path}`,
+            },
+          ]);
+        } catch (err) {
+          setHistorical((prev) => [
+            ...prev,
+            {
+              id: `hash-e-${Date.now()}`,
+              role: "warning",
+              text: `# memory write failed: ${(err as Error).message}`,
+            },
+          ]);
+        }
+        return;
+      }
+      if (hashParse?.kind === "escape") {
+        // Replace the working buffer with the de-escaped form. We don't
+        // recurse into handleSubmit to avoid the "still busy" race —
+        // just rewrite `text` and let the rest of the pipeline (bang /
+        // slash / model) see the literal prompt.
+        text = hashParse.text;
       }
 
       // Bash mode — `!cmd` runs a shell command in the sandbox root
