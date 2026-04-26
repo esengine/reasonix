@@ -176,7 +176,7 @@ export function PromptInput({
 
   const placeholderActive = narrow
     ? "type a message, or /command"
-    : "type a message, or /command  ·  [Ctrl+J] newline (Shift+Enter where supported)";
+    : "type a message, or /command  ·  [Ctrl+J] newline  ·  [Ctrl+P/N] history";
   const effectivePlaceholder = disabled
     ? (placeholder ?? "…waiting for response…")
     : (placeholder ?? placeholderActive);

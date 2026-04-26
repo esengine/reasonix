@@ -107,12 +107,21 @@ export function processMultilineKey(
     return cursor === value.length ? NOOP : { next: null, cursor: value.length, submit: false };
   }
 
-  // Empty buffer + ↑/↓ → parent handles history recall.
-  if (value.length === 0 && (key.upArrow || key.downArrow)) {
-    return { ...NOOP, historyHandoff: key.upArrow ? "prev" : "next" };
+  // History recall is bound to Ctrl+P / Ctrl+N (bash readline
+  // convention) rather than ↑/↓. Reason: Windows Terminal + ConPTY
+  // translates mouse wheel events to ↑/↓ keystrokes for raw-mode
+  // child processes — indistinguishable at the byte level. If ↑/↓
+  // recalled history, every wheel-scroll would corrupt the prompt
+  // with a prior message. Ctrl+P/N is wheel-immune.
+  if (key.ctrl && key.input === "p") {
+    return { ...NOOP, historyHandoff: "prev" };
+  }
+  if (key.ctrl && key.input === "n") {
+    return { ...NOOP, historyHandoff: "next" };
   }
 
-  // Cursor motion.
+  // Cursor motion. Empty single-line buffer + ↑/↓ is now a no-op
+  // (used to recall history; see Ctrl+P/N comment above).
   if (key.leftArrow) {
     return { next: null, cursor: Math.max(0, cursor - 1), submit: false };
   }
@@ -121,16 +130,11 @@ export function processMultilineKey(
   }
   if (key.upArrow) {
     const moved = moveCursorUp(value, cursor);
-    // Cursor already on the first line — hand off to history recall
-    // instead of sitting stuck. Users can now escape into history
-    // from the middle of a multi-line draft.
-    if (moved === cursor) return { ...NOOP, historyHandoff: "prev" };
-    return { next: null, cursor: moved, submit: false };
+    return moved === cursor ? NOOP : { next: null, cursor: moved, submit: false };
   }
   if (key.downArrow) {
     const moved = moveCursorDown(value, cursor);
-    if (moved === cursor) return { ...NOOP, historyHandoff: "next" };
-    return { next: null, cursor: moved, submit: false };
+    return moved === cursor ? NOOP : { next: null, cursor: moved, submit: false };
   }
 
   // Emacs-style line jumps (universal across terminals; Home/End aren't

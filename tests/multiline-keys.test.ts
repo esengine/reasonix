@@ -148,64 +148,76 @@ describe("processMultilineKey — cursor motion", () => {
     expect(processMultilineKey("abc", 3, key({ rightArrow: true })).cursor).toBe(3);
   });
 
-  it("↑/↓ on a single-line non-empty buffer hands off to history recall (nowhere to move)", () => {
-    // 0.7.1: previously this was a pure NOOP, which left the user
-    // feeling stuck when they wanted to recall a prior prompt from
-    // a non-empty buffer. Now we emit `historyHandoff` so the
-    // parent can decide — typically swap the buffer for the
-    // previous prompt.
+  it("↑/↓ on a single-line non-empty buffer is a NOOP (no history recall)", () => {
+    // 0.7.10: history recall moved to Ctrl+P/N because mouse wheel
+    // on Windows ConPTY translates to ↑/↓ events, indistinguishable
+    // from keyboard. Wheel scrolling was clobbering the prompt with
+    // recalled history. Now ↑/↓ does nothing on a single-line
+    // buffer; users press Ctrl+P / Ctrl+N for history.
     const up = processMultilineKey("hello", 3, key({ upArrow: true }));
-    expect(up).toEqual({ next: null, cursor: null, submit: false, historyHandoff: "prev" });
+    expect(up).toEqual({ next: null, cursor: null, submit: false });
     const down = processMultilineKey("hello", 3, key({ downArrow: true }));
-    expect(down).toEqual({ next: null, cursor: null, submit: false, historyHandoff: "next" });
+    expect(down).toEqual({ next: null, cursor: null, submit: false });
   });
 
-  it("↑/↓ on an empty buffer hands off to the parent (history recall)", () => {
+  it("↑/↓ on an empty buffer is a NOOP", () => {
     expect(processMultilineKey("", 0, key({ upArrow: true }))).toEqual({
       next: null,
       cursor: null,
       submit: false,
-      historyHandoff: "prev",
     });
     expect(processMultilineKey("", 0, key({ downArrow: true }))).toEqual({
       next: null,
       cursor: null,
       submit: false,
-      historyHandoff: "next",
     });
   });
 
-  it("↑ at line 0 of a multi-line buffer hands off to history (escape hatch from a draft)", () => {
-    // Cursor on first line, buffer has a second line below — ↑ has
-    // nowhere to move, so we emit the handoff. Previously this was
-    // a silent NOOP that trapped the user.
-    const v = "first\nsecond";
-    const handoff = processMultilineKey(v, 3, key({ upArrow: true }));
-    expect(handoff).toEqual({
+  it("Ctrl+P / Ctrl+N hand off to history recall (bash readline binding)", () => {
+    expect(processMultilineKey("", 0, key({ ctrl: true, input: "p" }))).toEqual({
       next: null,
       cursor: null,
       submit: false,
       historyHandoff: "prev",
     });
+    expect(processMultilineKey("", 0, key({ ctrl: true, input: "n" }))).toEqual({
+      next: null,
+      cursor: null,
+      submit: false,
+      historyHandoff: "next",
+    });
+    // Also from a non-empty buffer — Ctrl+P/N is unambiguous, no
+    // need for buffer-state gating like the old ↑/↓ binding.
+    expect(processMultilineKey("hello", 3, key({ ctrl: true, input: "p" })).historyHandoff).toBe(
+      "prev",
+    );
   });
 
-  it("↓ at last line hands off similarly", () => {
-    // cursor at pos 8 = col 2 on line 1 ("second")
+  it("↑ at line 0 of a multi-line buffer is a NOOP (no auto history handoff)", () => {
     const v = "first\nsecond";
-    const handoff = processMultilineKey(v, 8, key({ downArrow: true }));
-    expect(handoff.historyHandoff).toBe("next");
+    const result = processMultilineKey(v, 3, key({ upArrow: true }));
+    expect(result).toEqual({ next: null, cursor: null, submit: false });
   });
 
-  it("raw `\\x1b[A` escape sequence is rewritten into upArrow (Windows-terminal fallback)", () => {
-    // Some Windows consoles don't set key.upArrow; the raw CSI leaks
-    // through as `input` and would otherwise be inserted verbatim
-    // into the buffer. Rewrite into structured key instead.
-    const handoff = processMultilineKey("", 0, { input: "\x1b[A" });
-    expect(handoff.historyHandoff).toBe("prev");
+  it("↓ at last line is a NOOP", () => {
+    const v = "first\nsecond";
+    const result = processMultilineKey(v, 8, key({ downArrow: true }));
+    expect(result).toEqual({ next: null, cursor: null, submit: false });
+  });
+
+  it("raw `\\x1b[A` escape sequence is rewritten into upArrow (no history handoff)", () => {
+    // Recovery still runs (so wheel-as-↑ doesn't insert literal
+    // `[A` into the buffer), but ↑ now no-ops instead of recalling.
+    const result = processMultilineKey("", 0, { input: "\x1b[A" });
+    expect(result).toEqual({ next: null, cursor: null, submit: false });
   });
 
   it("raw `\\x1b[B` becomes downArrow; `\\x1b[C` rightArrow; `\\x1b[D` leftArrow", () => {
-    expect(processMultilineKey("", 0, { input: "\x1b[B" }).historyHandoff).toBe("next");
+    expect(processMultilineKey("", 0, { input: "\x1b[B" })).toEqual({
+      next: null,
+      cursor: null,
+      submit: false,
+    });
     expect(processMultilineKey("abc", 0, { input: "\x1b[C" }).cursor).toBe(1);
     expect(processMultilineKey("abc", 2, { input: "\x1b[D" }).cursor).toBe(1);
   });
@@ -215,12 +227,19 @@ describe("processMultilineKey — cursor motion", () => {
     // remaining `[C` through useInput as plain text. Without the
     // ESC-less fallback, pressing right-arrow at end of a line would
     // insert literal `[C` instead of moving the cursor across the
-    // newline boundary — which surfaced as "right arrow can't reach
-    // line 2" on Windows.
+    // newline boundary.
     expect(processMultilineKey("ab\ncd", 2, { input: "[C" }).cursor).toBe(3);
     expect(processMultilineKey("ab\ncd", 3, { input: "[D" }).cursor).toBe(2);
-    expect(processMultilineKey("", 0, { input: "[A" }).historyHandoff).toBe("prev");
-    expect(processMultilineKey("", 0, { input: "[B" }).historyHandoff).toBe("next");
+    expect(processMultilineKey("", 0, { input: "[A" })).toEqual({
+      next: null,
+      cursor: null,
+      submit: false,
+    });
+    expect(processMultilineKey("", 0, { input: "[B" })).toEqual({
+      next: null,
+      cursor: null,
+      submit: false,
+    });
   });
 
   it("↑ moves cursor to the previous line, preserving column when possible", () => {
