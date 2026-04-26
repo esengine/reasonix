@@ -4,48 +4,44 @@ import type { EditMode } from "../../config.js";
 import { DEEPSEEK_CONTEXT_TOKENS, DEFAULT_CONTEXT_TOKENS } from "../../telemetry.js";
 import type { SessionSummary } from "../../telemetry.js";
 import { VERSION } from "../../version.js";
-import { COLOR, GLYPH, GRADIENT, gradientCells } from "./theme.js";
+import { COLOR, GRADIENT } from "./theme.js";
 import { useTick } from "./ticker.js";
 
-/**
- * Cyan → blue → purple truecolor gradient for the REASONIX wordmark.
- * Each char gets its own hex color — terminals that support 24-bit
- * color (nearly all since 2016) render this as a smooth fade. Older
- * 256-color terminals snap to nearest; 8-color fall all the way back
- * to plain cyan via Ink's color pipeline, so the worst case is still
- * legible.
- */
-const WORDMARK_STYLES: ReadonlyArray<{ ch: string; color: string; isLogo: boolean }> = [
-  { ch: "◈", color: "#5eead4", isLogo: true }, // teal — brand mark
-  { ch: " ", color: "#5eead4", isLogo: false },
-  { ch: "R", color: "#67e8f9", isLogo: false }, // cyan
-  { ch: "E", color: "#7dd3fc", isLogo: false }, // sky
-  { ch: "A", color: "#93c5fd", isLogo: false }, // blue
-  { ch: "S", color: "#a5b4fc", isLogo: false }, // indigo
-  { ch: "O", color: "#c4b5fd", isLogo: false }, // violet
-  { ch: "N", color: "#d8b4fe", isLogo: false }, // purple
-  { ch: "I", color: "#f0abfc", isLogo: false }, // fuchsia
-  { ch: "X", color: "#f0abfc", isLogo: false }, // fuchsia
-];
+const WORDMARK_LETTERS: ReadonlyArray<string> = ["R", "E", "A", "S", "O", "N", "I", "X"];
 
 /**
- * Gradient-filled, animated app wordmark. The `◈` brand mark breathes
- * (bold on/off) once every ~1.6s when idle, ~600ms when the model is
- * working, so a glance at the top of the screen tells you immediately
- * whether the app is doing something. Letters' keys use the char+color
- * pair (not an index) so React state attaches to the glyph itself;
- * fine because WORDMARK_STYLES never reorders.
+ * Gradient-flowing wordmark. Every tick the gradient shifts one
+ * position so the colors visibly travel across the letters — like
+ * a neon sign. Brand mark `◈` rides the same flow but also pulses
+ * bold on/off (slow when idle, fast when busy) so a glance at the
+ * top of the screen tells you whether the app is thinking.
+ *
+ * Tick is ~120 ms. `rotateEvery=4` ticks → one shift every ~480 ms
+ * idle, ~240 ms when busy. Slow enough to be ambient, fast enough
+ * to feel alive. Truecolor terminals get the smooth flow; 8-color
+ * fallbacks just see all-cyan, which is still legible.
  */
 function Wordmark({ busy }: { busy: boolean }) {
   const tick = useTick();
-  // Slow pulse = 12 ticks (~1.4s). Busy pulse = 5 ticks (~600ms).
-  const period = busy ? 5 : 12;
-  const bright = Math.floor(tick / period) % 2 === 0;
+  // Bold pulse on the brand mark.
+  const pulsePeriod = busy ? 5 : 12;
+  const bright = Math.floor(tick / pulsePeriod) % 2 === 0;
+  // Gradient flow. Higher value = slower flow.
+  const rotateEvery = busy ? 2 : 4;
+  const offset = Math.floor(tick / rotateEvery);
+  // Pick a color from the brand gradient; positions wrap so the
+  // sweep loops seamlessly.
+  const colorAt = (i: number) =>
+    GRADIENT[(((i + offset) % GRADIENT.length) + GRADIENT.length) % GRADIENT.length]!;
   return (
     <Text>
-      {WORDMARK_STYLES.map((c) => (
-        <Text key={`${c.ch}-${c.color}`} color={c.color} bold={c.isLogo ? bright : true}>
-          {c.ch}
+      <Text color={colorAt(0)} bold={bright}>
+        ◈
+      </Text>
+      <Text> </Text>
+      {WORDMARK_LETTERS.map((letter, i) => (
+        <Text key={letter} color={colorAt(i + 1)} bold>
+          {letter}
         </Text>
       ))}
     </Text>
@@ -219,20 +215,33 @@ export function StatsPanel({
  * One-line gradient bar spanning the panel width. `thin` swaps the
  * solid block for a half-block so the bottom of the panel is
  * visually quieter than the top — top reads as "header band", bottom
- * reads as "section close." Each cell renders as its own Text so
- * Ink's runtime can color each character independently; this is the
- * pattern the wordmark uses too.
+ * reads as "section close." Colors flow over time (one cell every
+ * ~720 ms) so the panel feels alive without being twitchy. Each
+ * cell renders as its own Text so Ink's runtime can color each
+ * character independently; this is the pattern the wordmark uses
+ * too.
  */
 function GradientRule({ width, thin }: { width: number; thin?: boolean }) {
-  const cells = gradientCells(width, thin ? "▁" : "▄");
+  const tick = useTick();
+  // Slow flow so the bar feels ambient. Each shift is one cell of
+  // gradient lookup, not one cell of column — so even at slow rates
+  // the visual movement is clear.
+  const offset = Math.floor(tick / 6);
+  const ch = thin ? "▁" : "▄";
+  const len = GRADIENT.length;
   return (
     <Box>
-      {cells.map((c, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: cells form a fixed-width band by index, never reordered
-        <Text key={`grule-${i}`} color={c.color}>
-          {c.ch}
-        </Text>
-      ))}
+      {Array.from({ length: width }, (_, i) => {
+        const t = width === 1 ? 0 : (i * (len - 1)) / (width - 1);
+        const idx = (Math.round(t) + offset) % len;
+        const color = GRADIENT[((idx % len) + len) % len]!;
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed-width gradient cells never reorder
+          <Text key={`grule-${i}`} color={color}>
+            {ch}
+          </Text>
+        );
+      })}
     </Box>
   );
 }
