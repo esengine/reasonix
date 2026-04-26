@@ -119,6 +119,26 @@ describe("StdinReader — single-byte keys", () => {
     expect(events).toEqual([{ input: "c", ctrl: true }]);
   });
 
+  it("Ctrl+J (LF, 0x0A) surfaces distinctly from Enter so multiline can insert a newline", () => {
+    const { reader, events } = setup();
+    reader.feed("\r");
+    reader.feed("\n");
+    expect(events).toEqual([
+      { input: "", return: true },
+      { input: "j", ctrl: true },
+    ]);
+  });
+
+  it("modifyOtherKeys / kitty Shift+Enter sequences surface as `{return:true, shift:true}`", () => {
+    const { reader, events } = setup();
+    reader.feed("\x1b[27;2;13~");
+    reader.feed("\x1b[13;2u");
+    expect(events).toEqual([
+      { input: "", return: true, shift: true },
+      { input: "", return: true, shift: true },
+    ]);
+  });
+
   it("Ctrl+letter codes 0x01–0x1A map to a..z with ctrl flag", () => {
     const { reader, events } = setup();
     reader.feed("\x01"); // Ctrl+A

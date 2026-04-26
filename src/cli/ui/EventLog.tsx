@@ -169,12 +169,15 @@ export const EventRow = React.memo(function EventRow({
 }) {
   if (event.role === "user") {
     return (
-      <Box marginTop={event.leadSeparator ? 1 : 0}>
-        <RoleGlyph glyph={ROLE_GLYPH.user} color="cyan" />
-        <Text>
-          {"  "}
-          {indentContinuationLines(event.text)}
-        </Text>
+      <Box flexDirection="column">
+        {event.leadSeparator ? <TurnSeparator /> : null}
+        <Box>
+          <RoleGlyph glyph={ROLE_GLYPH.user} color="cyan" />
+          <Text>
+            {"  "}
+            {indentContinuationLines(event.text)}
+          </Text>
+        </Box>
       </Box>
     );
   }

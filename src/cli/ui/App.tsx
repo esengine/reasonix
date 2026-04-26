@@ -58,7 +58,7 @@ import { StatsPanel } from "./StatsPanel.js";
 import { WelcomeBanner } from "./WelcomeBanner.js";
 import { detectBangCommand, formatBangUserMessage } from "./bang.js";
 import { describeRepair, formatEditResults, formatPendingPreview } from "./edit-history.js";
-import { KeystrokeProvider, useKeystroke } from "./keystroke-context.js";
+import { useKeystroke } from "./keystroke-context.js";
 import { handleMcpBrowseSlash } from "./mcp-browse.js";
 import { formatLongPaste } from "./paste-collapse.js";
 import { type McpServerSummary, handleSlash, parseSlash, suggestSlashCommands } from "./slash.js";
@@ -175,20 +175,28 @@ export function App({
   // them. Writing CSI 2J + 3J + H genuinely nukes viewport AND
   // scrollback, which is what `/clear` means to a shell user.
   const { stdout } = useStdout();
-  // Bracketed paste mode (DECSET 2004): tell the terminal to wrap
-  // pasted text with \x1b[200~ … \x1b[201~ markers. Without this,
-  // a multi-chunk paste from stdin can interleave with key events
-  // (Ink sometimes interprets the paste's trailing \n as Enter,
-  // submitting the partial buffer). With it, the terminal hands
-  // us the paste as one atomic payload that our processMultilineKey
-  // can detect via the markers and insert in one shot.
-  // Disable on unmount so the user's shell doesn't inherit the
-  // mode after the TUI exits.
+  // Terminal input modes we opt into at startup, all paired with
+  // disable-on-unmount so the user's shell doesn't inherit them:
+  //
+  //   • Bracketed paste (DECSET 2004) — terminal wraps pasted text
+  //     with \x1b[200~ … \x1b[201~ markers so a multi-chunk paste
+  //     can't be misread as keystrokes (the trailing \n in a paste
+  //     would otherwise fire submit).
+  //
+  //   • modifyOtherKeys level 2 (CSI > 4 ; 2 m) — terminal encodes
+  //     modifier-bearing keypresses (Shift+Enter, Ctrl+Enter, etc.)
+  //     as `\x1b[27;<mod>;<key>~` instead of the bare ASCII byte. Our
+  //     stdin-reader recognises `27;2;13~` as Shift+Enter and
+  //     `27;5;13~` as Ctrl+Enter. Terminals that don't understand the
+  //     SGR fall through silently — Shift+Enter just stays
+  //     indistinguishable from Enter, no regression.
   useEffect(() => {
     if (!stdout || !stdout.isTTY) return;
     stdout.write("\u001b[?2004h");
+    stdout.write("\u001b[>4;2m");
     return () => {
       stdout.write("\u001b[?2004l");
+      stdout.write("\u001b[>4m");
     };
   }, [stdout]);
   // Subagent UI wiring: live activity row + sink ref the loop closure
@@ -700,6 +708,25 @@ export function App({
     }
   }, [session, loop, codeMode, syncPendingCount]);
 
+  // Ctrl+C exits, period. SIGINT (cooked-mode terminals + Node's
+  // Windows console handler) and \x03 byte (raw-mode stdin) both
+  // converge on `quitProcess`. We call `process.exit` directly rather
+  // than Ink's `exit()` because the singleton stdin-reader keeps a
+  // `data` listener attached — `exit()` would unmount the React tree
+  // but the event loop would stay alive and the terminal would hang.
+  // Esc handles "abort the current turn" separately; Ctrl+C is the
+  // universal "I'm done" key, no banner, no double-press dance.
+  const quitProcess = useCallback(() => {
+    transcriptRef.current?.end();
+    process.exit(0);
+  }, []);
+  useEffect(() => {
+    process.on("SIGINT", quitProcess);
+    return () => {
+      process.off("SIGINT", quitProcess);
+    };
+  }, [quitProcess]);
+
   // Esc during busy → forward to the loop as an abort signal. The loop
   // finishes the tool call in flight (we can't kill subprocess stdio
   // mid-write), then diverts to its no-tools summary path so the user
@@ -720,6 +747,12 @@ export function App({
     if (ev.paste) {
       // Paste content goes only to PromptInput. Don't run global
       // hotkey logic over it (a `\n` in paste shouldn't fire submit).
+      return;
+    }
+    // Ctrl+C → exit. Always. Same target as the SIGINT path above —
+    // whichever route delivers Ctrl+C on the user's terminal wins.
+    if (key.ctrl && key.input === "c") {
+      quitProcess();
       return;
     }
     if (key.escape && busy) {
@@ -2515,8 +2548,10 @@ export function App({
     [],
   );
 
+  // KeystrokeProvider is mounted by chat.tsx OUTSIDE this component
+  // so `useKeystroke` calls in App's function body see the bus.
   return (
-    <KeystrokeProvider>
+    <>
       <TickerProvider
         disabled={
           PLAIN_UI ||
@@ -2752,6 +2787,6 @@ export function App({
           )}
         </Box>
       </TickerProvider>
-    </KeystrokeProvider>
+    </>
   );
 }

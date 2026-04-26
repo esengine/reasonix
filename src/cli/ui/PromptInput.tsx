@@ -14,6 +14,16 @@ import {
 import { type Segment, buildViewport, stringCells } from "./prompt-viewport.js";
 
 /**
+ * Visual anchor: a left vertical rule (▎ + space) running down every
+ * line of the input. Colored with the accent color so disabled state
+ * dims it; gives the input area a clear "you type here" boundary
+ * without using bordered Boxes (those amplified Ink's eraseLines
+ * miscount on Windows). Length is fixed at 2 so the prefix-cell math
+ * stays trivial.
+ */
+const BAR = "▎ ";
+
+/**
  * Prompt input v2 — no Ink useInput, no Yoga text wrapping, no
  * cursor blink. Replaces the bordered-Box / multi-Text approach
  * that was driving the Windows ghost-row regressions.
@@ -152,9 +162,10 @@ export function PromptInput({
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
   const narrow = cols <= 90;
-  const promptPrefix = narrow ? "› " : "you › ";
-  const continuationIndent = narrow ? "  " : "      ";
-  const prefixCells = narrow ? 2 : 6;
+  const promptBody = narrow ? "› " : "you › ";
+  const promptPrefix = BAR + promptBody;
+  const continuationIndent = BAR + " ".repeat(promptBody.length);
+  const prefixCells = promptPrefix.length;
   // Reserve 2 cells for the surrounding `paddingX={1}` plus 1 cell
   // for the cursor block when at end-of-line. Net visible budget per
   // line.
@@ -162,7 +173,7 @@ export function PromptInput({
 
   const placeholderActive = narrow
     ? "type a message, or /command"
-    : "type a message, or /command  ·  [Shift+Enter] / [Ctrl+J] newline";
+    : "type a message, or /command  ·  [Ctrl+J] newline (Shift+Enter where supported)";
   const effectivePlaceholder = disabled
     ? (placeholder ?? "…waiting for response…")
     : (placeholder ?? placeholderActive);
@@ -184,7 +195,8 @@ export function PromptInput({
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: stable — collapse markers derive from a fixed sliding window
             <Box key={`skip-${renderIdx}`}>
-              <Text dimColor>{continuationIndent}</Text>
+              <Text color={accentColor}>{BAR}</Text>
+              <Text dimColor>{continuationIndent.slice(BAR.length)}</Text>
               <Text dimColor>
                 {`[… ${item.linesHidden} line${item.linesHidden === 1 ? "" : "s"} hidden — full content kept, submitted on Enter …]`}
               </Text>
@@ -216,15 +228,24 @@ export function PromptInput({
       })}
       {showHugeBufferHints && !disabled ? (
         <Box>
-          <Text dimColor>{continuationIndent}</Text>
+          <Text color={accentColor}>{BAR}</Text>
+          <Text dimColor>{continuationIndent.slice(BAR.length)}</Text>
           <Text dimColor>
             {`[${lines.length} lines · PageUp/PageDown jump to top/bottom · Ctrl+U clear · Ctrl+W del word]`}
           </Text>
         </Box>
       ) : null}
+      {!disabled && !narrow && value.length > 0 && !value.includes("\n") ? (
+        <Box>
+          <Text color={accentColor}>{BAR}</Text>
+          <Text dimColor>{continuationIndent.slice(BAR.length)}</Text>
+          <Text dimColor>[Ctrl+J] newline · [Enter] submit · ends with \ for line continuation</Text>
+        </Box>
+      ) : null}
       {disabled ? (
         <Box>
-          <Text dimColor>{continuationIndent}</Text>
+          <Text color={accentColor}>{BAR}</Text>
+          <Text dimColor>{continuationIndent.slice(BAR.length)}</Text>
           <Text dimColor>[Esc] to stop</Text>
         </Box>
       ) : null}
@@ -263,11 +284,18 @@ function PromptLine({
   pastes,
   disabled,
 }: PromptLineProps) {
+  // The leading BAR cells of every prefix/continuation are the left
+  // anchor bar — render them as a separate accent-colored span so
+  // the bar stays visible (not dim) on continuation lines.
+  const barText = promptPrefix.slice(0, BAR.length);
+  const bodyPrefix = promptPrefix.slice(BAR.length);
+  const bodyContinuation = continuationIndent.slice(BAR.length);
   if (showPlaceholder) {
     return (
       <Box>
+        <Text color={accentColor}>{barText}</Text>
         <Text bold color={accentColor}>
-          {promptPrefix}
+          {bodyPrefix}
         </Text>
         {!disabled ? <Text color={accentColor}>▌</Text> : null}
         <Text dimColor>{placeholderText}</Text>
@@ -280,12 +308,13 @@ function PromptLine({
   // Render: prefix + (left marker?) + segments-with-cursor + (right marker?)
   return (
     <Box>
+      <Text color={accentColor}>{barText}</Text>
       {isFirst ? (
         <Text bold color={accentColor}>
-          {promptPrefix}
+          {bodyPrefix}
         </Text>
       ) : (
-        <Text dimColor>{continuationIndent}</Text>
+        <Text dimColor>{bodyContinuation}</Text>
       )}
       {viewport.hiddenLeft ? (
         <Text color="gray" dimColor>

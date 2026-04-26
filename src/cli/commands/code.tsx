@@ -110,15 +110,16 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
 
   // Belt-and-suspenders cleanup: even though spawn(detached:false)
   // should tie child processes to the parent's lifetime, Windows cmd.exe
-  // wrappers occasionally leak. Kill everything on both clean and
-  // signal-driven exits. 'exit' fires too late for async I/O but is our
-  // only guaranteed last word; the signal handlers do the heavy lifting.
-  const sigShutdown = () => {
+  // wrappers occasionally leak. We DON'T install SIGINT/SIGTERM
+  // handlers here — that overrode Node's default "exit on Ctrl+C" with
+  // a silent no-op, which made Ctrl+C feel broken in the TUI. App.tsx
+  // owns the SIGINT path now (it shows the quit-armed banner and calls
+  // exit() on confirmation); this 'exit' hook just guarantees the job
+  // registry is drained on the way out, regardless of which exit path
+  // fired.
+  process.once("exit", () => {
     void jobs.shutdown();
-  };
-  process.once("SIGINT", sigShutdown);
-  process.once("SIGTERM", sigShutdown);
-  process.once("exit", sigShutdown);
+  });
 
   await chatCommand({
     model: opts.model ?? "deepseek-v4-flash",

@@ -63,36 +63,35 @@ export function ModeStatusBar({
     running > 0 ? (
       <Text color="yellow" bold>{`  ·  ⏵ ${running} job${running === 1 ? "" : "s"}`}</Text>
     ) : null;
+  // The same mode pill is already in the StatsPanel header — here we
+  // skip the pill and keep just a tight inline hint right above the
+  // input so the user has the actionable bit (what y/n/u/Shift+Tab
+  // do) without the whole tutorial.
   if (planMode) {
     return (
       <Box paddingX={1}>
-        <Text backgroundColor="red" color="white" bold>
-          {flash ? " ◆ PLAN " : " PLAN "}
+        <Text color="red" bold inverse={flash}>
+          plan mode
         </Text>
-        <Text dimColor>
-          {"  writes gated — submit_plan + approval required  ·  /plan off to leave"}
-        </Text>
+        <Text dimColor>{"  writes gated · /plan off to leave"}</Text>
         {jobsTag}
       </Box>
     );
   }
-  const label = editMode === "auto" ? "AUTO" : "REVIEW";
-  const bgColor = editMode === "auto" ? "magenta" : "cyan";
+  const label = editMode === "auto" ? "auto" : "review";
+  const labelColor = editMode === "auto" ? "magenta" : "cyan";
   const mid =
     editMode === "auto"
-      ? undoArmed
-        ? "edits apply immediately  ·  u = undo last batch"
-        : "edits apply immediately  ·  5s undo window after each batch"
+      ? "edits land now · u to undo"
       : pendingCount > 0
-        ? `${pendingCount} queued  ·  y = /apply  ·  n = /discard`
-        : "edits queue for review  ·  y = /apply  ·  n = /discard";
-  const flip = editMode === "auto" ? "Shift+Tab → review" : "Shift+Tab → AUTO";
+        ? `${pendingCount} queued · y apply · n discard`
+        : "edits queued · y apply · n discard";
   return (
     <Box paddingX={1}>
-      <Text backgroundColor={bgColor} color="white" bold>
-        {flash ? ` ◆ ${label} ` : ` ${label} `}
+      <Text color={labelColor} bold inverse={flash}>
+        {label}
       </Text>
-      <Text dimColor>{`  ${mid}  ·  ${flip}`}</Text>
+      <Text dimColor>{`  ${mid} · Shift+Tab to flip`}</Text>
       {jobsTag}
     </Box>
   );

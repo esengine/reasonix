@@ -103,12 +103,14 @@ function Root({
   }
   process.env.DEEPSEEK_API_KEY = key;
 
+  // KeystrokeProvider must wrap App from OUTSIDE — App.tsx itself
+  // calls `useKeystroke` in its function body for global hotkeys
+  // (Ctrl+C, Esc abort, Shift+Tab edit-mode cycle, @-mention picker,
+  // slash-suggestion navigation). If the provider lives inside App's
+  // render, `useContext(KeystrokeContext)` returns `null` at hook
+  // call time and those handlers silently never subscribe.
   if (pending && appProps.session) {
     return (
-      // SessionPicker uses our SingleSelect, which subscribes via
-      // useKeystroke — that needs a KeystrokeProvider above it.
-      // App has its own provider; the picker phase needs a separate
-      // wrapper so the singleton reader gets started/subscribed.
       <KeystrokeProvider>
         <SessionPicker
           sessionName={appProps.session}
@@ -129,19 +131,21 @@ function Root({
   }
 
   return (
-    <App
-      model={appProps.model}
-      system={appProps.system}
-      transcript={appProps.transcript}
-      harvest={appProps.harvest}
-      branch={appProps.branch}
-      session={appProps.session}
-      tools={tools}
-      mcpSpecs={mcpSpecs}
-      mcpServers={mcpServers}
-      progressSink={progressSink}
-      codeMode={appProps.codeMode}
-    />
+    <KeystrokeProvider>
+      <App
+        model={appProps.model}
+        system={appProps.system}
+        transcript={appProps.transcript}
+        harvest={appProps.harvest}
+        branch={appProps.branch}
+        session={appProps.session}
+        tools={tools}
+        mcpSpecs={mcpSpecs}
+        mcpServers={mcpServers}
+        progressSink={progressSink}
+        codeMode={appProps.codeMode}
+      />
+    </KeystrokeProvider>
   );
 }
 

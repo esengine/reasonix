@@ -158,13 +158,18 @@ export function StatsPanel({
   // actually had a chance to build, we flip to the live gradient.
   const coldStart = summary.turns <= COLD_START_TURNS;
 
+  // Width of the soft demarcation rule under the stats. We compute it
+  // from the actual terminal columns so it stretches edge-to-edge but
+  // never overflows; falls back to 78 cells in tests / no-stdout.
+  const ruleWidth = Math.max(20, columns - 2);
   return (
     // Borderless layout: no `borderStyle`, no rounded box, no `width={cols}`
     // pinning. Bordered Boxes were the most visible amplifier of Ink's
     // eraseLines miscount on Windows terminals — every miscounted render
     // pushed a top-border frame into scrollback. Without a border there
     // is nothing visually obvious to duplicate; visual structure comes
-    // from the gradient wordmark + colored pills + a top/bottom margin.
+    // from the gradient wordmark + colored pills + a top/bottom margin
+    // + a thin dim rule that closes the panel cleanly under the metrics.
     <Box flexDirection="column" paddingX={1} marginBottom={1}>
       <Header
         model={model}
@@ -199,6 +204,9 @@ export function StatsPanel({
           coldStart={coldStart}
         />
       )}
+      <Box marginTop={1}>
+        <Text dimColor>{"─".repeat(ruleWidth)}</Text>
+      </Box>
     </Box>
   );
 }
@@ -234,50 +242,85 @@ function Header({
   proArmed: boolean;
   escalated: boolean;
 }) {
+  // Mode pill — pick the most informative one to surface in the
+  // header. PLAN beats AUTO/review beats nothing. Pro armed/escalated
+  // gets its own pill alongside.
+  const modePill = planMode
+    ? { label: "PLAN", bg: "red" as const }
+    : editMode === "auto"
+      ? { label: "AUTO", bg: "magenta" as const }
+      : editMode === "review"
+        ? { label: "REVIEW", bg: "cyan" as const }
+        : null;
+  const proPill = escalated
+    ? { label: "⇧ PRO", bg: "red" as const }
+    : proArmed
+      ? { label: "⇧ PRO", bg: "yellow" as const }
+      : null;
   return (
     <Box justifyContent="space-between">
       <Box>
         <Wordmark busy={busy} />
-        <Text dimColor>{` v${VERSION}`}</Text>
-        <Text dimColor> · </Text>
-        <Text color="yellow">{model}</Text>
-        {narrow ? null : (
+        <Text dimColor>{`  ${VERSION}`}</Text>
+        <Text dimColor>{"   "}</Text>
+        <Text color="yellow" bold>
+          {model.replace(/^deepseek-/, "")}
+        </Text>
+        {modePill ? (
           <>
-            <Text dimColor> · </Text>
-            <Text dimColor>{prefixHash}</Text>
+            <Text>{"  "}</Text>
+            <Pill label={modePill.label} bg={modePill.bg} />
           </>
-        )}
-        {harvestOn ? <Text color="magenta"> · harvest</Text> : null}
-        {branchOn ? <Text color="blue"> · branch{branchBudget}</Text> : null}
-        {reasoningEffort === "max" ? <Text color="green"> · max</Text> : null}
-        {reasoningEffort === "high" ? <Text color="yellow"> · high</Text> : null}
-        {planMode ? (
-          <Text color="red" bold>
-            {" · PLAN"}
+        ) : null}
+        {proPill ? (
+          <>
+            <Text>{"  "}</Text>
+            <Pill label={proPill.label} bg={proPill.bg} />
+          </>
+        ) : null}
+        {harvestOn ? (
+          <Text dimColor>
+            <Text>{"  "}</Text>
+            <Text color="magenta">harvest</Text>
           </Text>
         ) : null}
-        {editMode ? (
-          <Text color={editMode === "auto" ? "magenta" : "cyan"} bold>
-            {editMode === "auto" ? " · AUTO" : " · review"}
+        {branchOn ? (
+          <Text dimColor>
+            <Text>{"  "}</Text>
+            <Text color="blue">{`branch×${branchBudget}`}</Text>
           </Text>
         ) : null}
-        {escalated ? (
-          <Text color="red" bold>
-            {" · ⇧ pro escalated"}
-          </Text>
-        ) : proArmed ? (
-          <Text color="yellow" bold>
-            {" · ⇧ pro armed"}
-          </Text>
+        {reasoningEffort === "max" ? (
+          <>
+            <Text>{"  "}</Text>
+            <Text color="green" dimColor>
+              max
+            </Text>
+          </>
+        ) : null}
+        {reasoningEffort === "high" ? (
+          <>
+            <Text>{"  "}</Text>
+            <Text color="yellow" dimColor>
+              high
+            </Text>
+          </>
         ) : null}
       </Box>
       <Text>
-        {updateAvailable ? (
-          <Text color="yellow" bold>{`update: ${updateAvailable} · `}</Text>
-        ) : null}
-        <Text dimColor>{narrow ? `turn ${turns}` : `turn ${turns} · /help`}</Text>
+        {updateAvailable ? <Text color="yellow" bold>{`↑ ${updateAvailable}   `}</Text> : null}
+        <Text dimColor>{narrow ? `t${turns}` : `turn ${turns} · /help`}</Text>
       </Text>
     </Box>
+  );
+}
+
+/** Solid-background tag, used for primary mode + pro indicators. */
+function Pill({ label, bg }: { label: string; bg: "red" | "magenta" | "cyan" | "yellow" }) {
+  return (
+    <Text backgroundColor={bg} color="white" bold>
+      {` ${label} `}
+    </Text>
   );
 }
 
