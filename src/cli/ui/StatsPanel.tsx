@@ -21,16 +21,19 @@ const WORDMARK_LETTERS: ReadonlyArray<string> = ["R", "E", "A", "S", "O", "N", "
  * to feel alive. Truecolor terminals get the smooth flow; 8-color
  * fallbacks just see all-cyan, which is still legible.
  */
-function Wordmark({ busy }: { busy: boolean }) {
+function Wordmark({ busy, animate }: { busy: boolean; animate: boolean }) {
   const tick = useTick();
-  // Bold pulse on the brand mark.
+  // Bold pulse on the brand mark — kept even when animations are
+  // suppressed because it's just a single-cell bold toggle, no
+  // re-rendered text width that could wrap.
   const pulsePeriod = busy ? 5 : 12;
-  const bright = Math.floor(tick / pulsePeriod) % 2 === 0;
-  // Gradient flow. Higher value = slower flow.
+  const bright = animate ? Math.floor(tick / pulsePeriod) % 2 === 0 : true;
+  // Gradient flow. Higher value = slower flow. When `animate` is
+  // false (narrow terminal — wrapping risk) we freeze the offset
+  // at 0 so re-renders don't pile up ghost rows from miscounted
+  // erases.
   const rotateEvery = busy ? 2 : 4;
-  const offset = Math.floor(tick / rotateEvery);
-  // Pick a color from the brand gradient; positions wrap so the
-  // sweep loops seamlessly.
+  const offset = animate ? Math.floor(tick / rotateEvery) : 0;
   const colorAt = (i: number) =>
     GRADIENT[(((i + offset) % GRADIENT.length) + GRADIENT.length) % GRADIENT.length]!;
   return (
@@ -160,6 +163,14 @@ export function StatsPanel({
   // the void. Width tracks the terminal so the bar always stretches
   // edge-to-edge; falls back to 78 cells in tests / no-stdout.
   const ruleWidth = Math.max(20, columns - 2);
+  // Animation gate. Re-rendering every tick is fine when nothing in
+  // the live region wraps — Ink's eraseLines counts visible rows
+  // accurately. But at narrow widths the header / rules / pills
+  // wrap, Ink miscounts, and ghost rows pile up on every tick = the
+  // "screen flashing" symptom users see. We suppress all live-
+  // region animation below a safe threshold so static rendering can
+  // still look good without the churn.
+  const animate = columns >= 100;
   return (
     // Borderless layout: no `borderStyle`, no rounded box. Bordered
     // Boxes were the most visible amplifier of Ink's eraseLines
@@ -168,7 +179,7 @@ export function StatsPanel({
     // pure Text so they never trigger the eraseLines bug), the
     // animated wordmark + pill row, and a soft inner padding.
     <Box flexDirection="column" paddingX={1} marginBottom={1}>
-      <GradientRule width={ruleWidth} />
+      <GradientRule width={ruleWidth} animate={animate} />
       <Box marginTop={1}>
         <Header
           model={model}
@@ -185,6 +196,7 @@ export function StatsPanel({
           busy={busy ?? false}
           proArmed={proArmed ?? false}
           escalated={escalated ?? false}
+          animate={animate}
         />
       </Box>
       {narrow ? (
@@ -205,7 +217,7 @@ export function StatsPanel({
         />
       )}
       <Box marginTop={1}>
-        <GradientRule width={ruleWidth} thin />
+        <GradientRule width={ruleWidth} thin animate={animate} />
       </Box>
     </Box>
   );
@@ -221,12 +233,19 @@ export function StatsPanel({
  * character independently; this is the pattern the wordmark uses
  * too.
  */
-function GradientRule({ width, thin }: { width: number; thin?: boolean }) {
+function GradientRule({
+  width,
+  thin,
+  animate,
+}: {
+  width: number;
+  thin?: boolean;
+  animate: boolean;
+}) {
   const tick = useTick();
-  // Slow flow so the bar feels ambient. Each shift is one cell of
-  // gradient lookup, not one cell of column — so even at slow rates
-  // the visual movement is clear.
-  const offset = Math.floor(tick / 6);
+  // When animation is suppressed (narrow terminal) freeze offset
+  // so the bar still gets the gradient sweep but doesn't re-render.
+  const offset = animate ? Math.floor(tick / 6) : 0;
   const ch = thin ? "▁" : "▄";
   const len = GRADIENT.length;
   return (
@@ -261,6 +280,7 @@ function Header({
   busy,
   proArmed,
   escalated,
+  animate,
 }: {
   model: string;
   prefixHash: string;
@@ -276,6 +296,8 @@ function Header({
   busy: boolean;
   proArmed: boolean;
   escalated: boolean;
+  /** When false, suppress optional pills + animation to avoid wraps. */
+  animate: boolean;
 }) {
   // Mode pill — pick the most informative one to surface in the
   // header. PLAN beats AUTO/review beats nothing. Pro armed/escalated
@@ -292,10 +314,15 @@ function Header({
     : proArmed
       ? { label: "⇧ PRO", bg: "yellow" as const }
       : null;
+  // Narrow / non-animate mode hides the secondary pills (harvest,
+  // branch, reasoning effort) so the header always fits on one
+  // visual row. Wrapping the header is the main amplifier of the
+  // eraseLines miscount that produces the "screen flashing" effect.
+  const showSecondary = animate && !narrow;
   return (
     <Box justifyContent="space-between">
       <Box>
-        <Wordmark busy={busy} />
+        <Wordmark busy={busy} animate={animate} />
         <Text dimColor>{`  ${VERSION}`}</Text>
         <Text dimColor>{"   "}</Text>
         <Text color="yellow" bold>
@@ -313,19 +340,19 @@ function Header({
             <Pill label={proPill.label} bg={proPill.bg} />
           </>
         ) : null}
-        {harvestOn ? (
+        {showSecondary && harvestOn ? (
           <Text dimColor>
             <Text>{"  "}</Text>
             <Text color="magenta">harvest</Text>
           </Text>
         ) : null}
-        {branchOn ? (
+        {showSecondary && branchOn ? (
           <Text dimColor>
             <Text>{"  "}</Text>
             <Text color="blue">{`branch×${branchBudget}`}</Text>
           </Text>
         ) : null}
-        {reasoningEffort === "max" ? (
+        {showSecondary && reasoningEffort === "max" ? (
           <>
             <Text>{"  "}</Text>
             <Text color="green" dimColor>
@@ -333,7 +360,7 @@ function Header({
             </Text>
           </>
         ) : null}
-        {reasoningEffort === "high" ? (
+        {showSecondary && reasoningEffort === "high" ? (
           <>
             <Text>{"  "}</Text>
             <Text color="yellow" dimColor>

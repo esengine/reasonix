@@ -184,21 +184,23 @@ export function PromptInput({
 
   const lines = value.length > 0 ? value.split("\n") : [""];
   const accentColor = disabled ? "gray" : "cyan";
-  // Animated bar: each row's ▎ picks a color from the brand gradient
-  // offset by the current tick. Slow flow (one cell every ~720 ms)
-  // ties the input visually to the wordmark + StatsPanel rules. When
-  // disabled (busy turn), the gradient is suppressed and the bar
-  // falls back to a single dim color so the screen calms down.
+  // Animation gate. Below ~100 cols a typed line plus prefix can
+  // wrap; Ink's eraseLines miscounts on wrap and ghost rows pile up
+  // every tick. Suppress the bar gradient + cursor blink when
+  // narrow so the prompt renders statically — same fix the
+  // StatsPanel uses on its rules.
+  const animate = !disabled && cols >= 100;
   const tick = useTick();
-  const barOffset = Math.floor(tick / 6);
+  const barOffset = animate ? Math.floor(tick / 6) : 0;
   const barColorAt = (rowIdx: number): string =>
     disabled
       ? "gray"
       : GRADIENT[(((rowIdx + barOffset) % GRADIENT.length) + GRADIENT.length) % GRADIENT.length]!;
   // Cursor blink — toggles every 4 ticks (~480 ms) so the prompt
   // looks alive at rest. Cursor stays solid while disabled (busy
-  // turn) so the disabled state reads as "frozen", not "dead".
-  const cursorVisible = disabled ? true : Math.floor(tick / 4) % 2 === 0;
+  // turn) or narrow (anti-flash) so the screen reads as frozen,
+  // not dead.
+  const cursorVisible = animate ? Math.floor(tick / 4) % 2 === 0 : true;
   const { line: cursorLine, col: cursorCol } = lineAndColumn(value, cursor);
 
   // Big-buffer mitigation: if the buffer has many logical lines,
