@@ -137,43 +137,69 @@ Three things you'd come to Reasonix for, that nothing else combines:
   credit on signup, but isn't free forever. For air-gapped or
   always-free, look at Aider + Ollama or [Continue](https://continue.dev).
 
-### "But can't I just use Claude Code / Aider / Cline pointed at DeepSeek?"
+### "But DeepSeek now has an Anthropic-compatible API — can't I just point Claude Code at it?"
 
-A fair question with a layered answer.
+You can. DeepSeek ships an official Anthropic-compatible endpoint at
+`https://api.deepseek.com/anthropic`, and Claude Code (or any Anthropic
+SDK client) talks to it without modification. The protocol works. The
+**caching economics** don't transfer, and that's the whole point.
 
-**Claude Code: not really.** It's hard-bound to Anthropic's API —
-auth headers, tool-schema shape, `<thinking>` block parsing all assume
-Claude. To run DeepSeek through it you'd need a translation proxy
-like `claude-code-router`. That gets you Anthropic protocol going in
-and DeepSeek tokens coming out, but every Anthropic-specific tuning
-becomes overhead and every DeepSeek-specific tuning is unreachable
-(see below). Same applies to OpenAI Codex CLI vs other backends —
-vendor CLIs are tuned to their vendor.
+Look at DeepSeek's [own compatibility table](https://api-docs.deepseek.com/guides/anthropic_api):
 
-**Aider / Cline / Continue: yes, they support DeepSeek.** And you'll
-get the cheap token price. What you won't get is everything below,
-because those tools' loops are designed to support every LLM
-generically:
+| Field | Status on DeepSeek's compat endpoint |
+|---|---|
+| `cache_control` markers | **Ignored** |
+| `mcp_servers` (API-level) | Ignored |
+| `thinking.budget_tokens` | Ignored |
+| Images / documents / citations | Not supported |
 
-| Anthropic / OpenAI loops assume | DeepSeek actually does | Reasonix's fix |
+`cache_control: Ignored` is the load-bearing line. Two completely
+different cache mechanics are colliding here:
+
+| | Anthropic native | DeepSeek auto-cache |
 |---|---|---|
-| `cache_control` markers, 5-min TTL | automatic prefix caching, long TTL | append-only log; the prefix never mutates, so the cache stays warm across turns |
+| Model | **Marker-based.** You put `cache_control` on a message; Anthropic caches "everything up to this marker" as a content-addressed unit. Multiple markers = multiple independent breakpoints. | **Byte-stable prefix.** The cache fingerprints the literal byte stream from byte 0. |
+| Claude Code's design | Built around this. Markers on system prompt + tool defs let the loop reorder, compact, or insert metadata after the markers without losing the cache. | n/a — Claude Code wasn't designed for byte-stable prefixes. |
+| What happens when Claude Code → DeepSeek compat | Markers stripped (ignored). Claude Code's main caching strategy disappears. | Falls back to auto-cache. But Claude Code's prefix isn't byte-stable (markers were the *substitute* for byte-stability), so auto-cache misses too. |
+
+Net effect: **Claude Code's loop, redirected at DeepSeek, gets the
+cheap tokens and loses the cache hit it depended on.** A loop running
+at 80%+ cache hit on Anthropic's marker cache lands somewhere in the
+40-60% range on DeepSeek's auto-cache (matches the generic-harness
+baseline in our benchmarks). Same model, same API, same workload —
+the loop's invariants don't fit the cache mechanic it's now talking
+to.
+
+Reasonix's loop was designed around byte-stable prefix from line one.
+No markers, no breakpoints — append-only is the invariant. That's why
+the same τ-bench workload lands at **94.4% cache hit** on Reasonix
+and **46.6%** on a cache-hostile baseline (committed transcripts;
+benchmarks section below). At DeepSeek's pricing — $0.07/Mtok
+uncached, ~$0.014/Mtok cached — the difference between 50% and 94%
+hit is **roughly 2.5× on input cost alone**.
+
+### "What about Aider / Cline / Continue?"
+
+They support DeepSeek natively (no compat layer needed) and you do
+get the cheap token price. What you don't get is the DeepSeek-
+specific loop work — those tools' loops support every backend
+generically (OpenAI / Anthropic / local Llama / ...) and use
+compaction + summarization patterns that destroy byte-stability. They
+land in the same 40-60% cache-hit range as the baseline. Plus a
+handful of DeepSeek-specific quirks generic loops don't handle:
+
+| Generic loops assume | DeepSeek actually does | Reasonix's fix |
+|---|---|---|
 | Reasoning emitted as a structured `thinking` block | R1 sometimes leaks tool-call JSON inside `<think>` tags | a `scavenge` pass that pulls escaped tool calls back out, otherwise the model thinks it called and waits for output that never comes |
 | Tool schemas validated strictly | DeepSeek silently drops deeply-nested object/array params | auto-flatten — nested params get rewritten to single-level prefixed names so the model sees them at all |
 | Tool-call args are well-formed JSON | DeepSeek occasionally produces `string="false"` and other malformed fragments | dedicated `ToolCallRepair` heals the common shapes before they hit dispatch |
 | Reasoning depth tuned via system-level switches | V4 exposes a `reasoning_effort` knob (`max` / `high`) | `/effort` slash + `--effort` flag, so users can step down for cheap turns |
-| Old tool results kept in full forever | 1M context window means you don't need to compact pre-emptively, but most agents do | call-storm breaker + result token cap, but the prefix is *never* rewritten — compaction lands as new turns at the tail |
+| Old tool results kept in full forever | 1M context — don't compact pre-emptively, but most agents do | call-storm breaker + result token cap, but the prefix is *never* rewritten; compaction lands as new turns at the tail |
 
-The cache-stability work is the loadest-bearing piece. Generic
-harnesses that re-sort, summarize, or rebuild prompts every turn
-end up at ~40-60% live cache hit on DeepSeek; the same workload on
-Reasonix lands at 94.4% (verified, committed transcripts, see
-benchmarks below). At DeepSeek's pricing —
-$0.07/Mtok uncached, ~$0.014/Mtok cached — the difference between
-50% and 94% hit is **roughly 2.5× on input cost alone**.
-
-> Reasonix isn't yet-another agent CLI. It's an agent CLI tuned
-> specifically for DeepSeek's quirks and pricing.
+> Cache-stability isn't a feature you turn on; it's an invariant
+> the loop is designed around. Reasonix isn't yet-another agent
+> CLI — it's an agent CLI built around DeepSeek's specific cache
+> mechanic and pricing model.
 
 ---
 
