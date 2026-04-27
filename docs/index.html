@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reasonix — DeepSeek-native AI coding agent</title>
+    <meta
+      name="description"
+      content="Cache-first agent loop for DeepSeek V4. Ink TUI. MCP first-class. 94%+ prefix cache hit, ~96% cheaper than Claude on the same workload. No LangChain."
+    />
+    <meta name="theme-color" content="#0b0f17" />
+
+    <meta property="og:title" content="Reasonix — DeepSeek-native AI coding agent" />
+    <meta
+      property="og:description"
+      content="Cache-first agent loop for DeepSeek V4 (flash + pro). Ink TUI. MCP first-class. No LangChain."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://esengine.github.io/reasonix/" />
+    <meta property="og:image" content="https://raw.githubusercontent.com/esengine/reasonix/main/docs/logo.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="#top" aria-label="Reasonix">
+        <span class="brand-mark" aria-hidden="true">
+          <span class="diamond"></span>
+          <span class="diamond inner"></span>
+        </span>
+        <span class="brand-name">Reasonix</span>
+      </a>
+
+      <nav class="nav-links">
+        <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#quickstart" data-i18n="nav.quickstart">Quick start</a>
+        <a href="#benchmarks" data-i18n="nav.benchmarks">Benchmarks</a>
+        <a
+          href="https://github.com/esengine/reasonix"
+          target="_blank"
+          rel="noopener"
+          data-i18n="nav.github"
+          >GitHub</a
+        >
+      </nav>
+
+      <div class="nav-actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button data-lang-btn="en" type="button" aria-pressed="true">EN</button>
+          <button data-lang-btn="zh" type="button" aria-pressed="false">中文</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-inner">
+          <div class="badge" data-i18n="hero.badge">v0.6 · DeepSeek V4 · cache-first</div>
+          <h1 class="hero-title">
+            <span class="grad-text" data-i18n="hero.title.line1">DeepSeek-native</span>
+            <br />
+            <span data-i18n="hero.title.line2">AI coding agent in your terminal</span>
+          </h1>
+          <p class="hero-sub" data-i18n="hero.sub">
+            Cache-first agent loop for DeepSeek V4 (flash + pro). Edits files as
+            reviewable SEARCH/REPLACE blocks. Ink TUI. MCP first-class. No LangChain.
+          </p>
+
+          <div class="hero-install">
+            <code class="install-cmd"
+              ><span class="prompt">$</span> <span class="cmd">npx reasonix code</span></code
+            >
+            <button class="copy-btn" data-copy="npx reasonix code" data-i18n="hero.copy">
+              Copy
+            </button>
+          </div>
+
+          <div class="hero-ctas">
+            <a class="cta primary" href="#quickstart" data-i18n="hero.cta.start">
+              Get started →
+            </a>
+            <a
+              class="cta ghost"
+              href="https://github.com/esengine/reasonix"
+              target="_blank"
+              rel="noopener"
+              data-i18n="hero.cta.star"
+              >Star on GitHub</a
+            >
+          </div>
+
+          <div class="hero-stats">
+            <div class="stat">
+              <div class="stat-num grad-text">94.4%</div>
+              <div class="stat-label" data-i18n="hero.stat.cache">prefix cache hit rate</div>
+            </div>
+            <div class="stat">
+              <div class="stat-num grad-text">~96%</div>
+              <div class="stat-label" data-i18n="hero.stat.cost">cheaper vs Claude Sonnet 4.6</div>
+            </div>
+            <div class="stat">
+              <div class="stat-num grad-text">100%</div>
+              <div class="stat-label" data-i18n="hero.stat.pass">τ-bench-lite pass rate</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-terminal" aria-hidden="true">
+          <div class="term-bar">
+            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+            <span class="term-title">reasonix code</span>
+            <button class="term-replay" type="button" data-replay aria-label="replay">↻</button>
+          </div>
+          <div class="term-body" id="term-body" data-anim-root></div>
+        </div>
+      </section>
+
+      <section class="why">
+        <div class="container">
+          <h2 class="section-title" data-i18n="why.title">Why Reasonix</h2>
+          <p class="section-sub" data-i18n="why.sub">
+            Every abstraction earns its weight against a DeepSeek-specific property —
+            dirt-cheap tokens, R1 traces, automatic prefix caching, JSON mode. Generic
+            wrappers leave these on the table.
+          </p>
+
+          <div class="why-grid">
+            <article class="why-card">
+              <div class="why-icon">◈</div>
+              <h3 data-i18n="why.cache.title">Cache-first loop</h3>
+              <p data-i18n="why.cache.body">
+                Append-only conversation log keeps the prompt prefix byte-stable across
+                turns, so DeepSeek's automatic cache hits 85–95% — not 40%.
+              </p>
+            </article>
+            <article class="why-card">
+              <div class="why-icon">¥</div>
+              <h3 data-i18n="why.cost.title">Cost is a pillar</h3>
+              <p data-i18n="why.cost.body">
+                Flash-first defaults, turn-end auto-compaction, model self-escalation
+                when (and only when) needed. Per-turn cost badge in the TUI.
+              </p>
+            </article>
+            <article class="why-card">
+              <div class="why-icon">⌨</div>
+              <h3 data-i18n="why.tui.title">Ink TUI, no web</h3>
+              <p data-i18n="why.tui.body">
+                Lives in your terminal. Streaming preview, slash commands, plan picker,
+                edit-confirm modal. Plain mode for stubborn Windows shells.
+              </p>
+            </article>
+            <article class="why-card">
+              <div class="why-icon">⊕</div>
+              <h3 data-i18n="why.mcp.title">MCP first-class</h3>
+              <p data-i18n="why.mcp.body">
+                Stdio + HTTP+SSE transports. Live progress notifications. Same
+                cache-safety + repair plumbing as native tools.
+              </p>
+            </article>
+            <article class="why-card">
+              <div class="why-icon">↶</div>
+              <h3 data-i18n="why.safe.title">Reviewable edits</h3>
+              <p data-i18n="why.safe.body">
+                Edits arrive as SEARCH/REPLACE blocks; nothing hits disk until /apply.
+                Per-file diff confirm modal, undo history, sandboxed paths.
+              </p>
+            </article>
+            <article class="why-card">
+              <div class="why-icon">∞</div>
+              <h3 data-i18n="why.ctx.title">1M-token aware</h3>
+              <p data-i18n="why.ctx.body">
+                Context gauge with proactive compaction, oversized tool-result repair,
+                forced-summary fallback near the window edge.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="quickstart" class="quickstart">
+        <div class="container">
+          <h2 class="section-title" data-i18n="qs.title">Quick start (60 seconds)</h2>
+          <ol class="qs-steps">
+            <li>
+              <h3 data-i18n="qs.step1.title">Get a DeepSeek API key</h3>
+              <p data-i18n="qs.step1.body">
+                Free credit on signup at
+                <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener"
+                  >platform.deepseek.com</a
+                >.
+              </p>
+            </li>
+            <li>
+              <h3 data-i18n="qs.step2.title">Point it at a project</h3>
+              <p data-i18n="qs.step2.body">No install needed.</p>
+              <pre class="code"><code>cd my-project
+npx reasonix code</code></pre>
+              <p data-i18n="qs.step2.note">
+                First run walks you through a 30-second wizard (paste API key → pick
+                preset → pick MCP servers).
+              </p>
+            </li>
+            <li>
+              <h3 data-i18n="qs.step3.title">Ask it to edit</h3>
+              <p data-i18n="qs.step3.body">
+                The model proposes edits as SEARCH/REPLACE blocks — nothing hits disk
+                until you <code>/apply</code>.
+              </p>
+            </li>
+          </ol>
+
+          <p class="req" data-i18n="qs.req">
+            Requires Node ≥ 20.10. macOS, Linux, Windows (PowerShell · Git Bash · Windows
+            Terminal). Press <kbd>Esc</kbd> anytime to abort; <code>/help</code> for the
+            full command list.
+          </p>
+        </div>
+      </section>
+
+      <section id="features" class="features">
+        <div class="container">
+          <h2 class="section-title" data-i18n="feat.title">In the box</h2>
+
+          <div class="feat-grid">
+            <article class="feat">
+              <h3>
+                <span class="feat-tag">code</span>
+                <span data-i18n="feat.code.title">Pair programmer mode</span>
+              </h3>
+              <p data-i18n="feat.code.body">
+                <code>read_file</code> · <code>write_file</code> · <code>edit_file</code> ·
+                <code>search_files</code> · <code>directory_tree</code> ·
+                <code>run_command</code> with read-only allowlist. Sandboxed to the
+                launch root — no path escapes. Plan mode and per-edit review modal.
+              </p>
+            </article>
+            <article class="feat">
+              <h3>
+                <span class="feat-tag">memory</span>
+                <span data-i18n="feat.memory.title">Two-layer memory</span>
+              </h3>
+              <p data-i18n="feat.memory.body">
+                Committable <code>REASONIX.md</code> for team conventions plus a private
+                per-user <code>~/.reasonix/memory/</code> with global and per-project
+                scopes. The model can write to it via the <code>remember</code> tool.
+              </p>
+            </article>
+            <article class="feat">
+              <h3>
+                <span class="feat-tag">skills</span>
+                <span data-i18n="feat.skills.title">User-authored prompt packs</span>
+              </h3>
+              <p data-i18n="feat.skills.body">
+                Drop <code>SKILL.md</code> files anywhere. Names + descriptions are
+                pinned in the prefix; the model picks them autonomously, or you trigger
+                with <code>/skill name</code>.
+              </p>
+            </article>
+            <article class="feat">
+              <h3>
+                <span class="feat-tag">hooks</span>
+                <span data-i18n="feat.hooks.title">Lifecycle hooks</span>
+              </h3>
+              <p data-i18n="feat.hooks.body">
+                Shell commands fire at <code>PreToolUse</code> · <code>PostToolUse</code>
+                · <code>UserPromptSubmit</code> · <code>Stop</code>. Exit code drives
+                pass / block / warn.
+              </p>
+            </article>
+            <article class="feat">
+              <h3>
+                <span class="feat-tag">mcp</span>
+                <span data-i18n="feat.mcp.title">Bring your own tools</span>
+              </h3>
+              <p data-i18n="feat.mcp.body">
+                Wizard catalog, or <code>--mcp "name=cmd"</code> to attach stdio /
+                HTTP+SSE servers on the fly. Live progress bars on long calls.
+              </p>
+            </article>
+            <article class="feat">
+              <h3>
+                <span class="feat-tag">web</span>
+                <span data-i18n="feat.web.title">Web search built-in</span>
+              </h3>
+              <p data-i18n="feat.web.body">
+                <code>web_search</code> + <code>web_fetch</code> via Mojeek — no key, no
+                signup, off-by-flag for offline / CI. Bring-your-own provider via the
+                <code>WebSearchProvider</code> interface.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="benchmarks" class="bench">
+        <div class="container">
+          <h2 class="section-title" data-i18n="bench.title">Verify the cache claim yourself</h2>
+          <p class="section-sub" data-i18n="bench.sub">
+            On the same τ-bench-lite workload (8 multi-turn tool-use tasks × 3 repeats =
+            48 runs per side), live DeepSeek <code>deepseek-chat</code>, sole variable
+            prefix stability:
+          </p>
+
+          <div class="bench-table-wrap">
+            <table class="bench-table">
+              <thead>
+                <tr>
+                  <th data-i18n="bench.col.metric">metric</th>
+                  <th data-i18n="bench.col.baseline">baseline (cache-hostile)</th>
+                  <th data-i18n="bench.col.reasonix">Reasonix</th>
+                  <th data-i18n="bench.col.delta">delta</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-i18n="bench.row.cache">cache hit</td>
+                  <td>46.6%</td>
+                  <td class="hi">94.4%</td>
+                  <td>+47.7 pp</td>
+                </tr>
+                <tr>
+                  <td data-i18n="bench.row.cost">cost / task</td>
+                  <td>$0.002599</td>
+                  <td class="hi">$0.001579</td>
+                  <td><strong>−39%</strong></td>
+                </tr>
+                <tr>
+                  <td data-i18n="bench.row.pass">pass rate</td>
+                  <td>96% (23/24)</td>
+                  <td class="hi">100% (24/24)</td>
+                  <td>—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p data-i18n="bench.repro.intro">Reproduce without spending an API credit:</p>
+          <pre class="code"><code>git clone https://github.com/esengine/reasonix.git &amp;&amp; cd reasonix &amp;&amp; npm install
+npx reasonix replay benchmarks/tau-bench/transcripts/t01_address_happy.reasonix.r1.jsonl
+npx reasonix diff \
+  benchmarks/tau-bench/transcripts/t01_address_happy.baseline.r1.jsonl \
+  benchmarks/tau-bench/transcripts/t01_address_happy.reasonix.r1.jsonl</code></pre>
+
+          <p data-i18n="bench.repro.note">
+            The committed JSONL transcripts carry per-turn <code>usage</code>,
+            <code>cost</code>, and <code>prefixHash</code>. Reasonix's prefix hash stays
+            byte-stable across every model call.
+          </p>
+        </div>
+      </section>
+
+      <section class="cli">
+        <div class="container">
+          <h2 class="section-title" data-i18n="cli.title">CLI at a glance</h2>
+          <pre class="code"><code>npx reasonix code [path]                 <span class="hash"># <span data-i18n="cli.code">coding mode scoped to path</span></span>
+npx reasonix                             <span class="hash"># <span data-i18n="cli.chat">chat (uses saved config)</span></span>
+npx reasonix setup                       <span class="hash"># <span data-i18n="cli.setup">reconfigure the wizard</span></span>
+npx reasonix run "ask anything"          <span class="hash"># <span data-i18n="cli.run">one-shot, streams to stdout</span></span>
+npx reasonix stats                       <span class="hash"># <span data-i18n="cli.stats">cross-session cost dashboard</span></span>
+npx reasonix mcp inspect &lt;spec&gt;          <span class="hash"># <span data-i18n="cli.mcp">probe a single MCP server</span></span></code></pre>
+
+          <p class="cli-flags" data-i18n="cli.flags.intro">Common flags:</p>
+          <pre class="code"><code>--preset &lt;fast|smart|max&gt;   <span class="hash"># <span data-i18n="cli.f.preset">model + harvest + branch bundle</span></span>
+--model &lt;id&gt;                <span class="hash"># <span data-i18n="cli.f.model">explicit DeepSeek model id</span></span>
+--mcp "name=cmd args…"      <span class="hash"># <span data-i18n="cli.f.mcp">attach an MCP server (repeatable)</span></span>
+--session &lt;name&gt;            <span class="hash"># <span data-i18n="cli.f.session">named session</span></span>
+--no-config                 <span class="hash"># <span data-i18n="cli.f.noconf">ignore ~/.reasonix/config.json (CI)</span></span></code></pre>
+        </div>
+      </section>
+
+      <section class="cta-band">
+        <div class="container">
+          <h2 data-i18n="ctab.title">Ready to try?</h2>
+          <p data-i18n="ctab.sub">
+            One <code>npx</code> away. Sandboxed. Reviewable. 96% cheaper.
+          </p>
+          <div class="hero-ctas center">
+            <a
+              class="cta primary"
+              href="https://github.com/esengine/reasonix"
+              target="_blank"
+              rel="noopener"
+              data-i18n="ctab.gh"
+              >GitHub repository →</a
+            >
+            <a
+              class="cta ghost"
+              href="https://www.npmjs.com/package/reasonix"
+              target="_blank"
+              rel="noopener"
+              data-i18n="ctab.npm"
+              >npm package</a
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="container foot-inner">
+        <div>
+          <a href="#top" class="nav-brand">
+            <span class="brand-mark small" aria-hidden="true">
+              <span class="diamond"></span>
+              <span class="diamond inner"></span>
+            </span>
+            <span class="brand-name">Reasonix</span>
+          </a>
+          <p class="foot-tag" data-i18n="foot.tag">DeepSeek does deep, deeply.</p>
+        </div>
+        <div class="foot-cols">
+          <div>
+            <h4 data-i18n="foot.col.project">Project</h4>
+            <a href="https://github.com/esengine/reasonix" target="_blank" rel="noopener">GitHub</a>
+            <a href="https://www.npmjs.com/package/reasonix" target="_blank" rel="noopener">npm</a>
+            <a
+              href="https://github.com/esengine/reasonix/blob/main/CHANGELOG.md"
+              target="_blank"
+              rel="noopener"
+              data-i18n="foot.changelog"
+              >Changelog</a
+            >
+            <a
+              href="https://github.com/esengine/reasonix/blob/main/LICENSE"
+              target="_blank"
+              rel="noopener"
+              >MIT</a
+            >
+          </div>
+          <div>
+            <h4 data-i18n="foot.col.docs">Docs</h4>
+            <a
+              href="https://github.com/esengine/reasonix#readme"
+              target="_blank"
+              rel="noopener"
+              data-i18n="foot.readme"
+              >README</a
+            >
+            <a
+              href="https://github.com/esengine/reasonix/blob/main/README.zh-CN.md"
+              target="_blank"
+              rel="noopener"
+              data-i18n="foot.readme.zh"
+              >中文 README</a
+            >
+            <a
+              href="https://github.com/esengine/reasonix/blob/main/docs/ARCHITECTURE.md"
+              target="_blank"
+              rel="noopener"
+              data-i18n="foot.arch"
+              >Architecture</a
+            >
+          </div>
+          <div>
+            <h4 data-i18n="foot.col.community">Community</h4>
+            <a
+              href="https://github.com/esengine/reasonix/issues"
+              target="_blank"
+              rel="noopener"
+              data-i18n="foot.issues"
+              >Issues</a
+            >
+            <a
+              href="https://github.com/esengine/reasonix/discussions"
+              target="_blank"
+              rel="noopener"
+              data-i18n="foot.discuss"
+              >Discussions</a
+            >
+          </div>
+        </div>
+      </div>
+      <div class="foot-bottom">
+        <span data-i18n="foot.copyright">© 2026 Reasonix · MIT License</span>
+      </div>
+    </footer>
+
+    <script src="i18n.js"></script>
+    <script src="term-anim.js"></script>
+  </body>
+</html>

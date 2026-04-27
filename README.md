@@ -6,6 +6,10 @@
   <em>Cache-first agent loop for DeepSeek V4 (flash + pro) — Ink TUI, MCP first-class, no LangChain.</em>
 </p>
 
+<p align="center">
+  <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a> · <a href="https://esengine.github.io/reasonix/">Website</a>
+</p>
+
 # Reasonix
 
 [![npm version](https://img.shields.io/npm/v/reasonix.svg)](https://www.npmjs.com/package/reasonix)
