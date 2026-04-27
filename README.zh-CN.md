@@ -18,8 +18,9 @@
 [![downloads](https://img.shields.io/npm/dm/reasonix.svg)](https://www.npmjs.com/package/reasonix)
 [![node](https://img.shields.io/node/v/reasonix.svg)](./package.json)
 
-**DeepSeek 原生的终端 AI 编程代理。** 编辑以可审查的 SEARCH/REPLACE 块呈现，
-落盘前必须确认。Ink TUI、原生 MCP、不依赖 LangChain。
+**DeepSeek 原生的终端 AI 编程代理。** 单次任务成本约为 Claude Code 的
+1/30，缓存优先的循环是为 DeepSeek 的定价模型量身打造的。编辑以可审查的
+SEARCH/REPLACE 块呈现，落盘前必须确认。MIT 许可、不绑 IDE、原生 MCP。
 
 ---
 
@@ -65,6 +66,62 @@ reasonix code › /apply
 
 要求 Node ≥ 20.10。支持 macOS、Linux、Windows（PowerShell · Git Bash ·
 Windows Terminal）。任何时候按 `Esc` 中断；`/help` 查看完整命令列表。
+
+---
+
+## 为什么选 Reasonix？（vs Cursor / Claude Code / Cline / Aider）
+
+三件事，别家不会同时都给你：
+
+- **成本节省落到账单上。** DeepSeek V4 的 token 单价大约是 Claude Sonnet
+  的 1/30。光便宜还不够 —— *便宜的 token 配上 90%+ 的前缀缓存命中*才是关键。
+  Reasonix 的循环按 append-only 增长设计，缓存稳定的前缀在每次工具调用之间
+  都活着，下面的 benchmark 章节端到端验证过：实测 94.4% 缓存命中，对照组通用
+  框架只有 46.6%。`/stats` 面板每轮都跟踪 "vs Claude Sonnet 4.6" 的节省额，
+  你可以亲眼看着账单不涨。
+
+- **它住在终端里。** 纯 CLI —— 没有 Electron，没有 VS Code 插件，没有要
+  塞进编辑器的 IDE 插件。和 git、tmux、shell 历史并排。macOS / Linux /
+  Windows（PowerShell、Git Bash、Windows Terminal 都测过）。唯一的网络
+  请求就是 DeepSeek API 本身，中间没有厂商服务器。
+
+- **开源且彻底可改。** MIT 许可的 TypeScript。整个循环、工具注册表、
+  缓存稳定前缀、TUI、MCP 桥接 —— 全部在 `src/` 下，不到 3 万行。Fork
+  它、做私有构建、塞进 CI 都可以。没有 SaaS 层，没有企业版，没有功能闸门。
+
+| | Reasonix | Claude Code | Cursor | Cline | Aider |
+|---|---|---|---|---|---|
+| 后端 | 仅 DeepSeek V4 | 仅 Anthropic | OpenAI / Anthropic | 任意（OpenRouter）| 任意（OpenRouter）|
+| 单次任务成本 | **~$0.001–$0.005** | ~$0.05–$0.50 | $20/月 + 用量 | 视情况 | 视情况 |
+| 运行环境 | 终端 | 终端 + IDE | IDE（Electron）| 仅 VS Code | 终端 |
+| 开源协议 | **MIT** | 闭源 | 闭源 | Apache 2 | Apache 2 |
+| 缓存优先前缀循环 | **工程化（94% 命中）** | 基础 | n/a | n/a | 基础 |
+| MCP 服务器 | **原生支持** | 原生支持 | — | 测试中 | — |
+| 计划模式（只读审计闸门）| **支持** | 支持 | — | 支持 | — |
+| 用户编写的 skills | **支持** | 支持 | — | — | — |
+| 编辑审阅（不自动落盘）| **支持**（`/apply`）| 支持 | 部分 | 支持 | 支持 |
+| 工作区切换（`/cwd`、`change_workspace`）| **支持** | — | n/a（每窗一项目）| — | — |
+| 跨会话成本面板 | **支持**（`/stats`）| — | — | — | — |
+| 沙箱边界强制 | **严格**（拒绝 `..` 逃逸）| 支持 | 部分 | 支持 | 部分 |
+
+### 这些情况下应该选别的
+
+- **你想要多模型混用**（在一个工具里同时切 Claude / GPT / Gemini / 本地 Llama）。
+  试试 [Aider](https://aider.chat) 或 [Cline](https://cline.bot)。Reasonix
+  故意只绑 DeepSeek —— 每一层（缓存优先循环、R1 harvest、JSON 模式的工具
+  调用修复、reasoning_effort 上限）都是为 DeepSeek 的具体行为和经济模型
+  调出来的。绑死后端是设计选择，不是早晚要解决的限制。
+- **你想要 IDE 集成**（编辑器侧边栏 inline diff、多光标、ghost text、重构
+  预览）。试试 [Cursor](https://cursor.com) 或 Claude Code 的 IDE 模式。
+  Reasonix 是终端优先的：diff 在 `git diff` 里、文件树在 `ls` 里、对话
+  在 shell 里。
+- **你在追最难的推理 benchmark**。Claude Opus 4.6 还是赢一些榜单的。
+  DeepSeek V4-pro 在大多数编程任务上都很有竞争力，但不是每个 benchmark
+  都领先。如果你的任务是"证明这个 PhD 级别的数学命题"而不是"修这个
+  auth bug"，从 Claude 起步更合适。
+- **你需要完全本地 / 永远免费**。DeepSeek API 注册送额度，但不是永久
+  免费。要真正离线/永久免费，看看 Aider + Ollama 或者
+  [Continue](https://continue.dev)。
 
 ---
 
@@ -709,7 +766,7 @@ cd reasonix
 npm install
 npm run dev code        # 用 tsx 直接从源码跑 CLI
 npm run build           # tsup 打包到 dist/
-npm test                # vitest（1007 个测试）
+npm test                # vitest（1482 个测试）
 npm run lint            # biome
 npm run typecheck       # tsc --noEmit
 ```

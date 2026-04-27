@@ -18,9 +18,10 @@
 [![downloads](https://img.shields.io/npm/dm/reasonix.svg)](https://www.npmjs.com/package/reasonix)
 [![node](https://img.shields.io/node/v/reasonix.svg)](./package.json)
 
-**A DeepSeek-native AI coding agent in your terminal.** Edits files as
-reviewable SEARCH/REPLACE blocks. Ink TUI. MCP first-class. No
-LangChain.
+**A DeepSeek-native AI coding agent in your terminal.** ~30× cheaper
+per task than Claude Code, with a cache-first loop engineered for
+DeepSeek's pricing model. Edits as reviewable SEARCH/REPLACE blocks.
+MIT-licensed. No IDE lock-in. MCP first-class.
 
 ---
 
@@ -68,6 +69,73 @@ reasonix code › /apply
 Requires Node ≥ 20.10. macOS, Linux, Windows (PowerShell / Git Bash /
 Windows Terminal). Press `Esc` anytime to abort; `/help` for the full
 command list.
+
+---
+
+## Why Reasonix? (vs Cursor / Claude Code / Cline / Aider)
+
+Three things you'd come to Reasonix for, that nothing else combines:
+
+- **The cost economics actually land in your bill.** DeepSeek V4 is
+  ~30× cheaper than Claude Sonnet per token. Cheaper tokens alone
+  isn't the win — *cheap tokens with a 90%+ prefix-cache hit* is.
+  Reasonix's loop is engineered around append-only prompt growth so
+  the cache-stable prefix survives every tool call, which the
+  benchmarks section below verifies end-to-end (94.4% live, vs 46.6%
+  for a generic harness against the same workload). The `/stats`
+  panel tracks "vs Claude Sonnet 4.6" savings every turn so you can
+  watch your bill not happen.
+
+- **It lives in your terminal.** Pure CLI — no Electron, no VS Code
+  extension, no IDE plugin to wedge into your editor. Sits next to
+  git, tmux, and your shell history. macOS / Linux / Windows
+  (PowerShell, Git Bash, Windows Terminal all tested). The only
+  network call is to the DeepSeek API itself; no vendor server in
+  the middle.
+
+- **Open source and hackable, end to end.** MIT-licensed TypeScript.
+  The entire loop, tool registry, cache-stable prefix, TUI, MCP
+  bridge — all in `src/` under 30k lines. Fork it, ship a private
+  build, drop it into CI. No SaaS layer, no enterprise tier, no
+  feature gates.
+
+| | Reasonix | Claude Code | Cursor | Cline | Aider |
+|---|---|---|---|---|---|
+| Backend | DeepSeek V4 only | Anthropic only | OpenAI / Anthropic | any (OpenRouter) | any (OpenRouter) |
+| Cost / typical task | **~$0.001–$0.005** | ~$0.05–$0.50 | $20/mo + usage | varies | varies |
+| Where it runs | terminal | terminal + IDE | IDE (Electron) | VS Code only | terminal |
+| License | **MIT** | closed | closed | Apache 2 | Apache 2 |
+| Cache-first prefix loop | **engineered (94% hit)** | basic | n/a | n/a | basic |
+| MCP servers | **first-class** | first-class | — | beta | — |
+| Plan mode (read-only audit gate) | **yes** | yes | — | yes | — |
+| User-authored skills | **yes** | yes | — | — | — |
+| Edit review (no auto-write) | **yes** (`/apply`) | yes | partial | yes | yes |
+| Workspace switch (`/cwd`, `change_workspace`) | **yes** | — | n/a (per-window) | — | — |
+| Cross-session cost dashboard | **yes** (`/stats`) | — | — | — | — |
+| Sandbox boundary enforcement | **strict** (refuses `..` escape) | yes | partial | yes | partial |
+
+### Pick something else when
+
+- **You want multi-provider flexibility** (mix Claude / GPT / Gemini /
+  local Llama in one tool). Try [Aider](https://aider.chat) or
+  [Cline](https://cline.bot). Reasonix is DeepSeek-only on purpose —
+  every layer (cache-first loop, R1 harvesting, JSON-mode tool repair,
+  reasoning-effort cap) is tuned against DeepSeek-specific behavior
+  and economics. Coupling to one backend is the feature, not a
+  limitation we'll grow out of.
+- **You want IDE integration** (inline diff in your gutter,
+  multi-cursor, ghost text, refactor previews). Try
+  [Cursor](https://cursor.com) or Claude Code's IDE mode. Reasonix
+  is terminal-first; the diff lives in `git diff`, the file tree
+  lives in `ls`, the chat lives in your shell.
+- **You're chasing the hardest reasoning benchmarks.** Claude Opus
+  4.6 still wins some leaderboards. DeepSeek V4-pro is competitive
+  on most coding tasks but doesn't lead every benchmark. If your
+  task is "solve this PhD-level proof" rather than "fix this auth
+  bug," start with Claude.
+- **You need fully-local / fully-free**. DeepSeek's API has free
+  credit on signup, but isn't free forever. For air-gapped or
+  always-free, look at Aider + Ollama or [Continue](https://continue.dev).
 
 ---
 
@@ -771,7 +839,7 @@ cd reasonix
 npm install
 npm run dev code        # run CLI from source via tsx
 npm run build           # tsup to dist/
-npm test                # vitest (1007 tests)
+npm test                # vitest (1482 tests)
 npm run lint            # biome
 npm run typecheck       # tsc --noEmit
 ```
