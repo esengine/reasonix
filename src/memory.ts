@@ -89,9 +89,7 @@ export class ImmutablePrefix {
     const fresh = this.computeFingerprint();
     if (this._fingerprintCache !== null && this._fingerprintCache !== fresh) {
       throw new Error(
-        `ImmutablePrefix fingerprint drift: cached=${this._fingerprintCache}, fresh=${fresh}. ` +
-          "A mutation path bypassed addTool's cache invalidation — DeepSeek will see prefix " +
-          "churn that the TUI / transcript log don't know about.",
+        `ImmutablePrefix fingerprint drift: cached=${this._fingerprintCache}, fresh=${fresh}. A mutation path bypassed addTool's cache invalidation — DeepSeek will see prefix churn that the TUI / transcript log don't know about.`,
       );
     }
     this._fingerprintCache = fresh;

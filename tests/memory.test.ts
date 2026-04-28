@@ -52,7 +52,10 @@ describe("ImmutablePrefix", () => {
     const p = new ImmutablePrefix({
       system: "x",
       toolSpecs: [
-        { type: "function", function: { name: "echo", description: "", parameters: { type: "object" } } },
+        {
+          type: "function",
+          function: { name: "echo", description: "", parameters: { type: "object" } },
+        },
       ],
     });
     const before = p.fingerprint;
