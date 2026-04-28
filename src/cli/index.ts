@@ -6,6 +6,7 @@ import { listSessions } from "../session.js";
 import { applyMemoryStack } from "../user-memory.js";
 import { chatCommand } from "./commands/chat.js";
 import { codeCommand } from "./commands/code.js";
+import { commitCommand } from "./commands/commit.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { indexCommand } from "./commands/index.js";
@@ -296,6 +297,20 @@ program
   )
   .action(async () => {
     await doctorCommand();
+  });
+
+program
+  .command("commit")
+  .description(
+    "Draft a commit message from the staged diff (or working tree, if nothing staged), matching your repo's recent commit style. Review interactively before it lands.",
+  )
+  .option("-m, --model <id>", "Override the default model (deepseek-v4-flash)")
+  .option(
+    "-y, --yes",
+    "Skip the [a]ccept / [r]egenerate prompt and commit the first draft. Useful in scripts.",
+  )
+  .action(async (opts) => {
+    await commitCommand({ model: opts.model, yes: !!opts.yes });
   });
 
 program
