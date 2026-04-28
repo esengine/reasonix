@@ -1,0 +1,11 @@
+# Force LF line endings on every checkout, regardless of platform.
+# Biome's formatter is strict about CRLF — without this, a Windows clone
+# with autocrlf=true will land with CRLF in the working tree even though
+# the repo stores LF, and `npm run lint` (and prepublishOnly with it)
+# fails. See docs/style.md if you ever add binary types here.
+* text=auto eol=lf
+
+# Lockfiles + the codemirror bundle are generated; treat them as
+# auto-detected text but never coerce.
+package-lock.json text eol=lf
+dashboard/codemirror.js text eol=lf
