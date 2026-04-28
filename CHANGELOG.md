@@ -3,6 +3,32 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] — 2026-04-28
+
+**Headline:** Editor v2 — VS Code-style file tree, collapsible file
+panel, wider drawer. The 0.12.0 editor opened on the right at 50%
+with a flat alphabetical file list; on a normal-width window that
+felt cramped and the file list scrolled forever.
+
+### Editor
+
+- **File tree** — flat path list collapses into a recursive folder
+  tree. Folders sort first, files alphabetically; click `▶` to
+  expand, `▼` to collapse. The expanded set lives in panel state so
+  it survives drawer close/reopen within a session.
+- **Collapsible side panel** — `◀` button at the top of the file
+  panel hides everything except a thin `▶` button that brings it
+  back. Editor area gets the full drawer width when files are out
+  of the way.
+- **Wider drawer** — `.editor-drawer-host.open` bumped from 50% →
+  65% (min-width 360 → 420) so the editor breathes.
+- **Filter still flat** — when the search box has text, the tree
+  view collapses to the existing flat filtered list (paths are
+  more useful than indented names when you're searching).
+
+No backend changes. All edits in `dashboard/app.js` `EditorPanel`
++ `dashboard/app.css`.
+
 ## [0.12.0] — 2026-04-28
 
 **Headline:** Web dashboard. A top-tier local control plane that lives

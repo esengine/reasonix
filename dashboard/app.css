@@ -1538,8 +1538,8 @@ textarea:focus {
   transition: width 0.2s ease-out;
 }
 .editor-drawer-host.open {
-  width: 50%;
-  min-width: 360px;
+  width: 65%;
+  min-width: 420px;
 }
 
 .editor-drawer-head {
@@ -1616,6 +1616,43 @@ textarea:focus {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  transition: width 0.15s ease-out;
+}
+.editor-side.collapsed {
+  width: 28px;
+}
+.editor-side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+.editor-side-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--fg-3);
+  text-transform: uppercase;
+}
+.editor-side-toggle {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-3);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.editor-side-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.editor-side.collapsed .editor-side-toggle {
+  margin: 8px auto 0;
+  width: 100%;
 }
 .editor-files {
   flex: 1;
@@ -1640,6 +1677,47 @@ textarea:focus {
   color: var(--fg-0);
 }
 .editor-file.open {
+  color: var(--primary);
+  border-left-color: var(--primary);
+}
+.editor-tree-folder,
+.editor-tree-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--fg-2);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  border-left: 2px solid transparent;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  padding-right: 8px;
+}
+.editor-tree-folder:hover,
+.editor-tree-file:hover {
+  background: var(--bg-hover);
+  color: var(--fg-0);
+}
+.editor-tree-caret {
+  display: inline-block;
+  width: 12px;
+  font-size: 9px;
+  color: var(--fg-3);
+  flex-shrink: 0;
+}
+.editor-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.editor-tree-folder {
+  color: var(--fg-1);
+}
+.editor-tree-file.open {
   color: var(--primary);
   border-left-color: var(--primary);
 }

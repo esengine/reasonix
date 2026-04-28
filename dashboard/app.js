@@ -2863,6 +2863,47 @@ function langExtensionFor(path, langs) {
   return fn ? fn() : null;
 }
 
+// Build a nested folder tree from a flat list of repo paths. Nodes use
+// Maps so insertion order is stable; sorting happens at render time.
+function buildFileTree(paths) {
+  const root = { name: "", path: "", children: new Map(), isFile: false };
+  for (const p of paths) {
+    const parts = p.split("/").filter(Boolean);
+    let node = root;
+    for (let i = 0; i < parts.length; i++) {
+      const isLast = i === parts.length - 1;
+      const name = parts[i];
+      const childPath = parts.slice(0, i + 1).join("/");
+      let child = node.children.get(name);
+      if (!child) {
+        child = { name, path: childPath, children: new Map(), isFile: isLast };
+        node.children.set(name, child);
+      } else if (isLast && child.children.size === 0) {
+        child.isFile = true;
+      }
+      node = child;
+    }
+  }
+  return root;
+}
+
+// Walk the tree honoring the expanded set; produce a flat row list the
+// renderer can map straight to JSX. Folders precede files; both sorted
+// case-insensitively.
+function flattenTree(node, expanded, depth, out) {
+  const children = [...node.children.values()].sort((a, b) => {
+    if (a.isFile !== b.isFile) return a.isFile ? 1 : -1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+  for (const child of children) {
+    out.push({ name: child.name, path: child.path, depth, isFile: child.isFile });
+    if (!child.isFile && expanded.has(child.path)) {
+      flattenTree(child, expanded, depth + 1, out);
+    }
+  }
+  return out;
+}
+
 function EditorPanel({ onClose } = {}) {
   // tabs: { path, content, original, dirty, savedAt }
   const [tabs, setTabs] = useState([]);
@@ -2874,6 +2915,8 @@ function EditorPanel({ onClose } = {}) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [cmReady, setCmReady] = useState(false);
+  const [sideCollapsed, setSideCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState(() => new Set());
   const editorContainerRef = useRef(null);
   const viewRef = useRef(null);
   const cmRef = useRef(null);
@@ -3070,9 +3113,24 @@ function EditorPanel({ onClose } = {}) {
 
   const tab = tabs[activeIdx];
 
-  const filteredFiles = filter
+  const tree = useMemo(() => buildFileTree(files), [files]);
+  const treeRows = useMemo(() => flattenTree(tree, expanded, 0, []), [tree, expanded]);
+
+  const toggleFolder = useCallback((path) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const filtering = filter.trim().length > 0;
+  const filteredFiles = filtering
     ? files.filter((f) => f.toLowerCase().includes(filter.toLowerCase())).slice(0, 80)
-    : files.slice(0, 80);
+    : null;
+
+  const openPaths = tabs.map((t) => t.path);
 
   return html`
     <div class="editor-shell">
@@ -3086,48 +3144,99 @@ function EditorPanel({ onClose } = {}) {
         `
           : null
       }
-      <div class="editor-side">
-        <div class="row" style="margin-bottom: 8px;">
-          <input
-            type="text"
-            placeholder="open by path…"
-            value=${openInput}
-            onInput=${(e) => setOpenInput(e.target.value)}
-            onKeyDown=${(e) => {
-              if (e.key === "Enter" && openInput.trim()) {
-                openPath(openInput.trim());
-                setOpenInput("");
-              }
-            }}
-          />
-        </div>
-        <input
-          type="search"
-          placeholder=${`filter ${files.length} files…`}
-          value=${filter}
-          onInput=${(e) => setFilter(e.target.value)}
-          style="margin-bottom: 8px;"
-        />
-        ${
-          filesError
-            ? html`<div class="notice err">${filesError}</div>`
-            : html`
-            <div class="editor-files">
-              ${filteredFiles.map(
-                (f) => html`
-                <div
-                  key=${f}
-                  class="editor-file ${tabsRef.current.some((t) => t.path === f) ? "open" : ""}"
-                  onClick=${() => openPath(f)}
-                  title=${f}
-                >${f}</div>
-              `,
-              )}
-              ${files.length > 80 && !filter ? html`<div class="muted" style="padding: 8px; font-size: 11px;">+ ${files.length - 80} more — use filter to narrow</div>` : null}
+      ${
+        sideCollapsed
+          ? html`
+          <div class="editor-side collapsed">
+            <button
+              class="editor-side-toggle"
+              onClick=${() => setSideCollapsed(false)}
+              title="show files"
+            >▶</button>
+          </div>
+        `
+          : html`
+          <div class="editor-side">
+            <div class="editor-side-head">
+              <span class="editor-side-label">FILES</span>
+              <button
+                class="editor-side-toggle"
+                onClick=${() => setSideCollapsed(true)}
+                title="hide files"
+              >◀</button>
             </div>
-          `
-        }
-      </div>
+            <div class="row" style="margin-bottom: 8px;">
+              <input
+                type="text"
+                placeholder="open by path…"
+                value=${openInput}
+                onInput=${(e) => setOpenInput(e.target.value)}
+                onKeyDown=${(e) => {
+                  if (e.key === "Enter" && openInput.trim()) {
+                    openPath(openInput.trim());
+                    setOpenInput("");
+                  }
+                }}
+              />
+            </div>
+            <input
+              type="search"
+              placeholder=${`filter ${files.length} files…`}
+              value=${filter}
+              onInput=${(e) => setFilter(e.target.value)}
+              style="margin-bottom: 8px;"
+            />
+            ${
+              filesError
+                ? html`<div class="notice err">${filesError}</div>`
+                : filtering
+                  ? html`
+                  <div class="editor-files">
+                    ${filteredFiles.map(
+                      (f) => html`
+                      <div
+                        key=${f}
+                        class="editor-file ${openPaths.includes(f) ? "open" : ""}"
+                        onClick=${() => openPath(f)}
+                        title=${f}
+                      >${f}</div>
+                    `,
+                    )}
+                    ${files.length > 80 ? html`<div class="muted" style="padding: 8px; font-size: 11px;">narrow filter to see more</div>` : null}
+                  </div>
+                `
+                  : html`
+                  <div class="editor-files">
+                    ${treeRows.map((row) =>
+                      row.isFile
+                        ? html`
+                        <div
+                          key=${row.path}
+                          class="editor-tree-file ${openPaths.includes(row.path) ? "open" : ""}"
+                          style=${`padding-left: ${row.depth * 12 + 22}px`}
+                          onClick=${() => openPath(row.path)}
+                          title=${row.path}
+                        >${row.name}</div>
+                      `
+                        : html`
+                        <div
+                          key=${row.path}
+                          class="editor-tree-folder"
+                          style=${`padding-left: ${row.depth * 12 + 4}px`}
+                          onClick=${() => toggleFolder(row.path)}
+                        >
+                          <span class="editor-tree-caret">${expanded.has(row.path) ? "▼" : "▶"}</span>
+                          <span class="editor-tree-name">${row.name}</span>
+                        </div>
+                      `,
+                    )}
+                    ${files.length === 0 ? html`<div class="muted" style="padding: 8px; font-size: 11px;">no files</div>` : null}
+                  </div>
+                `
+            }
+          </div>
+        `
+      }
 
       <div class="editor-main">
         <div class="editor-tabs">
