@@ -1221,6 +1221,58 @@ textarea:focus {
   color: var(--fg-2);
 }
 
+/* Onboarding banner that nudges new users to the Semantic panel.
+ * Only shown when the project has no built index AND the user hasn't
+ * explicitly dismissed it (state in localStorage). The "Build it →"
+ * action navigates the sidebar via the appBus so the rest of the
+ * panel state isn't disturbed. */
+.chat-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+.chat-banner-icon {
+  font-family: var(--mono);
+  color: var(--accent);
+  font-size: 18px;
+}
+.chat-banner-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.chat-banner-text strong {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.chat-banner-text .muted {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.chat-banner-close {
+  background: transparent;
+  border: none;
+  color: var(--fg-3);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.chat-banner-close:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+
 /* In-flight row sits just above ChatStatusBar — the user's eyes are
  * already at the input; this puts the spinner + elapsed + token
  * stream in the same visual neighborhood instead of pushing them up

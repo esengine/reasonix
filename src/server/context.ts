@@ -210,6 +210,16 @@ export interface DashboardContext {
     toolName: string,
     args: Record<string, unknown>,
   ) => Promise<unknown>;
+  /**
+   * Push a new tool spec onto the live `ImmutablePrefix` so the model
+   * sees the tool from the next turn onward. Used by the Semantic
+   * panel to register `semantic_search` once an index build finishes
+   * — without this hook the tool exists in the registry but the
+   * prefix the model is shown stays stale until the user restarts.
+   * Returns `true` on add, `false` if a tool with the same name was
+   * already present.
+   */
+  addToolToPrefix?: (spec: import("../types.js").ToolSpec) => boolean;
 }
 
 export type ChoiceResolution =

@@ -28,6 +28,7 @@ import {
   pullOllamaModel,
   startOllamaDaemon,
 } from "../../index/semantic/ollama-launcher.js";
+import { registerSemanticSearchTool } from "../../index/semantic/tool.js";
 import type { DashboardContext } from "../context.js";
 import type { ApiResult } from "../router.js";
 
@@ -269,7 +270,7 @@ async function startJob(body: string, ctx: DashboardContext): Promise<ApiResult>
   // Fire-and-forget — endpoint returns immediately so the SPA can
   // poll /api/semantic for progress instead of blocking on a long
   // request that might exceed the browser's idle timeout.
-  void runIndex(root, job).catch((err) => {
+  void runIndex(root, job, ctx).catch((err) => {
     job.phase = "error";
     job.error = err instanceof Error ? err.message : String(err);
   });
@@ -277,7 +278,7 @@ async function startJob(body: string, ctx: DashboardContext): Promise<ApiResult>
   return { status: 202, body: { started: true, job: snapshotJob(job) } };
 }
 
-async function runIndex(root: string, job: JobRecord): Promise<void> {
+async function runIndex(root: string, job: JobRecord, ctx: DashboardContext): Promise<void> {
   try {
     const result = await buildIndex(root, {
       rebuild: job.rebuild,
@@ -292,6 +293,25 @@ async function runIndex(root: string, job: JobRecord): Promise<void> {
     });
     job.phase = "done";
     job.result = result;
+    // Index is on disk now — register `semantic_search` on the live
+    // tool registry AND push its spec into the prefix so the model
+    // sees the tool from the next turn (no session restart needed).
+    // Costs one cache-miss turn since the prefix shape changed; the
+    // whole flow only runs once per session because the registry's
+    // `register` is idempotent on tool name.
+    if (ctx.tools && ctx.addToolToPrefix) {
+      try {
+        const added = await registerSemanticSearchTool(ctx.tools, { root });
+        if (added) {
+          const spec = ctx.tools.specs().find((s) => s.function.name === "semantic_search");
+          if (spec) ctx.addToolToPrefix(spec);
+        }
+      } catch {
+        /* live-registration failure is non-fatal — the index still
+         * exists on disk; the next session start will pick it up via
+         * bootstrapSemanticSearchInCodeMode. */
+      }
+    }
   } catch (err) {
     job.phase = "error";
     job.error = err instanceof Error ? err.message : String(err);

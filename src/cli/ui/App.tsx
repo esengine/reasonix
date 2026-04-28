@@ -1853,6 +1853,7 @@ export function App({
         setHookList(fresh);
         return fresh.length;
       },
+      addToolToPrefix: (spec) => loop.prefix.addTool(spec),
     });
     dashboardRef.current = handle;
     setDashboardUrlState(handle.url);

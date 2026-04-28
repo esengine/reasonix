@@ -1164,6 +1164,24 @@ function ChatPanel() {
   // the input area.
   const [stats, setStats] = useState(null);
   const [overviewModel, setOverviewModel] = useState(null);
+  // Whether the project has a built semantic index. Null = unknown
+  // (poll hasn't landed) or non-attached. False = no index → show the
+  // dismissible banner. True = index built → hide it.
+  const [semanticIndex, setSemanticIndex] = useState(null);
+  const [semanticBannerDismissed, setSemanticBannerDismissed] = useState(() => {
+    try {
+      return localStorage.getItem("rx.semanticBannerDismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("rx.semanticBannerDismissed", semanticBannerDismissed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [semanticBannerDismissed]);
   // Wall-clock timestamp the current turn started at — populated when
   // busy flips true, cleared when it flips false. Drives the "elapsed
   // Ns" readout in the in-flight indicator. Refreshed once per second
@@ -1459,6 +1477,7 @@ function ChatPanel() {
         setEffortLocal(o.reasoningEffort ?? null);
         setStats(o.stats ?? null);
         setOverviewModel(o.model ?? null);
+        setSemanticIndex(o.semanticIndexExists);
       } catch {
         /* swallow */
       }
@@ -1595,6 +1614,28 @@ function ChatPanel() {
       ${
         !busy && statusLine
           ? html`<div class="chat-status"><span class="muted">${statusLine}</span></div>`
+          : null
+      }
+      ${
+        semanticIndex === false && !semanticBannerDismissed
+          ? html`<div class="chat-banner">
+              <span class="chat-banner-icon">≈</span>
+              <span class="chat-banner-text">
+                <strong>Semantic search isn't enabled for this project.</strong>
+                <span class="muted">
+                  Build the index once and the model can find code by meaning ("where do we handle auth failures?") instead of grep on exact strings.
+                </span>
+              </span>
+              <button
+                class="primary"
+                onClick=${() => appBus.dispatchEvent(new CustomEvent("navigate-tab", { detail: { tabId: "semantic" } }))}
+              >Build it →</button>
+              <button
+                class="chat-banner-close"
+                onClick=${() => setSemanticBannerDismissed(true)}
+                title="dismiss (don't show again)"
+              >×</button>
+            </div>`
           : null
       }
       ${error ? html`<div class="notice err">${error}</div>` : null}
@@ -3009,7 +3050,7 @@ function SemanticPanel() {
           ? html`
             <div class="section-title">Model</div>
             <div class="card" style="font-size: 13px;">
-              <code>${modelName}</code> isn't installed yet. ${pulling ? "" : `~270 MB download on first pull.`}
+              <code>${modelName}</code> isn't installed yet. ${pulling ? "" : "~270 MB download on first pull."}
               <div class="row" style="margin-top: 10px;">
                 <button
                   class="primary"

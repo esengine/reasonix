@@ -9,13 +9,26 @@ export interface ImmutablePrefixOptions {
 
 export class ImmutablePrefix {
   readonly system: string;
-  readonly toolSpecs: readonly ToolSpec[];
+  /**
+   * Backing array for `toolSpecs`. Originally `Object.freeze`d at
+   * construction (hence the class name) — but `addTool` now lets the
+   * dashboard register `semantic_search` after a mid-session
+   * `reasonix index` build without forcing the user to restart. Each
+   * add is documented to cost one cache-miss turn (the cached prefix
+   * on DeepSeek's side is keyed by the full tool list); subsequent
+   * turns re-cache against the new shape.
+   */
+  private _toolSpecs: ToolSpec[];
   readonly fewShots: readonly ChatMessage[];
 
   constructor(opts: ImmutablePrefixOptions) {
     this.system = opts.system;
-    this.toolSpecs = Object.freeze([...(opts.toolSpecs ?? [])]);
+    this._toolSpecs = [...(opts.toolSpecs ?? [])];
     this.fewShots = Object.freeze([...(opts.fewShots ?? [])]);
+  }
+
+  get toolSpecs(): readonly ToolSpec[] {
+    return this._toolSpecs;
   }
 
   toMessages(): ChatMessage[] {
@@ -23,13 +36,27 @@ export class ImmutablePrefix {
   }
 
   tools(): ToolSpec[] {
-    return this.toolSpecs.map((t) => structuredClone(t) as ToolSpec);
+    return this._toolSpecs.map((t) => structuredClone(t) as ToolSpec);
+  }
+
+  /**
+   * Add a tool spec to the prefix. Returns `true` if added, `false`
+   * if a tool with the same name was already present (callers can
+   * decide whether to ignore or surface the no-op). The model picks
+   * up the new tool on the next turn after the cache busts once.
+   */
+  addTool(spec: ToolSpec): boolean {
+    const name = spec.function?.name;
+    if (!name) return false;
+    if (this._toolSpecs.some((t) => t.function?.name === name)) return false;
+    this._toolSpecs.push(spec);
+    return true;
   }
 
   get fingerprint(): string {
     const blob = JSON.stringify({
       system: this.system,
-      tools: this.toolSpecs,
+      tools: this._toolSpecs,
       shots: this.fewShots,
     });
     return createHash("sha256").update(blob).digest("hex").slice(0, 16);

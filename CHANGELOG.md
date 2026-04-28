@@ -3,6 +3,44 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.12] — 2026-04-28
+
+**Headline:** Indexing from the dashboard now actually wires up
+`semantic_search` for the running session — no more "build the
+index, restart, build again" dance — and a dismissible Chat
+banner steers users to the Semantic panel when no index exists.
+
+### Loop / prefix
+
+- `ImmutablePrefix` gains an `addTool(spec)` method that pushes a
+  new tool spec onto the live prefix. The class name is now a
+  half-truth (toolSpecs is exposed via getter, backed by a mutable
+  array) but the rationale is documented inline: a one-time cache
+  miss is cheaper than asking users to restart the session.
+- New `DashboardContext.addToolToPrefix(spec)` callback. Wired
+  from `App.tsx` to `loop.prefix.addTool`.
+
+### Server
+
+- `runIndex` (the dashboard's buildIndex wrapper) calls
+  `registerSemanticSearchTool(ctx.tools, …)` after a successful
+  build, then `ctx.addToolToPrefix(spec)` so the model sees
+  `semantic_search` from the next turn. Failures are non-fatal —
+  the index is still on disk, the next session bootstrap picks
+  it up.
+- `/api/overview` returns `semanticIndexExists` (`true`/`false`/
+  `null`) so the Chat panel can render the banner without an
+  extra round-trip.
+
+### Dashboard — Chat panel
+
+- New top-of-Chat banner: `≈ Semantic search isn't enabled for
+  this project — Build it →` with a dismiss `×`. Visible only
+  when `semanticIndexExists === false` and not previously
+  dismissed (state in `localStorage` as `rx.semanticBannerDismissed`).
+- Click "Build it →" fires `appBus.dispatchEvent("navigate-tab")`
+  with `tabId: "semantic"` — the existing nav handler picks it up.
+
 ## [0.12.11] — 2026-04-28
 
 **Headline:** Tell users what to do when Ollama isn't installed

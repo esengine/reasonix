@@ -8,6 +8,7 @@
  */
 
 import { readConfig } from "../../config.js";
+import { indexExists } from "../../index/semantic/builder.js";
 import { VERSION } from "../../version.js";
 import type { DashboardContext, DashboardStats } from "../context.js";
 import type { ApiResult } from "../router.js";
@@ -39,6 +40,14 @@ export interface OverviewResponse {
   reasoningEffort: string;
   /** Live session stats — null in standalone mode. */
   stats: DashboardStats | null;
+  /**
+   * Whether `<cwd>/.reasonix/semantic/` carries a built index. Drives
+   * the Chat banner that nudges users toward the Semantic panel when
+   * the tool would be unavailable. `null` in standalone mode (no
+   * project root to check). Cheap probe — `indexExists` just stats
+   * a file.
+   */
+  semanticIndexExists: boolean | null;
 }
 
 export async function handleOverview(
@@ -51,12 +60,14 @@ export async function handleOverview(
     return { status: 405, body: { error: "GET only" } };
   }
   const cfg = readConfig(ctx.configPath);
+  const cwd = ctx.getCurrentCwd?.() ?? null;
+  const semanticIndexExists = cwd ? await indexExists(cwd).catch(() => false) : null;
   const overview: OverviewResponse = {
     version: VERSION,
     mode: ctx.mode,
     latestVersion: ctx.getLatestVersion?.() ?? null,
     session: ctx.getSessionName?.() ?? null,
-    cwd: ctx.getCurrentCwd?.() ?? null,
+    cwd,
     model: ctx.loop?.model ?? null,
     editMode: ctx.getEditMode?.() ?? null,
     planMode: ctx.getPlanMode?.() ?? null,
@@ -66,6 +77,7 @@ export async function handleOverview(
     preset: cfg.preset ?? "auto",
     reasoningEffort: cfg.reasoningEffort ?? "max",
     stats: ctx.getStats?.() ?? null,
+    semanticIndexExists,
   };
   return { status: 200, body: overview };
 }
