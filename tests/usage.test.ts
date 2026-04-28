@@ -83,6 +83,56 @@ describe("appendUsage + readUsageLog", () => {
     expect(readUsageLog(deep)).toHaveLength(1);
   });
 
+  it("compacts the log when it crosses the size threshold, dropping records older than the retention window", () => {
+    // Synthesize an oversized log: 60K records is plenty to cross the
+    // 5MB compaction threshold (record size ~ 250B). Half are 2 years
+    // old (must be dropped), half are recent (must be kept). The
+    // bucketing matters because compaction triggers on the NEXT
+    // append after the file grows past the threshold.
+    const TWO_YEARS_AGO = Date.now() - 730 * 24 * 60 * 60 * 1000;
+    const RECENT = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const lines: string[] = [];
+    for (let i = 0; i < 30_000; i++) {
+      lines.push(
+        JSON.stringify({
+          ts: TWO_YEARS_AGO + i,
+          session: "old",
+          model: "deepseek-v4-flash",
+          promptTokens: 100,
+          completionTokens: 20,
+          cacheHitTokens: 80,
+          cacheMissTokens: 20,
+          costUsd: 0.0001,
+          claudeEquivUsd: 0.001,
+        }),
+      );
+      lines.push(
+        JSON.stringify({
+          ts: RECENT + i,
+          session: "new",
+          model: "deepseek-v4-flash",
+          promptTokens: 100,
+          completionTokens: 20,
+          cacheHitTokens: 80,
+          cacheMissTokens: 20,
+          costUsd: 0.0001,
+          claudeEquivUsd: 0.001,
+        }),
+      );
+    }
+    appendFileSync(path, `${lines.join("\n")}\n`, "utf8");
+    // Trigger compaction by appending one fresh record — appendUsage
+    // checks size after writing.
+    appendUsage({ session: "trigger", model: "deepseek-v4-flash", usage: usage(), path });
+    const records = readUsageLog(path);
+    // Old records must be gone, recent records preserved, plus the
+    // fresh trigger record.
+    expect(records.every((r) => r.ts >= TWO_YEARS_AGO + 30_000)).toBe(true);
+    expect(records.some((r) => r.session === "new")).toBe(true);
+    expect(records.some((r) => r.session === "trigger")).toBe(true);
+    expect(records.some((r) => r.session === "old")).toBe(false);
+  });
+
   it("swallows write failure silently (best-effort contract)", () => {
     // Point at a path under a FILE, not a directory — mkdirSync will
     // blow up and appendUsage should absorb it without throwing.

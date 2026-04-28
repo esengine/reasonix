@@ -20,6 +20,23 @@ export class ImmutablePrefix {
    */
   private _toolSpecs: ToolSpec[];
   readonly fewShots: readonly ChatMessage[];
+  /**
+   * Cached SHA-256 of the prefix payload. Computed lazily on first
+   * `fingerprint` access, invalidated only by mutations that go
+   * through `addTool` (the one legitimate post-construction mutation
+   * path). The TUI reads `fingerprint` on every render — without the
+   * cache, that means a fresh `JSON.stringify` + sha256 over the
+   * full prefix (system prompt + tools list + few-shots, typically
+   * 5-10KB) on every keystroke.
+   *
+   * The lazy-init also acts as a cheap drift guard: if some future
+   * code path mutates `_toolSpecs` directly without going through
+   * `addTool`, `fingerprint` will return the stale cached value
+   * while the actual prefix sent to DeepSeek diverges — the cache
+   * miss would be the first symptom. {@link verifyFingerprint}
+   * lets dev / test code assert the cache matches reality.
+   */
+  private _fingerprintCache: string | null = null;
 
   constructor(opts: ImmutablePrefixOptions) {
     this.system = opts.system;
@@ -50,10 +67,38 @@ export class ImmutablePrefix {
     if (!name) return false;
     if (this._toolSpecs.some((t) => t.function?.name === name)) return false;
     this._toolSpecs.push(spec);
+    this._fingerprintCache = null;
     return true;
   }
 
   get fingerprint(): string {
+    if (this._fingerprintCache !== null) return this._fingerprintCache;
+    this._fingerprintCache = this.computeFingerprint();
+    return this._fingerprintCache;
+  }
+
+  /**
+   * Recompute the fingerprint from scratch and assert it matches the
+   * cached value. Returns the freshly-computed hash on success; throws
+   * with a diff if the cache drifted, which always indicates a bug —
+   * either a non-`addTool` mutation path was added, or `addTool`
+   * forgot to invalidate the cache. Dev / test only; the live loop
+   * doesn't call this on the hot path.
+   */
+  verifyFingerprint(): string {
+    const fresh = this.computeFingerprint();
+    if (this._fingerprintCache !== null && this._fingerprintCache !== fresh) {
+      throw new Error(
+        `ImmutablePrefix fingerprint drift: cached=${this._fingerprintCache}, fresh=${fresh}. ` +
+          "A mutation path bypassed addTool's cache invalidation — DeepSeek will see prefix " +
+          "churn that the TUI / transcript log don't know about.",
+      );
+    }
+    this._fingerprintCache = fresh;
+    return fresh;
+  }
+
+  private computeFingerprint(): string {
     const blob = JSON.stringify({
       system: this.system,
       tools: this._toolSpecs,

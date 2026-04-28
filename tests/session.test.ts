@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +17,7 @@ import {
   deleteSession,
   listSessions,
   loadSessionMessages,
+  pruneStaleSessions,
   sanitizeName,
   sessionPath,
   sessionsDir,
@@ -99,6 +107,35 @@ describe("session persistence", () => {
     expect(deleteSession("gone")).toBe(true);
     expect(existsSync(sessionPath("gone"))).toBe(false);
     expect(deleteSession("gone")).toBe(false);
+  });
+
+  it("pruneStaleSessions deletes sessions older than the cutoff and leaves fresh ones", () => {
+    // Three sessions: two backdated past the 90-day default, one
+    // fresh. Backdate via utimesSync since createTime/mtime is what
+    // listSessions reads.
+    appendSessionMessage("ancient1", { role: "user", content: "x" });
+    appendSessionMessage("ancient2", { role: "user", content: "x" });
+    appendSessionMessage("recent", { role: "user", content: "x" });
+    const oldDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+    utimesSync(sessionPath("ancient1"), oldDate, oldDate);
+    utimesSync(sessionPath("ancient2"), oldDate, oldDate);
+
+    const removed = pruneStaleSessions(90);
+    expect(removed.sort()).toEqual(["ancient1", "ancient2"]);
+    expect(existsSync(sessionPath("ancient1"))).toBe(false);
+    expect(existsSync(sessionPath("ancient2"))).toBe(false);
+    expect(existsSync(sessionPath("recent"))).toBe(true);
+  });
+
+  it("pruneStaleSessions with a tighter cutoff catches sessions the default would skip", () => {
+    appendSessionMessage("yesterday", { role: "user", content: "x" });
+    const yest = new Date(Date.now() - 36 * 60 * 60 * 1000); // 1.5 days
+    utimesSync(sessionPath("yesterday"), yest, yest);
+
+    expect(pruneStaleSessions(90)).toEqual([]);
+    expect(existsSync(sessionPath("yesterday"))).toBe(true);
+    expect(pruneStaleSessions(1)).toEqual(["yesterday"]);
+    expect(existsSync(sessionPath("yesterday"))).toBe(false);
   });
 
   it("sessionsDir exists after first append", () => {

@@ -25,7 +25,7 @@
  * skills — those are content pins. Usage is pure telemetry.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Usage } from "./client.js";
@@ -90,12 +90,72 @@ export interface AppendUsageInput {
 }
 
 /**
+ * Threshold above which the usage log gets compacted on append.
+ * Compaction keeps records newer than {@link USAGE_RETENTION_DAYS}
+ * and rewrites the file in place. Pitched at 5MB because at typical
+ * record sizes (~250 bytes) that's ~20K turns of history — enough
+ * for a year of heavy use, beyond which the marginal value of an
+ * old record is dwarfed by `reasonix stats` parse time and the
+ * `~/.reasonix` disk footprint.
+ */
+const USAGE_COMPACTION_THRESHOLD_BYTES = 5 * 1024 * 1024;
+/**
+ * Records older than this many days get dropped during compaction.
+ * 365 days keeps year-over-year comparisons working in `reasonix
+ * stats` while bounding pathological growth.
+ */
+const USAGE_RETENTION_DAYS = 365;
+
+function compactUsageLogIfLarge(path: string, now: number): void {
+  let size: number;
+  try {
+    size = statSync(path).size;
+  } catch {
+    return;
+  }
+  if (size < USAGE_COMPACTION_THRESHOLD_BYTES) return;
+  const cutoff = now - USAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return;
+  }
+  const lines = raw.split(/\r?\n/);
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const rec = JSON.parse(line);
+      if (isValidRecord(rec) && rec.ts >= cutoff) kept.push(line);
+    } catch {
+      /* skip malformed */
+    }
+  }
+  // Only rewrite if compaction actually shrunk the file — avoids
+  // re-write storms on a log full of fresh records that all pass
+  // the cutoff check.
+  if (kept.length === lines.filter((l) => l.trim()).length) return;
+  try {
+    writeFileSync(path, kept.length > 0 ? `${kept.join("\n")}\n` : "", "utf8");
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
  * Append one record and return it. Swallows disk errors — the TUI
  * should keep working even if `~/.reasonix/` is read-only.
  *
  * Returns the record that was written (or would have been written
  * if the disk had cooperated) so tests / callers can assert on the
  * computed cost fields without a round trip through the log file.
+ *
+ * On every Nth append the log is checked for size; if it crosses
+ * {@link USAGE_COMPACTION_THRESHOLD_BYTES} we drop records older
+ * than {@link USAGE_RETENTION_DAYS}. Cheaper than a startup-time
+ * scan because most processes don't reach the threshold; the size
+ * check is one statSync regardless.
  */
 export function appendUsage(input: AppendUsageInput): UsageRecord {
   const record: UsageRecord = {
@@ -116,6 +176,7 @@ export function appendUsage(input: AppendUsageInput): UsageRecord {
   try {
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${JSON.stringify(record)}\n`, "utf8");
+    compactUsageLogIfLarge(path, record.ts);
   } catch {
     /* best-effort — disk failure shouldn't break the chat */
   }

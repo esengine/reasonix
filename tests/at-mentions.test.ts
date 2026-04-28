@@ -13,6 +13,7 @@ import {
   expandAtMentions,
   expandAtUrls,
   listFilesSync,
+  listFilesWithStatsAsync,
   rankPickerCandidates,
   stripUrlTail,
 } from "../src/at-mentions.js";
@@ -372,6 +373,59 @@ describe("listFilesSync", () => {
     expect(DEFAULT_PICKER_IGNORE_DIRS).toContain("node_modules");
     expect(DEFAULT_PICKER_IGNORE_DIRS).toContain(".git");
     expect(DEFAULT_PICKER_IGNORE_DIRS).toContain("dist");
+  });
+});
+
+describe("listFilesWithStatsAsync", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "reasonix-listfiles-async-"));
+    mkdirSync(join(root, "src"), { recursive: true });
+    mkdirSync(join(root, "src", "cli"), { recursive: true });
+    mkdirSync(join(root, "node_modules", "foo"), { recursive: true });
+    writeFileSync(join(root, "package.json"), "{}");
+    writeFileSync(join(root, "README.md"), "# hi");
+    writeFileSync(join(root, "src", "index.ts"), "");
+    writeFileSync(join(root, "src", "cli", "app.ts"), "");
+    writeFileSync(join(root, "node_modules", "foo", "index.js"), "");
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("returns the same shape as listFilesSync — DFS-alphabetical", async () => {
+    const entries = await listFilesWithStatsAsync(root);
+    const paths = entries.map((e) => e.path);
+    expect(paths).toContain("package.json");
+    expect(paths).toContain("src/index.ts");
+    expect(paths).toContain("src/cli/app.ts");
+    // Forward slashes on every platform — same contract the sync
+    // walk advertises.
+    for (const e of entries) {
+      expect(e.path).not.toContain("\\");
+    }
+  });
+
+  it("skips default-ignored dirs (node_modules, .git, etc)", async () => {
+    const entries = await listFilesWithStatsAsync(root);
+    expect(entries.every((e) => !e.path.includes("node_modules"))).toBe(true);
+  });
+
+  it("respects maxResults", async () => {
+    const entries = await listFilesWithStatsAsync(root, { maxResults: 2 });
+    expect(entries.length).toBeLessThanOrEqual(2);
+  });
+
+  it("populates mtimeMs for each entry", async () => {
+    const entries = await listFilesWithStatsAsync(root);
+    for (const e of entries) {
+      expect(e.mtimeMs).toBeGreaterThan(0);
+    }
+  });
+
+  it("returns [] for an unreadable root", async () => {
+    const entries = await listFilesWithStatsAsync(join(root, "does-not-exist"));
+    expect(entries).toEqual([]);
   });
 });
 

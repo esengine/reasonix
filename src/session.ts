@@ -103,6 +103,27 @@ export function listSessions(): SessionInfo[] {
   }
 }
 
+/**
+ * Drop every session whose mtime is older than {@link daysOld} days.
+ * Returns the names of removed sessions so the caller can show a
+ * confirmation in the UI. Errors on individual deletions are
+ * swallowed — partial pruning is fine, the user can re-run.
+ *
+ * Defaults to 90 days because that's well past "still useful for
+ * resume" — if you haven't touched a session in 3 months you're
+ * not picking it back up. Heavy users can pass a tighter cutoff.
+ */
+export function pruneStaleSessions(daysOld = 90): string[] {
+  const cutoff = Date.now() - daysOld * 24 * 60 * 60 * 1000;
+  const deleted: string[] = [];
+  for (const s of listSessions()) {
+    if (s.mtime.getTime() < cutoff) {
+      if (deleteSession(s.name)) deleted.push(s.name);
+    }
+  }
+  return deleted;
+}
+
 export function deleteSession(name: string): boolean {
   const path = sessionPath(name);
   try {

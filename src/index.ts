@@ -19,6 +19,7 @@ export {
   detectAtPicker,
   expandAtMentions,
   listFilesSync,
+  listFilesWithStatsAsync,
   listFilesWithStatsSync,
   rankPickerCandidates,
 } from "./at-mentions.js";

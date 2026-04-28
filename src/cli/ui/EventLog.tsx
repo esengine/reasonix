@@ -248,7 +248,7 @@ export const EventRow = React.memo(function EventRow({
           {event.text ? (
             <Markdown text={event.text} projectRoot={projectRoot} />
           ) : (
-            <Text dimColor>(no content)</Text>
+            <Text dimColor>(empty body — likely tool-call only)</Text>
           )}
           {event.stats ? <StatsLine stats={event.stats} /> : null}
           {event.repair ? <Text color={COLOR.accent}>{event.repair}</Text> : null}
@@ -881,7 +881,7 @@ function formatReadyTail(tb: { readyCount?: number } | undefined): string {
   return ` · ${n} ready`;
 }
 
-function lastLine(s: string, maxChars: number): string {
+export function lastLine(s: string, maxChars: number): string {
   // The streaming row only ever shows the last ~maxChars characters,
   // so collapsing whitespace across the entire (possibly multi-KB)
   // buffer on every 30Hz flush is wasted work. Slice a generous tail

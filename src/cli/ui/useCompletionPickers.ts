@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type FileWithStats,
   detectAtPicker,
-  listFilesWithStatsSync,
+  listFilesWithStatsAsync,
   rankPickerCandidates,
 } from "../../at-mentions.js";
 import {
@@ -84,17 +84,32 @@ export function useCompletionPickers({
 
   // ── @-mention picker ──
   const [atSelected, setAtSelected] = useState(0);
-  // Walk the code root ONCE on mount, collecting mtime alongside path
-  // so the picker can surface recently-edited files first. Files
-  // created mid-session via tool edits won't appear until restart —
-  // rare, and the user can always type the full path.
-  const atFiles = useMemo<readonly FileWithStats[]>(() => {
-    if (!codeMode) return [];
-    try {
-      return listFilesWithStatsSync(rootDir, { maxResults: 500 });
-    } catch {
-      return [];
+  // Walk the code root asynchronously after first paint. Earlier
+  // versions used `listFilesWithStatsSync` inside `useMemo`, which
+  // blocked mount for 100-300ms on Windows monorepos (one statSync
+  // per file × 500 files). Async + parallel-stat-per-directory
+  // takes the cost off the critical path; the picker stays empty
+  // for the brief window before the walk completes (typically
+  // <200ms), and fills in atomically once Promise.all resolves.
+  // Files created mid-session via tool edits still won't appear
+  // until restart — rare; the user can type the full path.
+  const [atFiles, setAtFiles] = useState<readonly FileWithStats[]>([]);
+  useEffect(() => {
+    if (!codeMode) {
+      setAtFiles([]);
+      return;
     }
+    let cancelled = false;
+    listFilesWithStatsAsync(rootDir, { maxResults: 500 })
+      .then((files) => {
+        if (!cancelled) setAtFiles(files);
+      })
+      .catch(() => {
+        if (!cancelled) setAtFiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [codeMode, rootDir]);
   // LRU of files touched by recent tool calls. Seeds the picker with
   // "stuff I just looked at" at the top, so a user typing `@` in the

@@ -118,6 +118,11 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   },
   { cmd: "sessions", summary: "list saved sessions (current marked with ▸)" },
   { cmd: "forget", summary: "delete the current session from disk" },
+  {
+    cmd: "prune-sessions",
+    summary: "delete sessions idle ≥N days (default 90) — frees disk on long-time installs",
+    argsHint: "[days]",
+  },
   { cmd: "setup", summary: "reminds you to exit and run `reasonix setup`" },
   {
     cmd: "semantic",

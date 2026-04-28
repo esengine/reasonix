@@ -4,6 +4,7 @@
  * logic works against a real stdio server or an in-process fake.
  */
 
+import { VERSION } from "../version.js";
 import type { McpTransport } from "./stdio.js";
 import {
   type CallToolParams,
@@ -65,7 +66,7 @@ export class McpClient {
 
   constructor(opts: McpClientOptions) {
     this.transport = opts.transport;
-    this.clientInfo = opts.clientInfo ?? { name: "reasonix", version: "0.3.0-dev" };
+    this.clientInfo = opts.clientInfo ?? { name: "reasonix", version: VERSION };
     this.requestTimeoutMs = opts.requestTimeoutMs ?? 60_000;
   }
 

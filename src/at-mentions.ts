@@ -20,6 +20,7 @@
  */
 
 import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 /** Caps match tool-result dispatch truncation (0.5.2). */
@@ -126,6 +127,92 @@ export function listFilesWithStatsSync(root: string, opts: ListFilesOptions = {}
 
   walk(rootAbs, "");
   return out;
+}
+
+/**
+ * Async variant of {@link listFilesWithStatsSync}. Same walk semantics
+ * (DFS, alphabetical, respects ignore + maxResults), but each
+ * directory's entries are stat'd in parallel via `Promise.all`,
+ * which slashes wall-clock time on Windows where individual stat
+ * syscalls are 3-5x slower than Linux.
+ *
+ * Use this from the TUI mount path so a 500-file repo doesn't add
+ * 200-300ms of synchronous block to first paint. Sync variant is
+ * kept for paths where the caller can't `await` (server APIs,
+ * test scaffolding).
+ */
+export async function listFilesWithStatsAsync(
+  root: string,
+  opts: ListFilesOptions = {},
+): Promise<FileWithStats[]> {
+  const maxResults = Math.max(1, opts.maxResults ?? 500);
+  const ignore = new Set(opts.ignoreDirs ?? DEFAULT_PICKER_IGNORE_DIRS);
+  const rootAbs = resolve(root);
+  const out: FileWithStats[] = [];
+
+  const walk = async (dirAbs: string, dirRel: string): Promise<void> => {
+    if (out.length >= maxResults) return;
+    let entries: Dirent[];
+    try {
+      entries = await readdir(dirAbs, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    // Pull file stats for THIS directory in parallel before
+    // recursing — readdir gave us all the names at once, may as
+    // well issue all the stats at once too. Recursion stays
+    // sequential so the alphabetical ordering of the merged list
+    // matches the sync walk's contract.
+    const fileEnts: Dirent[] = [];
+    for (const ent of entries) {
+      if (out.length >= maxResults) break;
+      if (ent.isDirectory()) {
+        if (ent.name.startsWith(".") || ignore.has(ent.name)) continue;
+        // Drain pending file stats from THIS directory before
+        // descending so the output order stays DFS-alphabetical.
+        if (fileEnts.length > 0) {
+          await statBatch(fileEnts, dirAbs, dirRel, out, maxResults);
+          fileEnts.length = 0;
+          if (out.length >= maxResults) return;
+        }
+        await walk(join(dirAbs, ent.name), dirRel ? `${dirRel}/${ent.name}` : ent.name);
+      } else if (ent.isFile()) {
+        fileEnts.push(ent);
+      }
+    }
+    if (fileEnts.length > 0 && out.length < maxResults) {
+      await statBatch(fileEnts, dirAbs, dirRel, out, maxResults);
+    }
+  };
+
+  await walk(rootAbs, "");
+  return out;
+}
+
+async function statBatch(
+  ents: readonly Dirent[],
+  dirAbs: string,
+  dirRel: string,
+  out: FileWithStats[],
+  maxResults: number,
+): Promise<void> {
+  const remaining = Math.max(0, maxResults - out.length);
+  const batch = ents.slice(0, remaining);
+  const stats = await Promise.all(
+    batch.map((e) =>
+      stat(join(dirAbs, e.name))
+        .then((s) => s.mtimeMs)
+        .catch(() => 0),
+    ),
+  );
+  for (let i = 0; i < batch.length; i++) {
+    const ent = batch[i]!;
+    out.push({
+      path: dirRel ? `${dirRel}/${ent.name}` : ent.name,
+      mtimeMs: stats[i] ?? 0,
+    });
+  }
 }
 
 /**
