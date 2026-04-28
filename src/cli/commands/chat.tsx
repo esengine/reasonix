@@ -69,6 +69,12 @@ export interface ChatOptions {
   forceResume?: boolean;
   /** Skip the session picker — assume "New" (wipe the session file and start fresh). */
   forceNew?: boolean;
+  /**
+   * When true, suppress auto-launch of the embedded web dashboard.
+   * Default behavior (false/undefined) is to boot it on mount so the
+   * URL is visible in the status bar.
+   */
+  noDashboard?: boolean;
 }
 
 interface RootProps extends ChatOptions {
@@ -155,6 +161,7 @@ function Root({
         mcpServers={mcpServers}
         progressSink={progressSink}
         codeMode={appProps.codeMode}
+        noDashboard={appProps.noDashboard}
       />
     </KeystrokeProvider>
   );

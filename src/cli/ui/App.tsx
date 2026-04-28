@@ -142,6 +142,15 @@ export interface AppProps {
      */
     reregisterTools?: (rootDir: string) => void;
   };
+  /**
+   * When `true`, suppress the auto-launch of the embedded web dashboard
+   * server on TUI mount. Default behavior is to boot the dashboard so
+   * the URL shows in the status bar (clickable in OSC-8-aware
+   * terminals) — most users had no idea `/dashboard` even existed.
+   * `--no-dashboard` is the CLI flag that flips this on for CI / users
+   * who don't want a localhost listener.
+   */
+  noDashboard?: boolean;
 }
 
 /**
@@ -202,6 +211,7 @@ export function App({
   mcpServers,
   progressSink,
   codeMode,
+  noDashboard,
 }: AppProps) {
   const { exit } = useApp();
   const [historical, setHistorical] = useState<DisplayEvent[]>([]);
@@ -1845,6 +1855,7 @@ export function App({
       },
     });
     dashboardRef.current = handle;
+    setDashboardUrlState(handle.url);
     return handle.url;
   }, [
     loop,
@@ -1862,6 +1873,7 @@ export function App({
     const h = dashboardRef.current;
     if (!h) return;
     dashboardRef.current = null;
+    setDashboardUrlState(null);
     try {
       await h.close();
     } catch {
@@ -1876,6 +1888,26 @@ export function App({
   const getDashboardUrl = useCallback((): string | null => {
     return dashboardRef.current?.url ?? null;
   }, []);
+
+  // Mirror of the dashboard URL into React state so the StatsPanel
+  // header can render a clickable pill the moment the server is up.
+  // Updated by both the auto-start effect below and the explicit
+  // /dashboard slash path (via startDashboard).
+  const [dashboardUrl, setDashboardUrlState] = useState<string | null>(null);
+
+  // Auto-start the dashboard once the TUI is mounted unless the user
+  // opted out with --no-dashboard. The whole point is discoverability:
+  // most users had no idea /dashboard existed, so the URL needs to be
+  // visible from the first render. startDashboard updates the React
+  // state itself, so we just fire-and-forget. Failures stay silent —
+  // a missing dashboard never blocks the TUI.
+  useEffect(() => {
+    if (noDashboard) return;
+    if (dashboardRef.current) return;
+    startDashboard().catch(() => {
+      /* silent — TUI keeps working without the dashboard */
+    });
+  }, [noDashboard, startDashboard]);
 
   // Tear the dashboard down on unmount so the port doesn't leak when
   // the TUI exits via /exit, Ctrl+C, etc.
@@ -3760,6 +3792,7 @@ export function App({
             updateAvailable={updateAvailable}
             proArmed={proArmed}
             escalated={turnOnPro}
+            dashboardUrl={dashboardUrl}
           />
           <Static items={historical}>
             {(item) => <EventRow key={item.id} event={item} projectRoot={currentRootDir} />}

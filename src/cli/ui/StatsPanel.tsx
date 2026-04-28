@@ -111,6 +111,16 @@ export interface StatsPanelProps {
    * escalated` pill. Clears at turn end.
    */
   escalated?: boolean;
+  /**
+   * Live URL of the embedded web dashboard, or null when the server
+   * isn't running. Renders as a dedicated row below the header with
+   * a one-line description of what the dashboard offers — without
+   * that explanation users see "↗ http://..." and have no idea what
+   * clicking it does. URL is wrapped in an OSC 8 hyperlink so modern
+   * terminals make it Cmd/Ctrl-clickable; older ones just show the
+   * bare URL, which is still copy-pasteable.
+   */
+  dashboardUrl?: string | null;
 }
 
 /**
@@ -144,6 +154,7 @@ export function StatsPanel({
   busy,
   proArmed,
   escalated,
+  dashboardUrl,
 }: StatsPanelProps) {
   const branchOn = (branchBudget ?? 1) > 1;
   const ctxMax = DEEPSEEK_CONTEXT_TOKENS[model] ?? DEFAULT_CONTEXT_TOKENS;
@@ -184,6 +195,7 @@ export function StatsPanel({
         escalated={escalated ?? false}
         animate={false}
       />
+      {dashboardUrl ? <DashboardRow url={dashboardUrl} narrow={narrow} /> : null}
       {narrow ? (
         <StackedMetrics
           summary={summary}
@@ -315,6 +327,46 @@ function Header({
       </Text>
     </Box>
   );
+}
+
+/**
+ * Dedicated row for the web dashboard URL. Lives between the header
+ * and the metrics row so the URL never competes for space with the
+ * version + model + mode pills, and so a one-line description is
+ * possible — without that context users don't know what they'd open.
+ * The URL itself is wrapped in an OSC 8 hyperlink (Cmd/Ctrl-clickable
+ * in iTerm2 / WezTerm / Windows Terminal / VS Code / recent
+ * gnome-terminal). Terminals that strip the escape just see the bare
+ * URL, which is still copy-pasteable.
+ */
+function DashboardRow({ url, narrow }: { url: string; narrow: boolean }) {
+  return (
+    <Box marginTop={narrow ? 0 : 1}>
+      <Text color={COLOR.info}>{"◇ web   "}</Text>
+      <Text color="cyan" bold>
+        {hyperlink(url, url)}
+      </Text>
+      {!narrow ? (
+        <Text dimColor>
+          {"   open the dashboard in a browser (chat · files · stats · settings)"}
+        </Text>
+      ) : null}
+    </Box>
+  );
+}
+
+/**
+ * Wrap text in an OSC 8 hyperlink escape — modern terminals (iTerm2,
+ * WezTerm, Windows Terminal, VS Code, recent gnome-terminal) render
+ * the text underlined and make it Cmd/Ctrl-clickable. Older or strict
+ * terminals strip the escape and just show the bare text. Either way,
+ * the URL is also visible on first launch via the `▸ dashboard ready`
+ * info row, so click-or-copy both work.
+ */
+function hyperlink(url: string, label: string): string {
+  const ESC = "\u001b";
+  const ST = `${ESC}\\`;
+  return `${ESC}]8;;${url}${ST}${label}${ESC}]8;;${ST}`;
 }
 
 /** Solid-background tag, used for primary mode + pro indicators. */

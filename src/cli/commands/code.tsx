@@ -53,6 +53,8 @@ export interface CodeOptions {
    * reasoning surfaced explicitly can pass `--harvest`.
    */
   harvest?: boolean;
+  /** Suppress the auto-launched embedded web dashboard. */
+  noDashboard?: boolean;
 }
 
 export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
@@ -153,5 +155,6 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
     codeMode: { rootDir, jobs, reregisterTools: registerRootedTools },
     forceResume: opts.forceResume,
     forceNew: opts.forceNew,
+    noDashboard: opts.noDashboard,
   });
 }

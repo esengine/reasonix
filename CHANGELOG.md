@@ -3,6 +3,33 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.7] — 2026-04-28
+
+**Headline:** Dashboard discoverability. Most users had no idea
+`/dashboard` existed — the URL is now visible from the first turn,
+on its own row in the status panel, with a one-line description of
+what the dashboard actually offers. Clickable in OSC-8-aware
+terminals (iTerm2, WezTerm, Windows Terminal, VS Code, recent
+gnome-terminal); copy-pasteable everywhere else.
+
+### TUI
+
+- Auto-launch the embedded dashboard when `reasonix code` /
+  `reasonix chat` mount. Failures are silent (a missing dashboard
+  never blocks the TUI), tear-down still happens on unmount /
+  `/dashboard stop`.
+- `--no-dashboard` opts out per-session (CI, hardened
+  environments, anyone allergic to a localhost listener).
+- New status-panel row:
+  `◇ web   http://127.0.0.1:NNNN/?token=…   open the dashboard
+  in a browser (chat · files · stats · settings)`
+  rendered between the header and the metrics so it never fights
+  for space.
+- URL wrapped in an OSC 8 hyperlink — Cmd/Ctrl-click in any
+  terminal that supports the escape; bare text otherwise.
+- `App` gains a `noDashboard` prop, `StatsPanel` a `dashboardUrl`
+  prop. Both threaded through `chatCommand` / `codeCommand`.
+
 ## [0.12.6] — 2026-04-28
 
 **Headline:** Bigger fixes for the things you actually look at:

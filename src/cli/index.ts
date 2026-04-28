@@ -101,6 +101,10 @@ program
     "--harvest",
     "Opt-in Pillar-2 plan-state extraction. Adds one flash call per turn; off by default (no preset enables it).",
   )
+  .option(
+    "--no-dashboard",
+    "Suppress the auto-launched embedded web dashboard. Default behavior boots it on TUI mount and shows the URL in the status bar (clickable in OSC-8-aware terminals).",
+  )
   .action(async (dir: string | undefined, opts) => {
     await codeCommand({
       dir,
@@ -110,6 +114,7 @@ program
       forceResume: !!opts.resume,
       forceNew: !!opts.new,
       harvest: !!opts.harvest,
+      noDashboard: opts.dashboard === false,
     });
   });
 
@@ -151,6 +156,10 @@ program
     "Global prefix applied to every MCP tool (only honored when no per-spec name is set; avoids collisions with a single anonymous server)",
   )
   .option("--no-config", "Ignore `~/.reasonix/config.json` — useful for CI or reproducing issues")
+  .option(
+    "--no-dashboard",
+    "Suppress the auto-launched embedded web dashboard. Default behavior boots it on TUI mount and shows the URL in the status bar (clickable in OSC-8-aware terminals).",
+  )
   .action(async (opts) => {
     const defaults = resolveDefaults({
       model: opts.model,
@@ -184,6 +193,7 @@ program
       mcpPrefix: opts.mcpPrefix,
       forceResume: continueOpts.forceResume,
       forceNew: !!opts.new,
+      noDashboard: opts.dashboard === false,
     });
   });
 
