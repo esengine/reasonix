@@ -181,6 +181,48 @@ const pro: SlashHandler = (args, loop, ctx) => {
 // internal constant renames).
 const ESCALATION_MODEL_ID = "deepseek-v4-pro";
 
+const budget: SlashHandler = (args, loop) => {
+  const arg = args[0]?.trim() ?? "";
+  // Bare /budget → status. No-cap state is the default Reasonix ships
+  // with, so the message stays calm rather than making it sound like
+  // a missing config.
+  if (arg === "") {
+    if (loop.budgetUsd === null) {
+      return {
+        info: "no session budget set — Reasonix will keep going until you stop it. Set one with: /budget <usd>   (e.g. /budget 5)",
+      };
+    }
+    const spent = loop.stats.totalCost;
+    const pct = (spent / loop.budgetUsd) * 100;
+    return {
+      info: `budget: $${spent.toFixed(4)} of $${loop.budgetUsd.toFixed(2)} (${pct.toFixed(1)}%) · /budget off to clear, /budget <usd> to change`,
+    };
+  }
+  // Explicit clear.
+  if (arg === "off" || arg === "none" || arg === "0") {
+    loop.setBudget(null);
+    return { info: "budget → off (no cap)" };
+  }
+  // Strip a leading $ since users will type it half the time.
+  const cleaned = arg.replace(/^\$/, "");
+  const usd = Number(cleaned);
+  if (!Number.isFinite(usd) || usd <= 0) {
+    return {
+      info: `usage: /budget <usd>   (got "${arg}" — must be a positive number, e.g. /budget 5 or /budget 12.50)`,
+    };
+  }
+  loop.setBudget(usd);
+  const spent = loop.stats.totalCost;
+  if (spent >= usd) {
+    return {
+      info: `▲ budget → $${usd.toFixed(2)} but already spent $${spent.toFixed(4)}. Next turn will be refused — bump the cap higher to keep going, or end the session.`,
+    };
+  }
+  return {
+    info: `budget → $${usd.toFixed(2)}  (so far: $${spent.toFixed(4)} · warns at 80%, refuses next turn at 100% · /budget off to clear)`,
+  };
+};
+
 export const handlers: Record<string, SlashHandler> = {
   model,
   models,
@@ -189,4 +231,5 @@ export const handlers: Record<string, SlashHandler> = {
   branch,
   effort,
   pro,
+  budget,
 };

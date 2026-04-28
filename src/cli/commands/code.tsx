@@ -53,6 +53,12 @@ export interface CodeOptions {
    * reasoning surfaced explicitly can pass `--harvest`.
    */
   harvest?: boolean;
+  /**
+   * Soft USD spend cap. Off by default. Same semantics as `chat`:
+   * warns at 80%, refuses next turn at 100%. Mid-session adjustable
+   * via `/budget <usd>` slash command.
+   */
+  budgetUsd?: number;
   /** Suppress the auto-launched embedded web dashboard. */
   noDashboard?: boolean;
 }
@@ -148,6 +154,7 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
   await chatCommand({
     model: opts.model ?? "deepseek-v4-flash",
     harvest: opts.harvest ?? false,
+    budgetUsd: opts.budgetUsd,
     system: codeSystemPrompt(rootDir, { hasSemanticSearch: semantic.enabled }),
     transcript: opts.transcript,
     session,

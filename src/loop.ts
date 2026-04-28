@@ -226,6 +226,18 @@ export interface CacheFirstLoopOptions {
    */
   autoEscalate?: boolean;
   /**
+   * Soft USD budget for the entire session. When set, the loop:
+   *   - Emits a one-shot warning event when cumulative cost crosses 80%
+   *   - Refuses to run the next turn once cumulative cost ≥ budget,
+   *     yielding an error that explains how to bump or clear the cap
+   *
+   * Default `undefined` — no cap, no warnings. Reasonix is the cost-
+   * focused agent; the budget is opt-in so users new to the tool
+   * don't get blocked at $0.50 wondering what happened, but heavy /
+   * headless / CI users have a clean circuit breaker available.
+   */
+  budgetUsd?: number;
+  /**
    * Session name. When set, the loop pre-loads the session's prior messages
    * into its log on construction, and appends every new log entry to
    * `~/.reasonix/sessions/<name>.jsonl` so the next run can resume.
@@ -308,6 +320,19 @@ export class CacheFirstLoop {
    * flip it live alongside `model`.
    */
   autoEscalate = true;
+  /**
+   * Soft USD budget — see {@link CacheFirstLoopOptions.budgetUsd}.
+   * Mutable so `/budget` slash can set / change / clear it mid-session.
+   * `null` (the default) disables all budget checks.
+   */
+  budgetUsd: number | null;
+  /**
+   * Set the first time a turn crosses 80% of the budget so the warning
+   * doesn't repeat every turn afterwards. Cleared by `setBudget` (any
+   * change re-arms the warning, including raising the cap above the
+   * current spend).
+   */
+  private _budgetWarned = false;
   sessionName: string | null;
 
   /**
@@ -381,6 +406,8 @@ export class CacheFirstLoop {
     this.model = opts.model ?? "deepseek-v4-flash";
     this.reasoningEffort = opts.reasoningEffort ?? "max";
     if (opts.autoEscalate !== undefined) this.autoEscalate = opts.autoEscalate;
+    this.budgetUsd =
+      typeof opts.budgetUsd === "number" && opts.budgetUsd > 0 ? opts.budgetUsd : null;
     // Iter cap is a safety net, not the primary stop condition. The
     // primary stop is the token-context guard inside step(): after
     // every model response we check whether the prompt is already past
@@ -708,6 +735,17 @@ export class CacheFirstLoop {
   }
 
   /**
+   * Set / change / clear the soft USD budget. `null` (or any non-
+   * positive number) disables the cap entirely. Re-arms the 80%
+   * warning so a user who bumps the cap mid-session sees a fresh
+   * threshold message at the new boundary.
+   */
+  setBudget(usd: number | null): void {
+    this.budgetUsd = typeof usd === "number" && usd > 0 ? usd : null;
+    this._budgetWarned = false;
+  }
+
+  /**
    * Arm pro for the next turn (consumed at turn start). Called by
    * `/pro`. Idempotent — repeated calls stay armed, `disarmPro()`
    * clears. Separate from `/preset max` which persistently switches
@@ -906,6 +944,30 @@ export class CacheFirstLoop {
   }
 
   async *step(userInput: string): AsyncGenerator<LoopEvent> {
+    // Budget gate runs FIRST, before any per-turn state mutation, so a
+    // refusal leaves the loop unchanged and the user can correct the
+    // cap and re-issue. Default `null` short-circuits the whole check
+    // so the no-budget path is one comparison, no behavior delta.
+    if (this.budgetUsd !== null) {
+      const spent = this.stats.totalCost;
+      if (spent >= this.budgetUsd) {
+        yield {
+          turn: this._turn,
+          role: "error",
+          content: "",
+          error: `session budget exhausted — spent $${spent.toFixed(4)} ≥ cap $${this.budgetUsd.toFixed(2)}. Bump the cap with /budget <usd>, clear it with /budget off, or end the session.`,
+        };
+        return;
+      }
+      if (!this._budgetWarned && spent >= this.budgetUsd * 0.8) {
+        this._budgetWarned = true;
+        yield {
+          turn: this._turn,
+          role: "warning",
+          content: `▲ budget 80% used — $${spent.toFixed(4)} of $${this.budgetUsd.toFixed(2)}. Next turn or two likely trips the cap.`,
+        };
+      }
+    }
     this._turn++;
     this.scratch.reset();
     // A fresh user turn is a new intent — don't let StormBreaker's

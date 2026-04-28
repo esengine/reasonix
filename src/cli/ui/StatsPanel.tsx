@@ -121,6 +121,14 @@ export interface StatsPanelProps {
    * bare URL, which is still copy-pasteable.
    */
   dashboardUrl?: string | null;
+  /**
+   * Active session USD budget cap, or `null` when the user hasn't set
+   * one. When present the panel renders a `$X.XX / $Y.YY (Z%)` row
+   * that turns amber past 80% and red past 100% — the same thresholds
+   * the loop uses to warn / refuse. Hidden when null so the default
+   * (no-cap) install doesn't have a confusing "no budget" line.
+   */
+  budgetUsd?: number | null;
 }
 
 /**
@@ -155,6 +163,7 @@ export function StatsPanel({
   proArmed,
   escalated,
   dashboardUrl,
+  budgetUsd,
 }: StatsPanelProps) {
   const branchOn = (branchBudget ?? 1) > 1;
   const ctxMax = DEEPSEEK_CONTEXT_TOKENS[model] ?? DEFAULT_CONTEXT_TOKENS;
@@ -213,6 +222,29 @@ export function StatsPanel({
           coldStart={coldStart}
         />
       )}
+      {budgetUsd !== null && budgetUsd !== undefined ? (
+        <BudgetRow spent={summary.totalCostUsd} cap={budgetUsd} />
+      ) : null}
+    </Box>
+  );
+}
+
+/**
+ * One-row spend-vs-cap indicator. Hidden when no budget is set so
+ * the no-cap default doesn't clutter the panel. Color thresholds
+ * match the loop's: amber at 80% (warn fired), red at 100% (next
+ * turn refused).
+ */
+function BudgetRow({ spent, cap }: { spent: number; cap: number }) {
+  const pct = Math.max(0, (spent / cap) * 100);
+  const color = pct >= 100 ? "#f87171" : pct >= 80 ? "#fbbf24" : "#94a3b8";
+  return (
+    <Box>
+      <Text dimColor>{"  budget  "}</Text>
+      <Text color={color}>
+        {`$${spent.toFixed(4)} / $${cap.toFixed(2)}`}
+        <Text dimColor>{`  (${pct.toFixed(0)}%)`}</Text>
+      </Text>
     </Box>
   );
 }

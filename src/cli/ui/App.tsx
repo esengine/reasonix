@@ -99,6 +99,8 @@ export interface AppProps {
   transcript?: string;
   harvest?: boolean;
   branch?: number;
+  /** Soft USD spend cap; undefined → no cap. See CacheFirstLoopOptions.budgetUsd. */
+  budgetUsd?: number;
   session?: string;
   /**
    * Pre-populated tool registry (e.g. from bridgeMcpTools()). When present,
@@ -214,6 +216,7 @@ export function App({
   transcript,
   harvest,
   branch,
+  budgetUsd,
   session,
   tools,
   mcpSpecs,
@@ -735,6 +738,7 @@ export function App({
       model,
       harvest,
       branch,
+      budgetUsd,
       session,
       hooks: hookList,
       hookCwd: currentRootDir,
@@ -745,7 +749,7 @@ export function App({
     });
     loopRef.current = l;
     return l;
-  }, [model, system, harvest, branch, session, tools, codeMode]);
+  }, [model, system, harvest, branch, budgetUsd, session, tools, codeMode]);
 
   // Keep the loop's hook list in sync after a `/hooks reload`. The
   // loop's field is intentionally mutable for exactly this case —
@@ -3920,6 +3924,7 @@ export function App({
             proArmed={proArmed}
             escalated={turnOnPro}
             dashboardUrl={dashboardUrl}
+            budgetUsd={loop.budgetUsd}
           />
           <Static items={historical}>
             {(item) => <EventRow key={item.id} event={item} projectRoot={currentRootDir} />}

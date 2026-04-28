@@ -40,6 +40,13 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     summary: "arm v4-pro for the NEXT turn only (one-shot · auto-disarms after turn)",
     argCompleter: ["off"],
   },
+  {
+    cmd: "budget",
+    argsHint: "[usd|off]",
+    summary:
+      "session USD cap — warns at 80%, refuses next turn at 100%. Off by default. /budget alone shows status",
+    argCompleter: ["off", "1", "5", "10", "20", "50"],
+  },
   { cmd: "mcp", summary: "list MCP servers + tools attached to this session" },
   {
     cmd: "resource",

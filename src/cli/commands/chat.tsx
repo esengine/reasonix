@@ -38,6 +38,13 @@ export interface ChatOptions {
   transcript?: string;
   harvest?: boolean;
   branch?: number;
+  /**
+   * Soft USD cap on session spend. Undefined → no cap (default).
+   * The loop warns once at 80% and refuses to start a new turn at
+   * 100%. Users can bump or clear via `/budget <usd>` / `/budget off`
+   * mid-session.
+   */
+  budgetUsd?: number;
   session?: string;
   /** Zero or more MCP server specs. Each: `"name=cmd args..."` or `"cmd args..."`. */
   mcp?: string[];
@@ -155,6 +162,7 @@ function Root({
         transcript={appProps.transcript}
         harvest={appProps.harvest}
         branch={appProps.branch}
+        budgetUsd={appProps.budgetUsd}
         session={appProps.session}
         tools={tools}
         mcpSpecs={mcpSpecs}

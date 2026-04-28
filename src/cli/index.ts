@@ -41,6 +41,24 @@ The signal isn't a topic list — it's: "if I'm wrong about this, is it because 
 
 ${ESCALATION_CONTRACT}`;
 
+/**
+ * Validate a `--budget` flag value. Returns `undefined` (no cap) when
+ * unset, NaN, or non-positive — the loop interprets `undefined` as
+ * "no budget", so a malformed flag falls back to the default rather
+ * than aborting the launch. The slash command uses the same lenient
+ * parse so behavior matches at runtime.
+ */
+function parseBudgetFlag(raw: number | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  if (!Number.isFinite(raw) || raw <= 0) {
+    process.stderr.write(
+      `▲ ignoring --budget=${raw} (must be a positive number) — running with no cap\n`,
+    );
+    return undefined;
+  }
+  return raw;
+}
+
 const program = new Command();
 program
   .name("reasonix")
@@ -102,6 +120,11 @@ program
     "Opt-in Pillar-2 plan-state extraction. Adds one flash call per turn; off by default (no preset enables it).",
   )
   .option(
+    "--budget <usd>",
+    "Soft USD cap on session spend. Off by default. Warns at 80%, refuses next turn at 100%. Mid-session: /budget <usd> or /budget off.",
+    (v) => Number.parseFloat(v),
+  )
+  .option(
     "--no-dashboard",
     "Suppress the auto-launched embedded web dashboard. Default behavior boots it on TUI mount and shows the URL in the status bar (clickable in OSC-8-aware terminals).",
   )
@@ -114,6 +137,7 @@ program
       forceResume: !!opts.resume,
       forceNew: !!opts.new,
       harvest: !!opts.harvest,
+      budgetUsd: parseBudgetFlag(opts.budget),
       noDashboard: opts.dashboard === false,
     });
   });
@@ -136,6 +160,11 @@ program
     "--branch <n>",
     "Self-consistency: run N parallel samples per turn (N× cost). Manual only — never auto-enabled.",
     (v) => Number.parseInt(v, 10),
+  )
+  .option(
+    "--budget <usd>",
+    "Soft USD cap on session spend. Off by default. Warns at 80%, refuses next turn at 100%. Mid-session: /budget <usd> or /budget off.",
+    (v) => Number.parseFloat(v),
   )
   .option("--session <name>", "Use a named session (default: from config, usually 'default').")
   .option("--no-session", "Disable session persistence for this run (ephemeral chat)")
@@ -188,6 +217,7 @@ program
       transcript: opts.transcript,
       harvest: defaults.harvest,
       branch: defaults.branch,
+      budgetUsd: parseBudgetFlag(opts.budget),
       session: continueOpts.session,
       mcp: defaults.mcp,
       mcpPrefix: opts.mcpPrefix,
@@ -208,6 +238,11 @@ program
     "--branch <n>",
     "Self-consistency: run N parallel samples per turn and pick the most confident",
     (v) => Number.parseInt(v, 10),
+  )
+  .option(
+    "--budget <usd>",
+    "Soft USD cap on session spend. Off by default. Refuses to start a new turn once cumulative cost ≥ cap.",
+    (v) => Number.parseFloat(v),
   )
   .option("--transcript <path>", "Write a JSONL transcript to this path for replay/diff")
   .option(
@@ -236,6 +271,7 @@ program
       system: applyMemoryStack(opts.system, process.cwd()),
       harvest: defaults.harvest,
       branch: defaults.branch,
+      budgetUsd: parseBudgetFlag(opts.budget),
       transcript: opts.transcript,
       mcp: defaults.mcp,
       mcpPrefix: opts.mcpPrefix,

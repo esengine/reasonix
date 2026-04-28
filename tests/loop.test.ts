@@ -1081,4 +1081,164 @@ describe("CacheFirstLoop (streaming) — tool_call_delta emission", () => {
     expect(toolResults[1]?.name).toBe("write_marker");
     expect(toolResults[1]?.content).toContain("deferred");
   });
+
+  describe("session USD budget", () => {
+    // The gate runs purely against `loop.stats.totalCost`, which sums
+    // the public `turns` array. Tests inject synthetic turns directly
+    // instead of pumping fake API responses sized to land in the
+    // narrow 80%-100% window — keeps each case focused on the
+    // gate's behavior without coupling to v4-flash token pricing.
+    function injectCost(loop: CacheFirstLoop, costUsd: number): void {
+      // SessionStats.turns is `readonly` at the type level (you can't
+      // reassign the field), but the array itself is mutable — the
+      // public API normally appends via recordTurn(). For tests we
+      // bypass that path; the only fields the gate reads are summed
+      // via `t.cost`, so the rest is filler.
+      (loop.stats.turns as unknown as Array<{ cost: number; model: string; usage: unknown }>).push({
+        cost: costUsd,
+        model: loop.model,
+        usage: {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          promptCacheHitTokens: 0,
+          promptCacheMissTokens: 0,
+          cacheHitRatio: 0,
+        },
+      });
+    }
+
+    it("default behavior: budgetUsd undefined → no checks, no events", async () => {
+      const client = makeClient([{ content: "ok" }]);
+      const loop = new CacheFirstLoop({
+        client,
+        prefix: new ImmutablePrefix({ system: "s" }),
+        stream: false,
+        // no budgetUsd
+      });
+      expect(loop.budgetUsd).toBeNull();
+      injectCost(loop, 9999); // even huge fake spend doesn't matter
+      const roles: string[] = [];
+      for await (const ev of loop.step("q")) roles.push(ev.role);
+      expect(roles).not.toContain("error");
+      expect(roles.filter((r) => r === "warning")).toHaveLength(0);
+    });
+
+    it("warns once when cumulative cost crosses 80% of the cap", async () => {
+      const client = makeClient([{ content: "ok" }]);
+      const loop = new CacheFirstLoop({
+        client,
+        prefix: new ImmutablePrefix({ system: "s" }),
+        stream: false,
+        budgetUsd: 1.0,
+      });
+      injectCost(loop, 0.85); // 85% of cap
+
+      const roles: string[] = [];
+      const warnings: string[] = [];
+      for await (const ev of loop.step("a")) {
+        roles.push(ev.role);
+        if (ev.role === "warning") warnings.push(ev.content);
+      }
+      expect(warnings.filter((w) => /budget 80% used/.test(w))).toHaveLength(1);
+      expect(roles).toContain("assistant_final");
+    });
+
+    it("does not repeat the 80% warning on subsequent turns", async () => {
+      const client = makeClient([{ content: "ok" }, { content: "ok" }]);
+      const loop = new CacheFirstLoop({
+        client,
+        prefix: new ImmutablePrefix({ system: "s" }),
+        stream: false,
+        budgetUsd: 1.0,
+      });
+      injectCost(loop, 0.85);
+      // Turn 1 fires warn.
+      let turn1Warns = 0;
+      for await (const ev of loop.step("a")) {
+        if (ev.role === "warning" && /budget/.test(ev.content)) turn1Warns++;
+      }
+      // Turn 2 starts at the same 0.85 spent (real turn cost is tiny
+      // with our fake fetch's default 100/20 token usage) — gate still
+      // sees >80% but `_budgetWarned` is sticky, so no repeat.
+      let turn2Warns = 0;
+      for await (const ev of loop.step("b")) {
+        if (ev.role === "warning" && /budget/.test(ev.content)) turn2Warns++;
+      }
+      expect(turn1Warns).toBe(1);
+      expect(turn2Warns).toBe(0);
+    });
+
+    it("refuses the next turn once cumulative cost ≥ cap", async () => {
+      const client = makeClient([{ content: "ok" }]);
+      const loop = new CacheFirstLoop({
+        client,
+        prefix: new ImmutablePrefix({ system: "s" }),
+        stream: false,
+        budgetUsd: 1.0,
+      });
+      injectCost(loop, 1.5);
+
+      const events: { role: string; error?: string }[] = [];
+      for await (const ev of loop.step("a")) {
+        events.push({ role: ev.role, error: ev.error });
+      }
+      expect(events).toHaveLength(1);
+      expect(events[0]?.role).toBe("error");
+      expect(events[0]?.error).toMatch(/budget exhausted/);
+      // Gate runs before any state mutation: only the injected fake
+      // turn remains, no real model call recorded.
+      expect(loop.stats.turns).toHaveLength(1);
+    });
+
+    it("setBudget(null) clears the cap and unblocks subsequent turns", async () => {
+      const client = makeClient([{ content: "ok" }]);
+      const loop = new CacheFirstLoop({
+        client,
+        prefix: new ImmutablePrefix({ system: "s" }),
+        stream: false,
+        budgetUsd: 1.0,
+      });
+      injectCost(loop, 1.5);
+      // Sanity check: the cap is currently exhausted.
+      let firstAttempt: string | null = null;
+      for await (const ev of loop.step("a")) {
+        if (ev.role === "error") firstAttempt = ev.error ?? "";
+        break;
+      }
+      expect(firstAttempt).toMatch(/budget exhausted/);
+      // Clear the cap and try again.
+      loop.setBudget(null);
+      const roles: string[] = [];
+      for await (const ev of loop.step("a")) roles.push(ev.role);
+      expect(roles).not.toContain("error");
+      expect(roles).toContain("assistant_final");
+    });
+
+    it("setBudget re-arms the 80% warning when the cap moves", async () => {
+      const client = makeClient([{ content: "ok" }, { content: "ok" }]);
+      const loop = new CacheFirstLoop({
+        client,
+        prefix: new ImmutablePrefix({ system: "s" }),
+        stream: false,
+        budgetUsd: 1.0,
+      });
+      injectCost(loop, 0.85); // 85% of $1
+      // Turn 1: warn fires (sticky after this).
+      let turn1Warns = 0;
+      for await (const ev of loop.step("a")) {
+        if (ev.role === "warning" && /budget/.test(ev.content)) turn1Warns++;
+      }
+      expect(turn1Warns).toBe(1);
+      // Lower the cap further so spent (0.85) is even further past
+      // the new 80% mark. setBudget must reset the sticky flag so
+      // the user sees a fresh warning at the new threshold.
+      loop.setBudget(0.95);
+      let turn2Warns = 0;
+      for await (const ev of loop.step("b")) {
+        if (ev.role === "warning" && /budget/.test(ev.content)) turn2Warns++;
+      }
+      expect(turn2Warns).toBe(1);
+    });
+  });
 });
