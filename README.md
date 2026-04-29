@@ -154,6 +154,9 @@ Three things you'd come to Reasonix for, that nothing else combines:
 | Cross-session cost dashboard | **yes** (`/stats`) | — | — | — | — |
 | Sandbox boundary enforcement | **strict** (refuses `..` escape) | yes | partial | yes | partial |
 
+<details>
+<summary><strong>When reasonix is the wrong choice · DeepSeek/Anthropic-compat caveats · vs Aider/Cline/Continue</strong></summary>
+
 ### Pick something else when
 
 - **You want multi-provider flexibility** (mix Claude / GPT / Gemini /
@@ -240,6 +243,8 @@ handful of DeepSeek-specific quirks generic loops don't handle:
 > the loop is designed around. Reasonix isn't yet-another agent
 > CLI — it's an agent CLI built around DeepSeek's specific cache
 > mechanic and pricing model.
+
+</details>
 
 ---
 
@@ -596,6 +601,9 @@ rendering, retries.
 
 ## Commands inside the session
 
+<details>
+<summary><strong>Slash command reference</strong> (click to expand)</summary>
+
 **Core**
 
 | command | what it does |
@@ -671,6 +679,8 @@ rendering, retries.
 - `Esc` — abort the current turn (stops the API call, cancels any
   in-flight tool, rejects pending MCP requests)
 - `y` / `n` on confirm prompts — hotkey accept / reject
+
+</details>
 
 ---
 
@@ -773,6 +783,9 @@ Supported transports: **stdio** (local command) and **HTTP+SSE**
 
 ## CLI reference
 
+<details>
+<summary><strong>Commands, flags, env vars</strong> (click to expand)</summary>
+
 ```bash
 npx reasonix code [path]                 # coding mode scoped to path (default: cwd)
 npx reasonix                             # chat (uses saved config)
@@ -812,9 +825,15 @@ export REASONIX_SEARCH=off              # disable web_search / web_fetch
 export REASONIX_UI=plain                # disable live rows (ghosting workaround)
 ```
 
+</details>
+
 ---
 
 ## Library usage
+
+<details>
+<summary><strong>Programmatic API — embed reasonix in your own Node project</strong> (click to expand)</summary>
+
 
 ```ts
 import {
@@ -859,6 +878,8 @@ console.log(loop.stats.summary());
 callers who want the `reasonix code` loop wiring without the CLI
 wrapper. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for
 internals.
+
+</details>
 
 ---
 
