@@ -1,24 +1,8 @@
-/**
- * Concrete `EventSource` adapter — reads the kernel event log sidecar
- * back as a typed Event stream. Matches `JsonlEventSink`'s on-disk
- * format: one JSON Event per line, append-only.
- *
- * Used by replay / projection consumers — anything that wants to
- * reconstruct session state from the durable event log without going
- * through loop or transcript.
- */
-
 import { existsSync, readFileSync } from "node:fs";
 import type { Event } from "../core/events.js";
 import type { EventSource } from "../ports/event-sink.js";
 import { eventLogPath } from "./event-sink-jsonl.js";
 
-/**
- * Parse a JSONL event log file into an Event array. Skips blank lines
- * and unparseable rows silently (the live writer may have crashed mid-
- * line). Caller decides what to do with the result — typically pipe
- * through `core/reducers.ts:apply` to project into views.
- */
 export function readEventLogFile(path: string): Event[] {
   if (!existsSync(path)) return [];
   const raw = readFileSync(path, "utf8");
@@ -32,8 +16,7 @@ export function readEventLogFile(path: string): Event[] {
         out.push(ev);
       }
     } catch {
-      // Malformed line — partial write or truncation. Skip silently
-      // and carry on; replay should be best-effort, not fail-stop.
+      /* malformed mid-line write — best-effort skip */
     }
   }
   return out;

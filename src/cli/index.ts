@@ -9,6 +9,7 @@ import { codeCommand } from "./commands/code.js";
 import { commitCommand } from "./commands/commit.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { eventsCommand } from "./commands/events.js";
 import { indexCommand } from "./commands/index.js";
 import { mcpInspectCommand } from "./commands/mcp-inspect.js";
 import { mcpListCommand } from "./commands/mcp.js";
@@ -319,6 +320,30 @@ program
   .option("-v, --verbose", "Include system prompts + tool-call metadata when inspecting")
   .action((name: string | undefined, opts) => {
     sessionsCommand({ name, verbose: !!opts.verbose });
+  });
+
+program
+  .command("events <name>")
+  .description(
+    "Pretty-print the kernel event-log sidecar (~/.reasonix/sessions/<name>.events.jsonl) — every typed Event the session produced.",
+  )
+  .option("--type <type>", "Show only events of this type (e.g., tool.intent)")
+  .option("--since <id>", "Show only events with id >= N", (v) => Number.parseInt(v, 10))
+  .option("--tail <n>", "Show only the last N events", (v) => Number.parseInt(v, 10))
+  .option("--json", "Emit raw JSONL passthrough instead of formatted lines (for jq pipelines)")
+  .option(
+    "--projection",
+    "Replace the listing with the final reduced ProjectionSet (conversation, budget, plan, …)",
+  )
+  .action((name: string, opts) => {
+    eventsCommand({
+      name,
+      type: opts.type,
+      since: Number.isFinite(opts.since) ? opts.since : undefined,
+      tail: Number.isFinite(opts.tail) ? opts.tail : undefined,
+      json: !!opts.json,
+      projection: !!opts.projection,
+    });
   });
 
 program

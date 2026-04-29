@@ -59,21 +59,16 @@ describe("event-log replay round-trip", () => {
     }
     await sink.close();
 
-    // Read back from disk + project.
     const events = readEventLogFile(path);
     expect(events.length).toBeGreaterThan(0);
     const projections = replay(events);
 
-    // ConversationView reconstruction:
-    //   user message, assistant final, tool result.
     const msgs = projections.conversation.messages;
     expect(msgs.length).toBe(3);
     expect(msgs[0]).toMatchObject({ role: "user", content: "list files in src" });
     expect(msgs[1]).toMatchObject({ role: "assistant", content: "Let me check." });
     expect(msgs[2]).toMatchObject({ role: "tool", content: "App.tsx\nloop.ts\n..." });
     expect(projections.conversation.pendingToolCalls).toEqual([]);
-
-    // SessionMetaView pinned the session name + last turn we touched.
     expect(projections.session.name).toBe("rt");
     expect(projections.session.currentTurn).toBe(1);
   });
