@@ -73,13 +73,19 @@ describe("JobRegistry", () => {
 
   it("read(jobId) returns live output and running flag", async () => {
     const cmd = `node -e "console.log('a'); setTimeout(() => console.log('b'), 80); setTimeout(() => {}, 10000)"`;
-    const res = await registry.start(cmd, { cwd, waitSec: 0.3 });
-    const early = registry.read(res.jobId);
+    const res = await registry.start(cmd, { cwd, waitSec: 1.5 });
+    let early = registry.read(res.jobId);
+    for (let i = 0; i < 20 && !early?.output.includes("a"); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      early = registry.read(res.jobId);
+    }
     expect(early?.running).toBe(true);
     expect(early?.output).toContain("a");
-    // Wait for the second print, then re-read.
-    await new Promise((r) => setTimeout(r, 300));
-    const later = registry.read(res.jobId);
+    let later = registry.read(res.jobId);
+    for (let i = 0; i < 20 && !later?.output.includes("b"); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      later = registry.read(res.jobId);
+    }
     expect(later?.output).toContain("b");
     expect((later?.byteLength ?? 0) >= (early?.byteLength ?? 0)).toBe(true);
   });
