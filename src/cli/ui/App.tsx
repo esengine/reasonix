@@ -2,6 +2,11 @@ import type { WriteStream } from "node:fs";
 import * as pathMod from "node:path";
 import { Box, Text, useStdout } from "ink";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type JsonlEventSink,
+  eventLogPath,
+  openEventSink,
+} from "../../adapters/event-sink-jsonl.js";
 import { type AtUrlExpansion, expandAtMentions, expandAtUrls } from "../../at-mentions.js";
 import {
   type ApplyResult,
@@ -32,6 +37,7 @@ import {
   saveEditMode,
   saveReasoningEffort,
 } from "../../config.js";
+import { Eventizer } from "../../core/eventize.js";
 import { frameToAnsi } from "../../frame/index.js";
 import { type ResolvedHook, formatHookOutcomeMessage, loadHooks, runHooks } from "../../hooks.js";
 import { CacheFirstLoop, DeepSeekClient, ImmutablePrefix } from "../../index.js";
@@ -831,9 +837,23 @@ export function App({
       startedAt: new Date().toISOString(),
     });
   }
+  // Kernel event log sidecar — opens iff the session has a name (skip
+  // ephemeral sessions). Sink + Eventizer share lifetime with App; the
+  // for-await consumer below pipes every LoopEvent through them so a
+  // typed Event log accumulates at `~/.reasonix/sessions/<name>.events.jsonl`.
+  // Old transcript path is unchanged — this is a parallel artifact, not
+  // a replacement. Future replay / projection consumers read from here.
+  const eventSinkRef = useRef<JsonlEventSink | null>(null);
+  const eventizerRef = useRef<Eventizer | null>(null);
+  if (session && !eventSinkRef.current) {
+    eventSinkRef.current = openEventSink(eventLogPath(session));
+    eventizerRef.current = new Eventizer();
+    eventSinkRef.current.append(eventizerRef.current.emitSessionOpened(0, session, 0));
+  }
   useEffect(() => {
     return () => {
       transcriptRef.current?.end();
+      void eventSinkRef.current?.close();
     };
   }, []);
 
@@ -2952,6 +2972,24 @@ export function App({
       try {
         for await (const ev of loop.step(modelInput)) {
           writeTranscript(ev);
+          // Mirror to the kernel event log sidecar. Pure passthrough —
+          // Eventizer holds the small state (turn boundary detection +
+          // tool callId correlation) needed to translate LoopEvent
+          // shape into typed Event variants. Sink + eventizer share the
+          // App's lifetime; nothing reads the artifact yet (future
+          // replay / projection consumers will).
+          {
+            const sink = eventSinkRef.current;
+            const eventizer = eventizerRef.current;
+            if (sink && eventizer) {
+              const ctx = {
+                model: ev.stats?.model ?? loop.model ?? model,
+                prefixHash,
+                reasoningEffort: loop.reasoningEffort ?? "max",
+              };
+              for (const out of eventizer.consume(ev, ctx)) sink.append(out);
+            }
+          }
           // Mirror to dashboard SSE subscribers. Done at the top of
           // the iteration so the web sees the same sequence the TUI
           // about to render — keeps the two surfaces in lockstep.
@@ -3558,6 +3596,8 @@ export function App({
       touchedPaths,
       enterCopyMode,
       toggleCtxFooter,
+      model,
+      prefixHash,
     ],
   );
 
