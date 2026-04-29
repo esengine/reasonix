@@ -116,4 +116,40 @@ describe("markdownToFrame", () => {
     const dimCells = f.rows.flatMap((r) => [...r]).filter((c) => c.dim && c.char !== " ");
     expect(dimCells.length).toBeGreaterThan(0);
   });
+
+  // --- Tests for https://github.com/esengine/reasonix/issues/??? ---
+  // Bug: segmentsToFrame strips the trailing content space from each segment
+  // because it can't distinguish unstyled content spaces from padding spaces.
+  // These tests assert that spaces before/after inline markup are PRESERVED;
+  // they currently FAIL because the stripping is too aggressive.
+
+  it("preserves spaces before inline code spans", () => {
+    const f = markdownToFrame("use `foo()` for output", W);
+    const text = f.rows.map(rowText).join("\n");
+    expect(text).toContain("use foo()");
+  });
+
+  it("preserves spaces before bold spans", () => {
+    const f = markdownToFrame("this is **bold** text", W);
+    const text = f.rows.map(rowText).join("\n");
+    expect(text).toContain("is bold");
+  });
+
+  it("preserves spaces before italic spans", () => {
+    const f = markdownToFrame("this is *italic* text", W);
+    const text = f.rows.map(rowText).join("\n");
+    expect(text).toContain("is italic");
+  });
+
+  it("preserves spaces before link spans", () => {
+    const f = markdownToFrame("see [here](https://example.com) for details", W);
+    const text = f.rows.map(rowText).join("\n");
+    expect(text).toContain("see here");
+  });
+
+  it("preserves spaces around inline code in a realistic sentence", () => {
+    const f = markdownToFrame("Set it via `DEEPSEEK_API_KEY` env var.", W);
+    const text = f.rows.map(rowText).join("\n");
+    expect(text).toContain("via DEEPSEEK_API_KEY");
+  });
 });
