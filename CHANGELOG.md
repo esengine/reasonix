@@ -3,6 +3,42 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+**Headline:** `reasonix index` is now config-driven — what gets walked
+is defined entirely by `~/.reasonix/config.json` (with sensible
+defaults), `.gitignore` is honoured by default, and the dashboard
+Semantic tab gains a Settings card to view, edit, and dry-walk-preview
+the rules without leaving the browser. The previous behaviour
+hardcoded skip lists in `chunker.ts` and duplicated them in
+`directory_tree`; both now read from a single shared source.
+
+- feat(index): new `index` block in `ReasonixConfig` (`excludeDirs`,
+  `excludeFiles`, `excludeExts`, `excludePatterns`, `respectGitignore`,
+  `maxFileBytes`). Any field present fully replaces its default; absent
+  fields keep the default.
+- feat(index): nested `.gitignore` honoured by default — each
+  subdirectory's rules apply scoped to that subdir, so `pkg-a/.gitignore`
+  doesn't leak into `pkg-b/`.
+- feat(index): glob excludes via `picomatch` syntax in
+  `excludePatterns` (e.g. `**/*.gen.ts`, `vendor/**`, with `!negation`
+  supported).
+- feat(cli): `reasonix index` success line now prints a per-reason
+  skip breakdown (`gitignore: A · pattern: B · defaultDir: C · …`) so
+  users see what was filtered and why.
+- feat(dashboard): Semantic tab gains a collapsible **Excludes** card
+  with editable lists, gitignore toggle, max-file-size input, **Save**
+  / **Reset** / **Preview** buttons, and a per-reason sample drilldown
+  in the Preview panel.
+- feat(server): `GET /api/index-config` returns user/resolved/defaults;
+  `POST /api/index-config` persists; `POST /api/index-config/preview`
+  dry-walks the project root with a draft config and returns sample
+  paths + skip buckets.
+- refactor(tools): `directory_tree` now reuses
+  `DEFAULT_INDEX_EXCLUDES` from `src/index/config.ts` instead of its
+  own copy of the dir/binary lists; the two were already drifting.
+- deps: `picomatch ^4`, `ignore ^7`, `@types/picomatch ^4`.
+
 ## [0.16.1] — 2026-04-29
 
 **Headline:** Fix a tool-loop regression on `deepseek-chat` introduced
