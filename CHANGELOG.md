@@ -3,6 +3,64 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] — 2026-04-29
+
+**Headline:** Two real bug fixes (post-shell-confirm session lockup,
+post-workspace-switch ENOENT on edit_file), a new `/copy` mode for
+copying across multi-screen log content, an always-on context-pressure
+footer above the prompt, and width-aware chrome that stops dropping
+pills when there's clearly room. Plus a quiet refactor: shared UI
+primitives, dead-code purge in StatsPanel.
+
+- fix(loop): streaming-abort path now resets `_turnAbort` before
+  returning. Without this, a queued-submit triggered by App.tsx
+  (ShellConfirm "run once" → `loop.abort()` + `setQueuedSubmit`)
+  produced a spurious `aborted at iter 0/64 — stopped without
+  producing a summary` the moment the synthetic message reached
+  the loop, locking the session until the user `/retry`'d.
+- fix(tui): `edit_file` interceptor now reads the workspace root via
+  `currentRootDirRef` instead of capturing `currentRootDir` in a
+  stale closure. Workspace switch (`change_workspace` → modal approve)
+  rebound `read_file` / `run_command` to the new root but left the
+  interceptor pointing at the old one — `edit_file` wrote to the
+  old path while `read_file` looked in the new one, surfacing as a
+  mysterious ENOENT for a file the model had just successfully edited.
+- feat(tui): `/copy` exits the alt-screen, dumps the rendered log to
+  the main screen, and listens for any keystroke to restore. Native
+  terminal scrollback + drag-select work on the dump — solves the
+  "can't copy text that scrolled past the viewport" problem alt-screen
+  introduced. Re-entering alt-screen and bumping React state forces
+  Ink to redraw the TUI cleanly. Multiple enter/exit cycles per
+  session; React tree, event log, model session, prompt draft all
+  preserved across the toggle.
+- feat(tui): always-on context-pressure footer above the prompt —
+  `ctx ▰▰▰▱▱▱▱▱▱▱▱▱▱▱  14K/977K · 1%  ·  sys 5.8K  ·  tools 6.1K  ·  log 0`.
+  Single-row layout matches the chrome bar's `▰▱` visual language.
+  Width-aware shed for the breakdown segments (input → log → tools →
+  sys). `/context` toggles visibility (default on); the rich
+  4-color stacked breakdown is still pushed to scrollback for
+  headless / replay surfaces that don't carry the toggle callback.
+- feat(tui): chrome bar pill rendering switches from preemptive
+  `narrow = cols < 120` to width-aware greedy shed. Optional pills
+  (balance > cache > session > update) drop in priority order only
+  when `string-width` math says they won't fit — at 100 cols all
+  five render where the old code dropped three. Cache pill is now
+  default-on (cold-start dim treatment instead of hiding).
+- refactor(ui): `Bar`, `formatTokens`, `ChromeRule`, `ContextCell`
+  promoted to `src/cli/ui/primitives.tsx` (were duplicated 2-3× across
+  `StatsPanel` / `ChromeBar` / `EventLog` / `log-frame`). `CtxBreakdownBlock`
+  + `computeCtxBreakdown` extracted to `src/cli/ui/ctx-breakdown.tsx`
+  so `/context` and the footer share the same compute path. `StatsPanel`
+  shrunk from 769 → ~280 lines (dead helpers from the chrome
+  redesign era removed).
+- feat(core): v0.14 architecture scaffold — `src/core/events.ts`
+  (25-variant Event union + 7 view types), `src/core/reducers.ts`
+  (pure projections + `apply` / `replay` combinators), `src/ports/*.ts`
+  (6 ports: ModelClient, ToolHost, EventSink, MemoryStore, HookRunner,
+  CheckpointStore). Types only; zero behavior change. 19 reducer tests
+  pin the conversation / budget / plan / workspace / capabilities /
+  status / session-meta projections and prove `replay()` determinism.
+
 ## [0.13.5] — 2026-04-29
 
 **Headline:** TUI overhaul. Chrome reverts to native Ink Box +

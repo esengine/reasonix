@@ -111,10 +111,18 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       "toggle terminal mouse tracking · off by default (lets shift-drag copy work) · on enables wheel-scroll for log",
     argCompleter: ["on", "off"],
   },
+  {
+    cmd: "copy",
+    summary:
+      "freeze + dump the rendered log to main screen so terminal scrollback + drag-select can copy across viewports · any key returns",
+  },
   { cmd: "think", summary: "dump the last turn's full R1 reasoning (reasoner only)" },
   {
     cmd: "context",
-    summary: "break down where context tokens are going: system / tools / per-turn log",
+    argsHint: "[on|off]",
+    summary:
+      "toggle the always-on context-breakdown footer (system / tools / log / input). no arg → flip; on/off → force",
+    argCompleter: ["on", "off"],
   },
   { cmd: "retry", summary: "truncate & resend your last message (fresh sample)" },
   {

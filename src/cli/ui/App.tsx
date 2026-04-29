@@ -32,6 +32,7 @@ import {
   saveEditMode,
   saveReasoningEffort,
 } from "../../config.js";
+import { frameToAnsi } from "../../frame/index.js";
 import { type ResolvedHook, formatHookOutcomeMessage, loadHooks, runHooks } from "../../hooks.js";
 import { CacheFirstLoop, DeepSeekClient, ImmutablePrefix } from "../../index.js";
 import type { LoopEvent } from "../../loop.js";
@@ -60,6 +61,7 @@ import { appendUsage, defaultUsageLogPath } from "../../usage.js";
 import { AtMentionSuggestions } from "./AtMentionSuggestions.js";
 import { ChoiceConfirm, type ChoiceConfirmChoice } from "./ChoiceConfirm.js";
 import { ChromeBar } from "./ChromeBar.js";
+import { CtxFooter } from "./CtxFooter.js";
 import { EditConfirm, type EditReviewChoice } from "./EditConfirm.js";
 import { type DisplayEvent, EventRow } from "./EventLog.js";
 import { ModeStatusBar, OngoingToolRow, StatusRow, SubagentRow, UndoBanner } from "./LiveRows.js";
@@ -73,7 +75,7 @@ import { SlashArgPicker } from "./SlashArgPicker.js";
 import { SlashSuggestions } from "./SlashSuggestions.js";
 import { WelcomeBanner } from "./WelcomeBanner.js";
 import { WorkspaceConfirm, type WorkspaceConfirmChoice } from "./WorkspaceConfirm.js";
-import { useAltScreen } from "./alt-screen.js";
+import { isMouseTrackingOn, setMouseTracking, useAltScreen } from "./alt-screen.js";
 import { detectBangCommand, formatBangUserMessage } from "./bang.js";
 import {
   describeRepair,
@@ -91,6 +93,7 @@ import { handleMcpBrowseSlash } from "./mcp-browse.js";
 import { formatLongPaste } from "./paste-collapse.js";
 import { resolvePreset } from "./presets.js";
 import { type McpServerSummary, handleSlash, parseSlash, suggestSlashCommands } from "./slash.js";
+import { getStdinReader } from "./stdin-reader.js";
 import { COLOR } from "./theme.js";
 import { TickerProvider } from "./ticker.js";
 import { useCompletionPickers } from "./useCompletionPickers.js";
@@ -239,6 +242,14 @@ export function App({
   useAltScreen();
   const [historical, setHistorical] = useState<DisplayEvent[]>([]);
   const [streaming, setStreaming] = useState<DisplayEvent | null>(null);
+  // Copy-mode toggle: when true, App returns null (no Ink writes) and a
+  // useEffect dumps the rendered log to the main screen so the user can
+  // scroll terminal scrollback + drag-select across multi-screen content.
+  // Any keystroke restores alt-screen and the live TUI.
+  const [copyMode, setCopyMode] = useState(false);
+  // CtxFooter visibility — toggled by `/context`. Default ON; users who
+  // find the 3-row block intrusive can `/context` again to hide it.
+  const [ctxFooterVisible, setCtxFooterVisible] = useState(true);
 
   // Log scroll state — number of events skipped from the END.
   //   0   → at bottom (always show latest, auto-track new events)
@@ -1006,6 +1017,70 @@ export function App({
   useEffect(() => {
     currentRootDirRef.current = currentRootDir;
   }, [currentRootDir]);
+
+  // Copy-mode lifecycle: exit alt-screen on entry, dump the rendered log
+  // to main screen so terminal scrollback + native drag-select work, listen
+  // for any key to return. Re-enter alt-screen synchronously inside the
+  // key callback so the next React render lands inside the alt buffer
+  // instead of polluting main screen with TUI rows.
+  useEffect(() => {
+    if (!copyMode) return;
+    const cols = (process.stdout?.columns ?? 80) - 2;
+    const atoms = eventsToAtoms(historicalRef.current, currentRootDirRef.current, cols);
+    const lines: string[] = [];
+    for (const atom of atoms) {
+      if (atom.kind === "frame") {
+        const ansi = frameToAnsi(atom.frame);
+        if (ansi) lines.push(ansi);
+      } else {
+        lines.push(`(${atom.id ?? "ink-block"} omitted from copy dump)`);
+      }
+    }
+    const wasMouseOn = isMouseTrackingOn();
+    setMouseTracking(false);
+    process.stdout.write("\x1b[?1049l");
+    process.stdout.write("\n=== reasonix · copy mode — terminal scrollback active ===\n\n");
+    process.stdout.write(lines.join("\n"));
+    process.stdout.write("\n\n=== end of dump · press any key to return to reasonix ===\n");
+
+    const reader = getStdinReader();
+    let exited = false;
+    const restore = (): void => {
+      if (exited) return;
+      exited = true;
+      process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H");
+      if (wasMouseOn) setMouseTracking(true);
+      setCopyMode(false);
+    };
+    const unsub = reader.subscribe(() => {
+      unsub();
+      restore();
+    });
+    return () => {
+      unsub();
+      if (!exited) {
+        // Component unmounting mid-copy — leave the terminal sane.
+        process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H");
+        if (wasMouseOn) setMouseTracking(true);
+      }
+    };
+  }, [copyMode]);
+
+  const enterCopyMode = useCallback(() => {
+    setCopyMode(true);
+  }, []);
+
+  const toggleCtxFooter = useCallback(
+    (force?: boolean): boolean => {
+      let next = false;
+      setCtxFooterVisible((prev) => {
+        next = force === undefined ? !prev : force;
+        return next;
+      });
+      return force === undefined ? !ctxFooterVisible : force;
+    },
+    [ctxFooterVisible],
+  );
   useEffect(() => {
     latestVersionRef.current = latestVersion ?? null;
   }, [latestVersion]);
@@ -1663,6 +1738,11 @@ export function App({
       }
       if (!relPath) return null;
 
+      // Read root via ref so a workspace swap (which runs reregisterTools
+      // for read_file/run_command) is also visible to this interceptor —
+      // otherwise edit_file writes to the OLD root while read_file looks in
+      // the NEW one, producing ENOENT on the next read of a just-edited file.
+      const rootForEdit = currentRootDirRef.current;
       let block: EditBlock;
       if (name === "edit_file") {
         const search = typeof args.search === "string" ? args.search : "";
@@ -1674,7 +1754,7 @@ export function App({
         // the queued block is a literal whole-file overwrite. For new
         // files SEARCH stays empty — applyEditBlock's create-new sentinel.
         const content = typeof args.content === "string" ? args.content : "";
-        block = toWholeFileEditBlock(relPath, content, currentRootDir);
+        block = toWholeFileEditBlock(relPath, content, rootForEdit);
       }
 
       // Helper: apply the current block + record into history + arm
@@ -1690,8 +1770,8 @@ export function App({
       // the "result shown twice" bug reported in 0.6 (one dim info
       // row, then a nearly identical tool row directly below).
       const applyNow = (): string => {
-        const snaps = snapshotBeforeEdits([block], currentRootDir);
-        const results = applyEditBlocks([block], currentRootDir);
+        const snaps = snapshotBeforeEdits([block], rootForEdit);
+        const results = applyEditBlocks([block], rootForEdit);
         const good = results.some((r) => r.status === "applied" || r.status === "created");
         if (good) {
           recordEdit("auto", [block], results, snaps);
@@ -2563,6 +2643,8 @@ export function App({
             return fresh.length;
           },
           setCwd: (newRoot: string) => applyCwdChange(newRoot),
+          enterCopyMode,
+          toggleCtxFooter,
           latestVersion,
           refreshLatestVersion,
           models,
@@ -3474,6 +3556,8 @@ export function App({
       broadcastDashboardEvent,
       applyCwdChange,
       touchedPaths,
+      enterCopyMode,
+      toggleCtxFooter,
     ],
   );
 
@@ -4147,6 +4231,10 @@ export function App({
 
   // KeystrokeProvider is mounted by chat.tsx OUTSIDE this component
   // so `useKeystroke` calls in App's function body see the bus.
+  // Copy mode short-circuits to null so Ink emits no writes while the
+  // user is in main-screen scrollback. The useEffect on `copyMode`
+  // owns the alt-screen toggle + dump + keypress restoration.
+  if (copyMode) return null;
   return (
     <>
       <TickerProvider
@@ -4505,6 +4593,7 @@ export function App({
                   partial={slashArgContext.partial}
                 />
               ) : null}
+              {ctxFooterVisible ? <CtxFooter loop={loop} summary={summary} /> : null}
             </>
           )}
         </Box>

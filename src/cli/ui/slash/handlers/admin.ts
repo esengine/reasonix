@@ -218,6 +218,14 @@ const cwd: SlashHandler = (args, _loop, ctx) => {
  * log. Turn ON for wheel-scroll-to-navigate-history. Bare `/mouse`
  * reports the current state.
  */
+const copy: SlashHandler = (_args, _loop, ctx) => {
+  if (!ctx.enterCopyMode) {
+    return { info: "/copy is not available in this context (TUI-internal)." };
+  }
+  ctx.enterCopyMode();
+  return {};
+};
+
 const mouse: SlashHandler = (args) => {
   const arg = (args[0] ?? "").toLowerCase();
   if (arg === "") {
@@ -249,4 +257,5 @@ export const handlers: Record<string, SlashHandler> = {
   update,
   stats,
   mouse,
+  copy,
 };

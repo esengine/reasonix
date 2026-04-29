@@ -1385,6 +1385,13 @@ export class CacheFirstLoop {
         if (signal.aborted) {
           this.autoCompactToolResultsOnTurnEnd();
           yield { turn: this._turn, role: "done", content: "" };
+          // Reset the controller so the carry-abort check at the top of
+          // the NEXT step() doesn't inherit this turn's aborted state.
+          // Without this, a queued-submit triggered by App.tsx (e.g.
+          // ShellConfirm "run once" → loop.abort() + setQueuedSubmit)
+          // produces a spurious "aborted at iter 0/64" the moment the
+          // synthetic message starts processing, locking the session.
+          this._turnAbort = new AbortController();
           return;
         }
         yield {

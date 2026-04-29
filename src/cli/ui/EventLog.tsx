@@ -6,7 +6,9 @@ import type { TurnStats } from "../../telemetry.js";
 import type { PlanStep } from "../../tools/plan.js";
 import { PlanStateBlock } from "./PlanStateBlock.js";
 import { PlanStepList } from "./PlanStepList.js";
+import { CtxBreakdownBlock, type CtxBreakdownData } from "./ctx-breakdown.js";
 import { Markdown } from "./markdown.js";
+import { formatTokens } from "./primitives.js";
 import { COLOR, GLYPH, gradientCells } from "./theme.js";
 import { useElapsedSeconds, useTick } from "./ticker.js";
 import { formatDuration, summarizeToolResult } from "./tool-summary.js";
@@ -135,26 +137,9 @@ export interface DisplayEvent {
   leadSeparator?: boolean;
   /**
    * Populated on `ctx-breakdown` rows. Token counts per category +
-   * the context window cap. EventLog renders this as a 4-color
-   * stacked char-bar using truecolor segment colors; falls back to
-   * sequential block characters on legacy terminals.
+   * the context window cap; rendered via `<CtxBreakdownBlock>`.
    */
-  ctxBreakdown?: {
-    systemTokens: number;
-    toolsTokens: number;
-    logTokens: number;
-    inputTokens: number;
-    ctxMax: number;
-    /** Number of tools registered, surfaced in the legend's tools row. */
-    toolsCount: number;
-    /** Number of messages in the conversation log. */
-    logMessages: number;
-    /**
-     * Top-N heaviest tool results (by token count) for the "where's
-     * the bloat" follow-up. Empty when no tool results in the log.
-     */
-    topTools: Array<{ name: string; tokens: number; turn: number }>;
-  };
+  ctxBreakdown?: CtxBreakdownData;
 }
 
 /**
@@ -710,122 +695,6 @@ function BranchBlock({ branch }: { branch: BranchSummary }) {
       </Box>
     </Box>
   );
-}
-
-/**
- * `/context` token-usage breakdown — 4-color stacked char-bar across
- * 48 cells, with a legend showing per-category token counts. Matches
- * the design doc's `ctx-chart` state.
- *
- *   ▣ context · 94.2K of 128K (74%)
- *   ████████████████████████████████░░░░░░░░░░░░░░░░
- *   ■ system  5.6K   ■ tools  10.4K   ■ log  68.2K   ■ input  2.8K   free  25.0K
- *
- * Each `█` cell of the bar is colored per the category it represents
- * (brand teal / accent violet / primary cyan / tool amber). The legend
- * uses the same colors on the swatches so the user can map cell-to-row
- * by color alone.
- */
-function CtxBreakdownBlock({
-  data,
-}: {
-  data: NonNullable<DisplayEvent["ctxBreakdown"]>;
-}) {
-  const total = data.systemTokens + data.toolsTokens + data.logTokens + data.inputTokens;
-  const winPct = data.ctxMax > 0 ? Math.round((total / data.ctxMax) * 100) : 0;
-  const barWidth = 48;
-  // Compute filled cells per segment proportionally to ctxMax. Segments
-  // sum to <=barWidth; remainder is "free".
-  const cellOf = (n: number) => (data.ctxMax > 0 ? Math.round((n / data.ctxMax) * barWidth) : 0);
-  const sysCells = cellOf(data.systemTokens);
-  const toolsCells = cellOf(data.toolsTokens);
-  const logCells = cellOf(data.logTokens);
-  const inputCells = cellOf(data.inputTokens);
-  const used = sysCells + toolsCells + logCells + inputCells;
-  const freeCells = Math.max(0, barWidth - used);
-
-  const sevColor = winPct >= 80 ? COLOR.err : winPct >= 60 ? COLOR.warn : COLOR.ok;
-
-  // Wrapped in a brand-colored left-bar Box so the breakdown shares
-  // the same conversation-column visual language as user / assistant /
-  // tool turns. Without the bar, /context output read as a disconnected
-  // floating block. With it, the eye sees "this belongs to the column".
-  return (
-    <Box
-      flexDirection="column"
-      marginY={1}
-      borderStyle="single"
-      borderTop={false}
-      borderRight={false}
-      borderBottom={false}
-      borderColor={COLOR.brand}
-      paddingLeft={1}
-    >
-      <Box>
-        <Text color={COLOR.brand} bold>
-          ▣ context
-        </Text>
-        <Text dimColor>
-          {`  ${formatTokensCompact(total)} of ${formatTokensCompact(data.ctxMax)}`}
-        </Text>
-        <Text dimColor>{"  ·  "}</Text>
-        <Text color={sevColor} bold>
-          {`${winPct}%`}
-        </Text>
-        {winPct >= 80 ? (
-          <Text color={COLOR.err} bold>
-            {"  ·  /compact"}
-          </Text>
-        ) : null}
-      </Box>
-      <Box>
-        <Text color={COLOR.brand}>{"█".repeat(sysCells)}</Text>
-        <Text color={COLOR.accent}>{"█".repeat(toolsCells)}</Text>
-        <Text color={COLOR.primary}>{"█".repeat(logCells)}</Text>
-        <Text color={COLOR.tool}>{"█".repeat(inputCells)}</Text>
-        <Text color={COLOR.info} dimColor>
-          {"░".repeat(freeCells)}
-        </Text>
-      </Box>
-      <Box>
-        <Text color={COLOR.brand}>■</Text>
-        <Text dimColor>{` system ${formatTokensCompact(data.systemTokens)}`}</Text>
-        <Text>{"   "}</Text>
-        <Text color={COLOR.accent}>■</Text>
-        <Text dimColor>{` tools ${formatTokensCompact(data.toolsTokens)}`}</Text>
-        <Text dimColor>{` (${data.toolsCount})`}</Text>
-        <Text>{"   "}</Text>
-        <Text color={COLOR.primary}>■</Text>
-        <Text dimColor>{` log ${formatTokensCompact(data.logTokens)}`}</Text>
-        <Text dimColor>{` (${data.logMessages} msg)`}</Text>
-        <Text>{"   "}</Text>
-        <Text color={COLOR.tool}>■</Text>
-        <Text dimColor>{` input ${formatTokensCompact(data.inputTokens)}`}</Text>
-      </Box>
-      {data.topTools.length > 0 ? (
-        <Box marginTop={1} flexDirection="column">
-          <Text dimColor>{`  top tool results by cost (${data.topTools.length}):`}</Text>
-          {data.topTools.map((t) => (
-            <Box key={`${t.turn}-${t.name}`}>
-              <Text dimColor>{`    turn ${String(t.turn).padStart(3)}  `}</Text>
-              <Text color={COLOR.info}>{t.name.padEnd(22)}</Text>
-              <Text dimColor>{`  ${formatTokensCompact(t.tokens).padStart(8)}`}</Text>
-            </Box>
-          ))}
-        </Box>
-      ) : null}
-      <Box marginTop={1}>
-        <Text dimColor>{"  /compact shrinks oversized tool results · /new wipes log"}</Text>
-      </Box>
-    </Box>
-  );
-}
-
-/** Compact 1.2K / 128K formatter. Mirrors StatsPanel's formatTokens. */
-function formatTokensCompact(n: number): string {
-  if (n < 1024) return String(n);
-  const k = n / 1024;
-  return k >= 100 ? `${k.toFixed(0)}K` : `${k.toFixed(1)}K`;
 }
 
 function ReasoningBlock({ reasoning }: { reasoning: string }) {

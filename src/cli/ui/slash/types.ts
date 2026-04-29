@@ -65,6 +65,21 @@ export interface SlashResult {
  */
 export interface SlashContext {
   /**
+   * `/copy` — exit alt-screen, dump the rendered log to main screen so
+   * the user can use native terminal scrollback + drag-select to copy
+   * across content that doesn't fit the viewport. Any keystroke
+   * restores alt-screen and the live TUI. Absent → `/copy` replies "not
+   * available here" (TUI-internal only).
+   */
+  enterCopyMode?: () => void;
+  /**
+   * `/context` — toggle the always-on context-breakdown footer. Returns
+   * the new visibility state so the handler can echo "context footer:
+   * on/off". Optional `force` skips the toggle and sets directly.
+   */
+  toggleCtxFooter?: (force?: boolean) => boolean;
+
+  /**
    * The exact `--mcp` / config-derived spec strings that were bridged
    * into this session (one entry per server). Used by `/mcp`. Empty or
    * omitted → no MCP servers attached.

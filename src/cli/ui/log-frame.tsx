@@ -61,15 +61,9 @@ import { type TypedPlanState, isPlanStateEmpty } from "../../harvest.js";
 import type { BranchSummary } from "../../loop.js";
 import { type DisplayEvent, EventRow } from "./EventLog.js";
 import { markdownToFrame } from "./markdown-frame.js";
+import { formatTokens } from "./primitives.js";
 import { COLOR, GLYPH, gradientCells } from "./theme.js";
 import { formatDuration, summarizeToolResult } from "./tool-summary.js";
-
-/** 1.2K / 128K formatter — matches the StatsPanel and EventLog style. */
-function formatTokensCompact(n: number): string {
-  if (n < 1024) return String(n);
-  const k = n / 1024;
-  return k >= 100 ? `${k.toFixed(0)}K` : `${k.toFixed(1)}K`;
-}
 
 const ROLE_GLYPH = {
   user: "◇",
@@ -647,8 +641,8 @@ function ctxBreakdownFrame(data: NonNullable<DisplayEvent["ctxBreakdown"]>, widt
   // Header row
   const headerSegments: Frame[] = [
     text("▣ context", { width: 9, fg: COLOR.brand, bold: true }),
-    text(`  ${formatTokensCompact(total)} of ${formatTokensCompact(data.ctxMax)}`, {
-      width: 4 + formatTokensCompact(total).length + formatTokensCompact(data.ctxMax).length,
+    text(`  ${formatTokens(total)} of ${formatTokens(data.ctxMax)}`, {
+      width: 4 + formatTokens(total).length + formatTokens(data.ctxMax).length,
       dim: true,
     }),
     text("  ·  ", { width: 5, dim: true }),
@@ -675,26 +669,26 @@ function ctxBreakdownFrame(data: NonNullable<DisplayEvent["ctxBreakdown"]>, widt
   const legend = rowFrame(
     [
       text("■", { width: 1, fg: COLOR.brand }),
-      text(` system ${formatTokensCompact(data.systemTokens)}`, {
-        width: 8 + formatTokensCompact(data.systemTokens).length,
+      text(` system ${formatTokens(data.systemTokens)}`, {
+        width: 8 + formatTokens(data.systemTokens).length,
         dim: true,
       }),
       text("   ", { width: 3 }),
       text("■", { width: 1, fg: COLOR.accent }),
-      text(` tools ${formatTokensCompact(data.toolsTokens)}`, {
-        width: 7 + formatTokensCompact(data.toolsTokens).length,
+      text(` tools ${formatTokens(data.toolsTokens)}`, {
+        width: 7 + formatTokens(data.toolsTokens).length,
         dim: true,
       }),
       text("   ", { width: 3 }),
       text("■", { width: 1, fg: COLOR.primary }),
-      text(` log ${formatTokensCompact(data.logTokens)}`, {
-        width: 5 + formatTokensCompact(data.logTokens).length,
+      text(` log ${formatTokens(data.logTokens)}`, {
+        width: 5 + formatTokens(data.logTokens).length,
         dim: true,
       }),
       text("   ", { width: 3 }),
       text("■", { width: 1, fg: COLOR.tool }),
-      text(` input ${formatTokensCompact(data.inputTokens)}`, {
-        width: 7 + formatTokensCompact(data.inputTokens).length,
+      text(` input ${formatTokens(data.inputTokens)}`, {
+        width: 7 + formatTokens(data.inputTokens).length,
         dim: true,
       }),
     ],

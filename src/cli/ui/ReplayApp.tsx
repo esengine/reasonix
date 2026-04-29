@@ -75,11 +75,7 @@ export function ReplayApp({ meta, pages }: ReplayAppProps) {
 
   return (
     <Box flexDirection="column">
-      <StatsPanel
-        summary={summary}
-        model={cumStats.models[0] ?? meta?.model ?? "?"}
-        prefixHash={prefixHash}
-      />
+      <StatsPanel summary={summary} />
 
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Box justifyContent="space-between">

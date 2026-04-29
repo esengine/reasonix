@@ -1,5 +1,5 @@
 import { DEEPSEEK_CONTEXT_TOKENS, DEFAULT_CONTEXT_TOKENS } from "../../../../telemetry.js";
-import { countTokens } from "../../../../tokenizer.js";
+import { computeCtxBreakdown } from "../../ctx-breakdown.js";
 import type { SlashHandler } from "../dispatch.js";
 import { compactNum, formatToolList } from "../helpers.js";
 
@@ -53,66 +53,22 @@ const tool: SlashHandler = (args, _loop, ctx) => {
   };
 };
 
-const context: SlashHandler = (_args, loop) => {
-  // Measure each slice of the next request locally so the user can see
-  // *where* context is being spent — a much more useful number than
-  // the "last turn's total" the gauge shows. Tokenization is lazy so
-  // the first /context call carries the data-file load cost (~100ms);
-  // subsequent calls are pure compute.
-  const systemTokens = countTokens(loop.prefix.system);
-  const toolsTokens = countTokens(JSON.stringify(loop.prefix.toolSpecs));
-  const entries = loop.log.toMessages();
-  let userTokens = 0;
-  let assistantTokens = 0;
-  let toolResultTokens = 0;
-  let toolCallTokens = 0;
-  const toolBreakdown: Array<{ name: string; tokens: number; turn: number }> = [];
-  let logTurn = 0;
-  for (const e of entries) {
-    const content = typeof e.content === "string" ? e.content : "";
-    if (e.role === "user") {
-      userTokens += countTokens(content);
-      logTurn += 1;
-    } else if (e.role === "assistant") {
-      assistantTokens += countTokens(content);
-      if (Array.isArray(e.tool_calls) && e.tool_calls.length > 0) {
-        toolCallTokens += countTokens(JSON.stringify(e.tool_calls));
-      }
-    } else if (e.role === "tool") {
-      const n = countTokens(content);
-      toolResultTokens += n;
-      toolBreakdown.push({ name: e.name ?? "?", tokens: n, turn: logTurn });
-    }
+const context: SlashHandler = (args, loop, ctx) => {
+  // Toggle the persistent footer when wired (TUI). Falls back to a
+  // one-shot scrollback breakdown push for headless / replay surfaces
+  // that don't carry the toggle callback.
+  if (ctx.toggleCtxFooter) {
+    const arg = (args[0] ?? "").toLowerCase();
+    const force = arg === "on" ? true : arg === "off" ? false : undefined;
+    const next = ctx.toggleCtxFooter(force);
+    return { info: `▸ context footer: ${next ? "on" : "off"}` };
   }
-  const logTokens = userTokens + assistantTokens + toolResultTokens + toolCallTokens;
-  const ctxMax = DEEPSEEK_CONTEXT_TOKENS[loop.model] ?? DEFAULT_CONTEXT_TOKENS;
-  // For /context's "input" segment we count what the user is about to
-  // submit if they hit enter right now. The slash itself runs synchronously
-  // off the prompt buffer, but App.tsx doesn't pass that buffer through —
-  // approximate as 0 here. The breakdown still adds up because system +
-  // tools + log are the big chunks; input is usually <1% pre-send.
-  const inputTokens = 0;
-  const topTools = [...toolBreakdown].sort((a, b) => b.tokens - a.tokens).slice(0, 5);
-
-  // Structured payload — EventLog renders this as a 4-color stacked
-  // char-bar via Box+Text segments. The `info` field is a fallback
-  // for log replay / dashboards that don't know about the rich form.
-  const total = systemTokens + toolsTokens + logTokens + inputTokens;
-  const winPct = ctxMax > 0 ? Math.round((total / ctxMax) * 100) : 0;
-  const fallbackInfo = `context: ~${compactNum(total)} of ${compactNum(ctxMax)} (${winPct}%) · system ${compactNum(systemTokens)} · tools ${compactNum(toolsTokens)} · log ${compactNum(logTokens)}`;
-  return {
-    info: fallbackInfo,
-    ctxBreakdown: {
-      systemTokens,
-      toolsTokens,
-      logTokens,
-      inputTokens,
-      ctxMax,
-      toolsCount: loop.prefix.toolSpecs.length,
-      logMessages: entries.length,
-      topTools,
-    },
-  };
+  const breakdown = computeCtxBreakdown(loop);
+  const total =
+    breakdown.systemTokens + breakdown.toolsTokens + breakdown.logTokens + breakdown.inputTokens;
+  const winPct = breakdown.ctxMax > 0 ? Math.round((total / breakdown.ctxMax) * 100) : 0;
+  const fallbackInfo = `context: ~${compactNum(total)} of ${compactNum(breakdown.ctxMax)} (${winPct}%) · system ${compactNum(breakdown.systemTokens)} · tools ${compactNum(breakdown.toolsTokens)} · log ${compactNum(breakdown.logTokens)}`;
+  return { info: fallbackInfo, ctxBreakdown: breakdown };
 };
 
 const status: SlashHandler = (_args, loop, ctx) => {

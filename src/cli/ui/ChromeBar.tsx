@@ -1,10 +1,11 @@
 import { Box, Text, useStdout } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
 import React from "react";
+import stringWidth from "string-width";
 import type { SessionSummary } from "../../telemetry.js";
+import { ChromeRule } from "./primitives.js";
 import { COLOR, GRADIENT } from "./theme.js";
 
-const NARROW_BREAKPOINT = 120;
 const COLD_START_TURNS = 3;
 const CACHE_BAR_CELLS = 10;
 
@@ -27,8 +28,7 @@ export interface ChromeBarProps {
 
 export function ChromeBar(props: ChromeBarProps): React.ReactElement {
   const { stdout } = useStdout();
-  const cols = stdout?.columns ?? 80;
-  const narrow = cols < NARROW_BREAKPOINT;
+  const cols = (stdout?.columns ?? 80) - 2; // subtract paddingX={1} on both sides
   const cold = props.summary.turns <= COLD_START_TURNS;
   const projectName = props.rootDir ? basename(props.rootDir) : null;
   const mode = pickModePill(props.planMode, props.preset);
@@ -37,8 +37,54 @@ export function ChromeBar(props: ChromeBarProps): React.ReactElement {
     : props.proArmed
       ? { label: "⇧ pro", color: COLOR.warn }
       : null;
-  const showCache = props.summary.turns > COLD_START_TURNS && !narrow;
-  const showBalance = !!props.balance && !narrow;
+
+  // Greedy width-aware fit. Layout (each gap is exactly ONE space — single
+  // suffix on update/mode/pro/scroll, single prefix on balance/cache):
+  //   [brand][·project][›session]<spacer>[scroll][update][mode][pro]$cost  w bal cache █▓▓▓
+  // Always-shown carve out the budget first; optional pieces are dropped
+  // by priority — balance > cache > session > update — until the row fits.
+  // (`flexGrow` spacer can shrink to 0, so no minimum reserve.) Cache is
+  // shown unconditionally now: pre-turn-4 it renders dim with a "—" so
+  // it's "default on" instead of materializing only after a few turns.
+  const SEP = 3; // " · " / " › "
+  const GAP = 1;
+  const scrollLabel =
+    props.scrollRatio !== undefined && props.scrollRatio > 0
+      ? `[↑ ${Math.round(props.scrollRatio * 100)}%]`
+      : "";
+  const updateLabel = props.updateAvailable ? `↑ ${props.updateAvailable}` : "";
+  const balanceLabel = props.balance ? formatBalanceLabel(props.balance) : "";
+  const cachePct = Math.round(props.summary.cacheHitRatio * 100);
+  // Use the worst-case rendered cache string (3-digit pct, full bar) so the
+  // shed decision doesn't oscillate as the percentage changes turn-to-turn.
+  const cacheLabel = `cache ${"█".repeat(CACHE_BAR_CELLS)} 100%`;
+  const costLabel = `$${props.summary.totalCostUsd.toFixed(4)}${
+    props.budgetUsd && props.budgetUsd > 0 ? ` / $${props.budgetUsd.toFixed(2)}` : ""
+  }`;
+
+  const brandW = stringWidth("◈ reasonix");
+  const projectW = projectName ? SEP + stringWidth(projectName) : 0;
+  const fixedLeft = brandW + projectW;
+  const scrollW = scrollLabel ? stringWidth(scrollLabel) + GAP : 0;
+  const modeW = mode ? stringWidth(`[${mode.label}]`) + GAP : 0;
+  const proW = proPill ? stringWidth(`[${proPill.label}]`) + GAP : 0;
+  const costW = stringWidth(costLabel);
+  const fixedRight = scrollW + modeW + proW + costW;
+  let budget = cols - fixedLeft - fixedRight;
+
+  const balanceOptW = balanceLabel ? GAP + stringWidth(balanceLabel) : 0;
+  const cacheOptW = GAP + stringWidth(cacheLabel);
+  const sessionOptW = props.sessionName ? SEP + stringWidth(props.sessionName) : 0;
+  const updateOptW = updateLabel ? stringWidth(updateLabel) + GAP : 0;
+
+  const showBalance = balanceOptW > 0 && budget >= balanceOptW;
+  if (showBalance) budget -= balanceOptW;
+  const showCache = budget >= cacheOptW;
+  if (showCache) budget -= cacheOptW;
+  const showSession = sessionOptW > 0 && budget >= sessionOptW;
+  if (showSession) budget -= sessionOptW;
+  const showUpdate = updateOptW > 0 && budget >= updateOptW;
+  if (showUpdate) budget -= updateOptW;
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -55,7 +101,7 @@ export function ChromeBar(props: ChromeBarProps): React.ReactElement {
               {" · "}
             </Text>
             <Text>{projectName}</Text>
-            {!narrow && props.sessionName ? (
+            {showSession && props.sessionName ? (
               <>
                 <Text color={COLOR.info} dimColor>
                   {" › "}
@@ -68,17 +114,19 @@ export function ChromeBar(props: ChromeBarProps): React.ReactElement {
 
         <Box flexGrow={1} />
 
-        {props.scrollRatio !== undefined && props.scrollRatio > 0 ? (
+        {scrollLabel ? (
           <>
             <Text color={COLOR.accent} bold>
-              {`[↑ ${Math.round(props.scrollRatio * 100)}%]`}
+              {scrollLabel}
             </Text>
             <Text> </Text>
           </>
         ) : null}
-        {props.updateAvailable ? (
+        {showUpdate ? (
           <>
-            <Text color={COLOR.warn} bold>{`↑ ${props.updateAvailable}`}</Text>
+            <Text color={COLOR.warn} bold>
+              {updateLabel}
+            </Text>
             <Text> </Text>
           </>
         ) : null}
@@ -99,16 +147,16 @@ export function ChromeBar(props: ChromeBarProps): React.ReactElement {
           </>
         ) : null}
         <CostPill summary={props.summary} cold={cold} budgetUsd={props.budgetUsd} />
-        {showBalance ? (
+        {showBalance && props.balance ? (
           <>
             <Text> </Text>
-            <BalancePill balance={props.balance!} />
+            <BalancePill balance={props.balance} />
           </>
         ) : null}
         {showCache ? (
           <>
             <Text> </Text>
-            <CachePill ratio={props.summary.cacheHitRatio} />
+            <CachePill ratio={props.summary.cacheHitRatio} cold={cold} pct={cachePct} />
           </>
         ) : null}
       </Box>
@@ -117,11 +165,10 @@ export function ChromeBar(props: ChromeBarProps): React.ReactElement {
   );
 }
 
-function ChromeRule(): React.ReactElement {
-  const { stdout } = useStdout();
-  const cols = stdout?.columns ?? 80;
-  const w = Math.max(20, cols - 2);
-  return <Text dimColor>{"─".repeat(w)}</Text>;
+function formatBalanceLabel(balance: { currency: string; total: number }): string {
+  const sym = balance.currency === "USD" ? "$" : balance.currency === "CNY" ? "¥" : "";
+  const suf = sym ? "" : ` ${balance.currency}`;
+  return `w ${sym}${balance.total.toFixed(2)}${suf}`;
 }
 
 function CostPill({
@@ -154,14 +201,20 @@ function BalancePill({
 }: {
   balance: { currency: string; total: number };
 }): React.ReactElement {
-  const { currency, total } = balance;
+  const { total } = balance;
   const color = total < 1 ? COLOR.err : total < 5 ? COLOR.warn : COLOR.ok;
-  const sym = currency === "USD" ? "$" : currency === "CNY" ? "¥" : "";
-  const suf = sym ? "" : ` ${currency}`;
-  return <Text color={color}>{`w ${sym}${total.toFixed(2)}${suf}`}</Text>;
+  return <Text color={color}>{formatBalanceLabel(balance)}</Text>;
 }
 
-function CachePill({ ratio }: { ratio: number }): React.ReactElement {
+function CachePill({
+  ratio,
+  cold,
+  pct,
+}: {
+  ratio: number;
+  cold: boolean;
+  pct: number;
+}): React.ReactElement {
   const color = ratio >= 0.7 ? COLOR.ok : ratio >= 0.4 ? COLOR.warn : COLOR.err;
   const filled = Math.max(0, Math.min(CACHE_BAR_CELLS, Math.round(ratio * CACHE_BAR_CELLS)));
   const empty = CACHE_BAR_CELLS - filled;
@@ -170,10 +223,12 @@ function CachePill({ ratio }: { ratio: number }): React.ReactElement {
       <Text color={COLOR.info} dimColor>
         {"cache "}
       </Text>
-      <Text color={color}>{"█".repeat(filled)}</Text>
+      <Text color={cold ? COLOR.info : color} dimColor={cold}>
+        {"█".repeat(filled)}
+      </Text>
       <Text dimColor>{"░".repeat(empty)}</Text>
-      <Text color={color} bold>
-        {` ${Math.round(ratio * 100)}%`}
+      <Text color={cold ? undefined : color} bold={!cold} dimColor={cold}>
+        {cold && pct === 0 ? " —" : ` ${pct}%`}
       </Text>
     </>
   );
