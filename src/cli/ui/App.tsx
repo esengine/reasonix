@@ -4178,7 +4178,11 @@ export function App({
           {renderFrame(
             chromeFrame({
               summary,
-              width: stdout?.columns ?? 80,
+              // Leave a 1-cell safety margin against the right edge so
+              // terminals that reserve their last column for cursor /
+              // scrollbar (some Windows Terminal / ConPTY configurations)
+              // don't clip the rightmost pill (the wallet) mid-glyph.
+              width: Math.max(40, (stdout?.columns ?? 80) - 1),
               planMode,
               editMode: codeMode ? editMode : undefined,
               balance,
