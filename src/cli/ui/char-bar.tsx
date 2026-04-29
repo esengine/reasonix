@@ -19,6 +19,7 @@
  */
 
 import { Box, Text } from "ink";
+// biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
 import React from "react";
 import { COLOR, GLYPH } from "./theme.js";
 
@@ -64,9 +65,7 @@ export function CharBar({
       <Text color={emptyColor ?? COLOR.info} dimColor>
         {GLYPH.shade1.repeat(total - filled)}
       </Text>
-      {showLabel ? (
-        <Text dimColor>{`  ${label ?? `${Math.round(clamped)}%`}`}</Text>
-      ) : null}
+      {showLabel ? <Text dimColor>{`  ${label ?? `${Math.round(clamped)}%`}`}</Text> : null}
     </Box>
   );
 }

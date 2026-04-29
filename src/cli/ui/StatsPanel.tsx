@@ -1,5 +1,5 @@
-import { Box, Text, useStdout } from "ink";
 import { basename } from "node:path";
+import { Box, Text, useStdout } from "ink";
 import React from "react";
 import type { EditMode } from "../../config.js";
 import { DEEPSEEK_CONTEXT_TOKENS, DEFAULT_CONTEXT_TOKENS } from "../../telemetry.js";
@@ -224,9 +224,7 @@ function ChromeRule() {
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
   const w = Math.max(20, cols - 2);
-  return (
-    <Text dimColor>{"─".repeat(w)}</Text>
-  );
+  return <Text dimColor>{"─".repeat(w)}</Text>;
 }
 
 /**
@@ -328,9 +326,7 @@ function ChromeRow({
       {/* Cost — always shown. */}
       <Text
         color={
-          summary.turns === 0 || coldStart
-            ? COLOR.info
-            : sessionCostColor(summary.totalCostUsd)
+          summary.turns === 0 || coldStart ? COLOR.info : sessionCostColor(summary.totalCostUsd)
         }
         bold={summary.turns > 0 && !coldStart}
         dimColor={summary.turns === 0 || coldStart}
@@ -343,11 +339,7 @@ function ChromeRow({
       {balance && !narrow ? (
         <>
           <Text>{"  "}</Text>
-          <Text
-            color={
-              balance.total < 1 ? COLOR.err : balance.total < 5 ? COLOR.warn : COLOR.ok
-            }
-          >
+          <Text color={balance.total < 1 ? COLOR.err : balance.total < 5 ? COLOR.warn : COLOR.ok}>
             {`[w ${balance.currency === "USD" ? "$" : ""}${balance.total.toFixed(2)}${balance.currency !== "USD" ? ` ${balance.currency}` : ""}]`}
           </Text>
         </>
@@ -366,7 +358,6 @@ function ChromeRow({
     </Box>
   );
 }
-
 
 /** Map (planMode, editMode) → mode pill. PLAN trumps everything. */
 function pickModePill(

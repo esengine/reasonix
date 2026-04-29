@@ -73,6 +73,7 @@ import { SlashSuggestions } from "./SlashSuggestions.js";
 import { StatsPanel } from "./StatsPanel.js";
 import { WelcomeBanner } from "./WelcomeBanner.js";
 import { WorkspaceConfirm, type WorkspaceConfirmChoice } from "./WorkspaceConfirm.js";
+import { useAltScreen } from "./alt-screen.js";
 import { detectBangCommand, formatBangUserMessage } from "./bang.js";
 import {
   describeRepair,
@@ -87,10 +88,9 @@ import { handleMcpBrowseSlash } from "./mcp-browse.js";
 import { formatLongPaste } from "./paste-collapse.js";
 import { resolvePreset } from "./presets.js";
 import { type McpServerSummary, handleSlash, parseSlash, suggestSlashCommands } from "./slash.js";
+import { COLOR } from "./theme.js";
 import { TickerProvider } from "./ticker.js";
 import { useCompletionPickers } from "./useCompletionPickers.js";
-import { useAltScreen } from "./alt-screen.js";
-import { COLOR } from "./theme.js";
 import { useEditHistory } from "./useEditHistory.js";
 import { useSessionInfo } from "./useSessionInfo.js";
 import { useSubagent } from "./useSubagent.js";
@@ -209,65 +209,96 @@ const PLAIN_UI = process.env.REASONIX_UI === "plain";
  *   - plan / plan-replay ≈ 8                        (multi-step list)
  *   - ctx-breakdown    ≈ 6                          (4 lines + legend)
  */
+/**
+ * Estimate the rendered height (rows) of a single event. Numbers are
+ * deliberate over-estimates so the slicer leans toward "render less"
+ * rather than "render more and clip" — under-counting is the worse
+ * failure mode because it means events crowd into the viewport and the
+ * overflow="hidden" wrapper silently swallows the bottom of the latest
+ * event (the user just sees a truncated message and assumes a bug).
+ */
+function heightOfEvent(e: DisplayEvent): number {
+  const text = e.text ?? "";
+  const wrapLines = Math.max(0, Math.floor(text.length / 80));
+  if (e.role === "user") return 3 + wrapLines;
+  if (e.role === "assistant") {
+    let h = 4 + wrapLines;
+    if (e.reasoning) h += 3;
+    if (e.branch) h += 4;
+    return h;
+  }
+  if (e.role === "tool") {
+    const isEditFile = e.toolName === "edit_file" || e.toolName?.endsWith("_edit_file");
+    if (isEditFile) {
+      const diffLines = (text.match(/\n/g)?.length ?? 0) + 1;
+      return 6 + Math.min(20, diffLines);
+    }
+    return 2;
+  }
+  if (e.role === "info" || e.role === "warning") return 2;
+  if (e.role === "error") return 2 + wrapLines;
+  if (e.role === "plan" || e.role === "plan-replay" || e.role === "plan-resumed") return 10;
+  if (e.role === "ctx-breakdown") return 7;
+  if (e.role === "step-progress") return 1;
+  return 2;
+}
+
+interface VisibleSlice {
+  events: DisplayEvent[];
+  /** Highest valid scroll offset (events). The caller clamps with this. */
+  maxScrollEvents: number;
+}
+
+/**
+ * Event-granular log slicer. `scrollOffset` is events-from-the-bottom
+ * (0 = newest events at the bottom of the viewport). At offset=0 the
+ * caller pairs this with `justifyContent="flex-end"` so a tall LATEST
+ * event bottom-anchors and the user sees the END of the long content
+ * (the part the model just produced). Scrolling up flips the renderer
+ * to top-aligned so the user can read the start of older events.
+ *
+ * Row-level scrolling within a single tall event is a follow-up — it
+ * needs every event role to expose a row-list representation, which
+ * is a larger refactor (tracked separately). Until then, event-granular
+ * keeps the chrome intact (no negative marginTop, which Ink's
+ * overflow="hidden" doesn't clip reliably) and gives both ends of long
+ * content via offset-mode switching.
+ */
 function sliceVisibleEvents(
   events: readonly DisplayEvent[],
   termRows: number,
   scrollOffset = 0,
-): DisplayEvent[] {
+): VisibleSlice {
   // Reserve rows for: chrome (StatsPanel + rule, ~3) + prompt area
   // (~5: prompt + hint + suggestions buffer) + safety margin (~2).
   const reservedRows = 10;
   const available = Math.max(8, termRows - reservedRows);
 
-  const heightOf = (e: DisplayEvent): number => {
-    const text = e.text ?? "";
-    const wrapLines = Math.max(0, Math.floor(text.length / 80));
-    if (e.role === "user") return 3 + wrapLines;
-    if (e.role === "assistant") {
-      let h = 4 + wrapLines;
-      if (e.reasoning) h += 3;
-      if (e.branch) h += 4;
-      return h;
-    }
-    if (e.role === "tool") {
-      const isEditFile =
-        e.toolName === "edit_file" || e.toolName?.endsWith("_edit_file");
-      if (isEditFile) {
-        // Diff renderer outputs ~1 row per line of `text`.
-        const diffLines = (text.match(/\n/g)?.length ?? 0) + 1;
-        return 6 + Math.min(20, diffLines);
-      }
-      return 2;
-    }
-    if (e.role === "info" || e.role === "warning") return 2;
-    if (e.role === "error") return 2 + wrapLines;
-    if (e.role === "plan" || e.role === "plan-replay" || e.role === "plan-resumed") return 10;
-    if (e.role === "ctx-breakdown") return 7;
-    if (e.role === "step-progress") return 1;
-    return 2;
-  };
+  if (events.length === 0) {
+    return { events: [], maxScrollEvents: 0 };
+  }
 
-  if (events.length === 0) return [];
-  // Apply scroll offset — show events ending at events.length - offset.
-  // Cap offset at events.length - 1 so the slice always contains at
-  // least the FIRST event in history. Going past that would leave the
-  // user staring at an empty middle box, which is exactly the "I
-  // scrolled into nothing" failure mode.
-  const clampedOffset = Math.max(0, Math.min(scrollOffset, events.length - 1));
-  const endIdx = events.length - clampedOffset;
+  const maxScrollEvents = Math.max(0, events.length - 1);
+  const offset = Math.max(0, Math.min(scrollOffset, maxScrollEvents));
+  const endIdx = events.length - offset;
   // Always include at least the bottom-most event in the window even
-  // if it would overflow alone — overflow="hidden" on the parent Box
-  // clips the excess, but rendering NOTHING because one event is too
-  // tall is the worse failure mode.
+  // if it would overflow alone — `overflow="hidden"` on the parent
+  // clips the excess; with `justifyContent="flex-end"` (offset=0) the
+  // clipping happens at the TOP so the user sees the BOTTOM of the
+  // latest tall event. Rendering nothing because one event is too tall
+  // is the worse failure mode.
   let startIdx = endIdx - 1;
-  let used = heightOf(events[startIdx]!);
+  let used = heightOfEvent(events[startIdx]!);
   for (let i = endIdx - 2; i >= 0; i--) {
-    const h = heightOf(events[i]!);
+    const h = heightOfEvent(events[i]!);
     if (used + h > available) break;
     used += h;
     startIdx = i;
   }
-  return [...events.slice(startIdx, endIdx)];
+  return {
+    events: events.slice(startIdx, endIdx),
+    maxScrollEvents,
+  };
 }
 
 function LoopStatusRow({
@@ -345,52 +376,49 @@ export function App({
   // Set a new target. `next` is either a number or an updater function
   // — same shape as React state setters. The animation easing handles
   // the transition.
-  const animateScrollTo = useCallback(
-    (next: number | ((prev: number) => number)) => {
-      const newTarget =
-        typeof next === "function" ? next(scrollTargetRef.current) : next;
-      scrollTargetRef.current = Math.max(0, newTarget);
-      // If already running, the existing interval picks up the new
-      // target on its next tick — no need to restart.
-      if (scrollAnimRef.current) return;
-      scrollAnimRef.current = setInterval(() => {
-        const target = scrollTargetRef.current;
-        const cur = scrollDisplayedRef.current;
-        const diff = target - cur;
-        // Snap when within 1 unit — finer steps would just round to
-        // the same integer.
-        if (Math.abs(diff) < 1) {
-          scrollDisplayedRef.current = target;
-          setLogScrollOffset(target);
-          if (scrollAnimRef.current) {
-            clearInterval(scrollAnimRef.current);
-            scrollAnimRef.current = null;
-          }
-          return;
+  const animateScrollTo = useCallback((next: number | ((prev: number) => number)) => {
+    const newTarget = typeof next === "function" ? next(scrollTargetRef.current) : next;
+    scrollTargetRef.current = Math.max(0, newTarget);
+    // If already running, the existing interval picks up the new
+    // target on its next tick — no need to restart.
+    if (scrollAnimRef.current) return;
+    scrollAnimRef.current = setInterval(() => {
+      const target = scrollTargetRef.current;
+      const cur = scrollDisplayedRef.current;
+      const diff = target - cur;
+      // Snap when within 1 unit — finer steps would just round to
+      // the same integer.
+      if (Math.abs(diff) < 1) {
+        scrollDisplayedRef.current = target;
+        setLogScrollOffset(target);
+        if (scrollAnimRef.current) {
+          clearInterval(scrollAnimRef.current);
+          scrollAnimRef.current = null;
         }
-        // Ease-out: move 25% of remaining distance per frame, with a
-        // minimum 1-step nudge so big distances still finish in a
-        // bounded number of frames.
-        const step = diff > 0 ? Math.max(1, Math.ceil(diff * 0.25)) : Math.min(-1, Math.floor(diff * 0.25));
-        scrollDisplayedRef.current = cur + step;
-        setLogScrollOffset(scrollDisplayedRef.current);
-      }, 33);
-    },
-    [],
-  );
+        return;
+      }
+      // Ease-out: move 25% of remaining distance per frame, with a
+      // minimum 1-step nudge so big distances still finish in a
+      // bounded number of frames.
+      const step =
+        diff > 0 ? Math.max(1, Math.ceil(diff * 0.25)) : Math.min(-1, Math.floor(diff * 0.25));
+      scrollDisplayedRef.current = cur + step;
+      setLogScrollOffset(scrollDisplayedRef.current);
+    }, 33);
+  }, []);
   // No-op kept for compat with any remaining call sites; the animation
   // loop now owns its lifecycle.
   const stopScrollAnimation = useCallback(() => {
     /* animateScrollTo handles its own teardown on each new target */
   }, []);
   // Anchor + clamp the visible window when historical changes:
-  //   · GROWS while user is scrolled up — bump offset by delta so the
-  //     same events stay framed. Without this, every appended turn
-  //     slides the window forward by 1, pushing what the user was
-  //     reading off-screen.
-  //   · SHRINKS (e.g. /new wipes log) — clamp offset so we never
-  //     point past the new end. Otherwise the user sees an empty
-  //     middle box even though there are events to show.
+  //   · GROWS while user is scrolled up — bump offset by `delta` (event
+  //     count) so the same events stay framed. Without this, every
+  //     appended turn slides the window forward by one and pushes what
+  //     the user was reading off-screen.
+  //   · SHRINKS (e.g. /new wipes log) — clamp offset to the new max so
+  //     we never point past the new end. Otherwise the user sees an
+  //     empty middle box even though there are events to show.
   const lastHistoricalLenRef = useRef(0);
   useEffect(() => {
     const prev = lastHistoricalLenRef.current;
@@ -1406,14 +1434,13 @@ export function App({
     }
     // Log-scroll keys + mouse wheel — fire ahead of any PromptInput
     // consumption so the user can read history while the input is
-    // focused. Step sizes are intentionally small so every wheel
-    // click moves the log by ONE turn, not a full page — chat apps
-    // feel jerky when one notch hides three messages. PageUp / Down
-    // jump by ~3 events for keyboard-first users who want bigger
-    // strides; Home / End anchor with a smooth glide.
-    // Max scroll-up offset = length - 1 so at least the very first
-    // event stays visible. With < 2 events there's nothing to scroll
-    // through; the keys / wheel become no-ops.
+    // focused. Scroll unit is EVENTS (one log entry per tick); to see
+    // the BOTTOM of a tall latest event the caller pairs offset=0 with
+    // `justifyContent="flex-end"` so the latest content bottom-anchors
+    // and the top of the long entry naturally clips above the viewport.
+    //   · wheel tick   →  1 event
+    //   · PgUp / PgDn  →  3 events
+    //   · Home / End   →  oldest / newest
     const maxOffset = Math.max(0, historical.length - 1);
     if (ev.mouseScrollUp) {
       if (maxOffset === 0) return;
@@ -1969,244 +1996,246 @@ export function App({
     if (dashboardRef.current) return dashboardRef.current.url;
     if (dashboardStartingRef.current) return dashboardStartingRef.current;
     const startup = (async () => {
-    const handle = await startDashboardServer({
-      mode: "attached",
-      configPath: defaultConfigPath(),
-      usageLogPath: defaultUsageLogPath(),
-      loop,
-      tools,
-      mcpServers,
-      getCurrentCwd: () => (codeMode ? currentRootDirRef.current : undefined),
-      getEditMode: () => (codeMode ? editModeRef.current : undefined),
-      getPlanMode: () => planModeRef.current,
-      getPendingEditCount: () => pendingEdits.current.length,
-      getLatestVersion: () => latestVersionRef.current,
-      getSessionName: () => session ?? null,
-      setEditMode: (m: EditMode) => {
-        setEditMode(m);
-        editModeRef.current = m;
-        saveEditMode(m);
-        return m;
-      },
-      setPlanMode: (on: boolean) => {
-        if (codeMode) togglePlanMode(on);
-      },
-      applyPresetLive: (name: string) => {
-        // Canonicalize legacy names + reach into the live loop so the
-        // change takes effect on the next turn (no session restart).
-        const settings = resolvePreset(name as PresetName);
-        loop.configure({
-          model: settings.model,
-          autoEscalate: settings.autoEscalate,
-          reasoningEffort: settings.reasoningEffort,
-        });
-      },
-      applyEffortLive: (effort) => {
-        loop.configure({ reasoningEffort: effort });
-      },
-      // ---------- Chat bridge ----------
-      getMessages: (): DashboardMessage[] => {
-        // Filter to roles the SPA cares about; map to the wire shape.
-        const out: DashboardMessage[] = [];
-        for (const ev of historicalRef.current) {
-          if (
-            ev.role === "user" ||
-            ev.role === "assistant" ||
-            ev.role === "info" ||
-            ev.role === "warning"
-          ) {
-            const msg: DashboardMessage = { id: ev.id, role: ev.role, text: ev.text };
-            if (ev.reasoning) msg.reasoning = ev.reasoning;
-            out.push(msg);
-          } else if (ev.role === "tool") {
-            const msg: DashboardMessage = {
-              id: ev.id,
-              role: "tool",
-              text: ev.text,
-              toolName: ev.toolName,
-            };
-            if (ev.toolArgs) msg.toolArgs = ev.toolArgs;
-            out.push(msg);
+      const handle = await startDashboardServer({
+        mode: "attached",
+        configPath: defaultConfigPath(),
+        usageLogPath: defaultUsageLogPath(),
+        loop,
+        tools,
+        mcpServers,
+        getCurrentCwd: () => (codeMode ? currentRootDirRef.current : undefined),
+        getEditMode: () => (codeMode ? editModeRef.current : undefined),
+        getPlanMode: () => planModeRef.current,
+        getPendingEditCount: () => pendingEdits.current.length,
+        getLatestVersion: () => latestVersionRef.current,
+        getSessionName: () => session ?? null,
+        setEditMode: (m: EditMode) => {
+          setEditMode(m);
+          editModeRef.current = m;
+          saveEditMode(m);
+          return m;
+        },
+        setPlanMode: (on: boolean) => {
+          if (codeMode) togglePlanMode(on);
+        },
+        applyPresetLive: (name: string) => {
+          // Canonicalize legacy names + reach into the live loop so the
+          // change takes effect on the next turn (no session restart).
+          const settings = resolvePreset(name as PresetName);
+          loop.configure({
+            model: settings.model,
+            autoEscalate: settings.autoEscalate,
+            reasoningEffort: settings.reasoningEffort,
+          });
+        },
+        applyEffortLive: (effort) => {
+          loop.configure({ reasoningEffort: effort });
+        },
+        // ---------- Chat bridge ----------
+        getMessages: (): DashboardMessage[] => {
+          // Filter to roles the SPA cares about; map to the wire shape.
+          const out: DashboardMessage[] = [];
+          for (const ev of historicalRef.current) {
+            if (
+              ev.role === "user" ||
+              ev.role === "assistant" ||
+              ev.role === "info" ||
+              ev.role === "warning"
+            ) {
+              const msg: DashboardMessage = { id: ev.id, role: ev.role, text: ev.text };
+              if (ev.reasoning) msg.reasoning = ev.reasoning;
+              out.push(msg);
+            } else if (ev.role === "tool") {
+              const msg: DashboardMessage = {
+                id: ev.id,
+                role: "tool",
+                text: ev.text,
+                toolName: ev.toolName,
+              };
+              if (ev.toolArgs) msg.toolArgs = ev.toolArgs;
+              out.push(msg);
+            }
           }
-        }
-        return out;
-      },
-      subscribeEvents: (handler) => {
-        eventSubscribersRef.current.add(handler);
-        return () => {
-          eventSubscribersRef.current.delete(handler);
-        };
-      },
-      submitPrompt: (text: string): SubmitResult => {
-        if (busyRef.current) {
-          return { accepted: false, reason: "loop is busy with a turn" };
-        }
-        const fn = handleSubmitRef.current;
-        if (!fn) return { accepted: false, reason: "TUI not ready" };
-        // Fire-and-forget — handleSubmit drives the loop event stream
-        // which the web sees via SSE. We don't await it here because
-        // a turn can take minutes; the HTTP request would time out.
-        fn(text).catch(() => undefined);
-        return { accepted: true };
-      },
-      abortTurn: () => {
-        if (busyRef.current) loop.abort();
-      },
-      isBusy: () => busyRef.current,
-      getStats: () => {
-        // Pull from the loop's live aggregator (same source the TUI's
-        // StatsPanel reads). `balance` comes from useSessionInfo via a
-        // ref-mirror so this callback stays cheap.
-        const s = loop.stats.summary();
-        const ctxCap = DEEPSEEK_CONTEXT_TOKENS[loop.model] ?? DEFAULT_CONTEXT_TOKENS;
-        return {
-          turns: s.turns,
-          totalCostUsd: s.totalCostUsd,
-          lastTurnCostUsd: s.lastTurnCostUsd,
-          totalInputCostUsd: s.totalInputCostUsd,
-          totalOutputCostUsd: s.totalOutputCostUsd,
-          cacheHitRatio: s.cacheHitRatio,
-          lastPromptTokens: s.lastPromptTokens,
-          contextCapTokens: ctxCap,
-          // useSessionInfo's Balance is a flat { currency, total }; the
-          // dashboard wire shape is the richer DeepSeek BalanceInfo
-          // array (granted / topped_up split). Convert as a single-
-          // entry array so the SPA always reads `balance[0]` shape.
-          balance: balanceRef.current
-            ? [
-                {
-                  currency: balanceRef.current.currency,
-                  total_balance: String(balanceRef.current.total),
-                },
-              ]
-            : null,
-        };
-      },
-      // ---------- Modal mirroring ----------
-      getActiveModal: (): ActiveModal | null => {
-        // Probe the live state via refs in priority order — only one
-        // modal can be up at a time per App invariant.
-        const ps = pendingShell;
-        if (ps) {
-          return {
-            kind: "shell",
-            command: ps.command,
-            allowPrefix: derivePrefix(ps.command),
-            shellKind: ps.kind,
+          return out;
+        },
+        subscribeEvents: (handler) => {
+          eventSubscribersRef.current.add(handler);
+          return () => {
+            eventSubscribersRef.current.delete(handler);
           };
-        }
-        const pc = pendingChoice;
-        if (pc) {
+        },
+        submitPrompt: (text: string): SubmitResult => {
+          if (busyRef.current) {
+            return { accepted: false, reason: "loop is busy with a turn" };
+          }
+          const fn = handleSubmitRef.current;
+          if (!fn) return { accepted: false, reason: "TUI not ready" };
+          // Fire-and-forget — handleSubmit drives the loop event stream
+          // which the web sees via SSE. We don't await it here because
+          // a turn can take minutes; the HTTP request would time out.
+          fn(text).catch(() => undefined);
+          return { accepted: true };
+        },
+        abortTurn: () => {
+          if (busyRef.current) loop.abort();
+        },
+        isBusy: () => busyRef.current,
+        getStats: () => {
+          // Pull from the loop's live aggregator (same source the TUI's
+          // StatsPanel reads). `balance` comes from useSessionInfo via a
+          // ref-mirror so this callback stays cheap.
+          const s = loop.stats.summary();
+          const ctxCap = DEEPSEEK_CONTEXT_TOKENS[loop.model] ?? DEFAULT_CONTEXT_TOKENS;
           return {
-            kind: "choice",
-            question: pc.question,
-            options: pc.options,
-            allowCustom: pc.allowCustom,
+            turns: s.turns,
+            totalCostUsd: s.totalCostUsd,
+            lastTurnCostUsd: s.lastTurnCostUsd,
+            totalInputCostUsd: s.totalInputCostUsd,
+            totalOutputCostUsd: s.totalOutputCostUsd,
+            cacheHitRatio: s.cacheHitRatio,
+            lastPromptTokens: s.lastPromptTokens,
+            contextCapTokens: ctxCap,
+            // useSessionInfo's Balance is a flat { currency, total }; the
+            // dashboard wire shape is the richer DeepSeek BalanceInfo
+            // array (granted / topped_up split). Convert as a single-
+            // entry array so the SPA always reads `balance[0]` shape.
+            balance: balanceRef.current
+              ? [
+                  {
+                    currency: balanceRef.current.currency,
+                    total_balance: String(balanceRef.current.total),
+                  },
+                ]
+              : null,
           };
-        }
-        if (pendingPlanRef.current) {
-          return { kind: "plan", body: pendingPlanRef.current };
-        }
-        const er = pendingEditReview;
-        if (er) {
-          return {
-            kind: "edit-review",
-            path: er.path,
-            search: er.search ?? "",
-            replace: er.replace ?? "",
-            preview: (er.search || er.replace || "").split("\n").slice(0, 12).join("\n"),
-            total: pendingEdits.current.length,
-            remaining: pendingEdits.current.length,
-          };
-        }
-        if (pendingWorkspace) {
-          return { kind: "workspace", path: pendingWorkspace.path };
-        }
-        if (pendingCheckpoint) {
-          return {
-            kind: "checkpoint",
-            stepId: pendingCheckpoint.stepId,
-            title: pendingCheckpoint.title,
-            completed: pendingCheckpoint.completed,
-            total: pendingCheckpoint.total,
-          };
-        }
-        if (pendingRevision) {
-          return {
-            kind: "revision",
-            reason: pendingRevision.reason,
-            remainingSteps: pendingRevision.remainingSteps.map((s) => ({
-              id: s.id,
-              title: s.title,
-              action: s.action,
-              ...(s.risk ? { risk: s.risk } : {}),
-            })),
-            ...(pendingRevision.summary ? { summary: pendingRevision.summary } : {}),
-          };
-        }
-        return null;
-      },
-      resolveShellConfirm: (choice) => {
-        const fn = handleShellConfirmRef.current;
-        if (fn) fn(choice).catch(() => undefined);
-      },
-      resolveChoiceConfirm: (choice) => {
-        const fn = handleChoiceConfirmRef.current;
-        if (fn) fn(choice).catch(() => undefined);
-      },
-      resolvePlanConfirm: (choice, text) => {
-        if (choice === "cancel") {
-          handlePlanConfirmRef.current("cancel").catch(() => undefined);
-          return;
-        }
-        const plan = pendingPlanRef.current ?? "";
-        // Bypass the picker → input two-step on web. The override
-        // form of handleStagedInputSubmit takes the plan + mode
-        // directly; behaviour matches the TUI's "user typed feedback +
-        // pressed Enter" path.
-        handleStagedInputSubmitRef
-          .current(text ?? "", { plan, mode: choice })
-          .catch(() => undefined);
-      },
-      resolveEditReview: (choice) => {
-        const resolve = editReviewResolveRef.current;
-        if (resolve) {
-          editReviewResolveRef.current = null;
-          setPendingEditReview(null);
-          resolve(choice);
-        }
-      },
-      resolveWorkspaceConfirm: (choice) => {
-        handleWorkspaceConfirmRef.current(choice).catch(() => undefined);
-      },
-      resolveCheckpointConfirm: (choice, text) => {
-        // Web's "revise" path sends feedback in one shot; we hand the
-        // current pending checkpoint to the submit handler directly,
-        // skipping the TUI's staged-input two-step. continue/stop fall
-        // through to the regular picker handler.
-        if (choice === "revise" && typeof text === "string") {
-          const snap = pendingCheckpoint;
-          setPendingCheckpoint(null);
-          if (!snap) return;
-          handleCheckpointReviseSubmitRef.current(text, snap).catch(() => undefined);
-          return;
-        }
-        handleCheckpointConfirmRef.current(choice).catch(() => undefined);
-      },
-      resolveReviseConfirm: (choice) => {
-        handleReviseConfirmRef.current(choice).catch(() => undefined);
-      },
-      // ---------- v0.14 mutation surface ----------
-      reloadHooks: () => {
-        const fresh = loadHooks({ projectRoot: codeMode ? currentRootDirRef.current : undefined });
-        setHookList(fresh);
-        return fresh.length;
-      },
-      addToolToPrefix: (spec) => loop.prefix.addTool(spec),
-    });
-    dashboardRef.current = handle;
-    setDashboardUrlState(handle.url);
-    return handle.url;
+        },
+        // ---------- Modal mirroring ----------
+        getActiveModal: (): ActiveModal | null => {
+          // Probe the live state via refs in priority order — only one
+          // modal can be up at a time per App invariant.
+          const ps = pendingShell;
+          if (ps) {
+            return {
+              kind: "shell",
+              command: ps.command,
+              allowPrefix: derivePrefix(ps.command),
+              shellKind: ps.kind,
+            };
+          }
+          const pc = pendingChoice;
+          if (pc) {
+            return {
+              kind: "choice",
+              question: pc.question,
+              options: pc.options,
+              allowCustom: pc.allowCustom,
+            };
+          }
+          if (pendingPlanRef.current) {
+            return { kind: "plan", body: pendingPlanRef.current };
+          }
+          const er = pendingEditReview;
+          if (er) {
+            return {
+              kind: "edit-review",
+              path: er.path,
+              search: er.search ?? "",
+              replace: er.replace ?? "",
+              preview: (er.search || er.replace || "").split("\n").slice(0, 12).join("\n"),
+              total: pendingEdits.current.length,
+              remaining: pendingEdits.current.length,
+            };
+          }
+          if (pendingWorkspace) {
+            return { kind: "workspace", path: pendingWorkspace.path };
+          }
+          if (pendingCheckpoint) {
+            return {
+              kind: "checkpoint",
+              stepId: pendingCheckpoint.stepId,
+              title: pendingCheckpoint.title,
+              completed: pendingCheckpoint.completed,
+              total: pendingCheckpoint.total,
+            };
+          }
+          if (pendingRevision) {
+            return {
+              kind: "revision",
+              reason: pendingRevision.reason,
+              remainingSteps: pendingRevision.remainingSteps.map((s) => ({
+                id: s.id,
+                title: s.title,
+                action: s.action,
+                ...(s.risk ? { risk: s.risk } : {}),
+              })),
+              ...(pendingRevision.summary ? { summary: pendingRevision.summary } : {}),
+            };
+          }
+          return null;
+        },
+        resolveShellConfirm: (choice) => {
+          const fn = handleShellConfirmRef.current;
+          if (fn) fn(choice).catch(() => undefined);
+        },
+        resolveChoiceConfirm: (choice) => {
+          const fn = handleChoiceConfirmRef.current;
+          if (fn) fn(choice).catch(() => undefined);
+        },
+        resolvePlanConfirm: (choice, text) => {
+          if (choice === "cancel") {
+            handlePlanConfirmRef.current("cancel").catch(() => undefined);
+            return;
+          }
+          const plan = pendingPlanRef.current ?? "";
+          // Bypass the picker → input two-step on web. The override
+          // form of handleStagedInputSubmit takes the plan + mode
+          // directly; behaviour matches the TUI's "user typed feedback +
+          // pressed Enter" path.
+          handleStagedInputSubmitRef
+            .current(text ?? "", { plan, mode: choice })
+            .catch(() => undefined);
+        },
+        resolveEditReview: (choice) => {
+          const resolve = editReviewResolveRef.current;
+          if (resolve) {
+            editReviewResolveRef.current = null;
+            setPendingEditReview(null);
+            resolve(choice);
+          }
+        },
+        resolveWorkspaceConfirm: (choice) => {
+          handleWorkspaceConfirmRef.current(choice).catch(() => undefined);
+        },
+        resolveCheckpointConfirm: (choice, text) => {
+          // Web's "revise" path sends feedback in one shot; we hand the
+          // current pending checkpoint to the submit handler directly,
+          // skipping the TUI's staged-input two-step. continue/stop fall
+          // through to the regular picker handler.
+          if (choice === "revise" && typeof text === "string") {
+            const snap = pendingCheckpoint;
+            setPendingCheckpoint(null);
+            if (!snap) return;
+            handleCheckpointReviseSubmitRef.current(text, snap).catch(() => undefined);
+            return;
+          }
+          handleCheckpointConfirmRef.current(choice).catch(() => undefined);
+        },
+        resolveReviseConfirm: (choice) => {
+          handleReviseConfirmRef.current(choice).catch(() => undefined);
+        },
+        // ---------- v0.14 mutation surface ----------
+        reloadHooks: () => {
+          const fresh = loadHooks({
+            projectRoot: codeMode ? currentRootDirRef.current : undefined,
+          });
+          setHookList(fresh);
+          return fresh.length;
+        },
+        addToolToPrefix: (spec) => loop.prefix.addTool(spec),
+      });
+      dashboardRef.current = handle;
+      setDashboardUrlState(handle.url);
+      return handle.url;
     })();
     dashboardStartingRef.current = startup;
     try {
@@ -3507,6 +3536,7 @@ export function App({
       getDashboardUrl,
       broadcastDashboardEvent,
       applyCwdChange,
+      touchedPaths,
     ],
   );
 
@@ -4244,6 +4274,15 @@ export function App({
               both fights for the same vertical space. */}
           <Box
             flexDirection="column"
+            // At offset=0 we want the LATEST event's bottom flush with
+            // the bottom of the viewport so a tall final entry shows
+            // its END (the most-recent rows the model just produced),
+            // with overflow="hidden" naturally clipping the top above
+            // the viewport. When the user has scrolled up (offset>0)
+            // we revert to top-anchored so the start of the slice
+            // aligns with the top of the viewport — that's the natural
+            // "reading older content" mode.
+            justifyContent={logScrollOffset === 0 ? "flex-end" : "flex-start"}
             height={
               pendingShell ||
               pendingWorkspace ||
@@ -4262,129 +4301,95 @@ export function App({
             overflow="hidden"
           >
             {(() => {
-              const visible = sliceVisibleEvents(
-                historical,
-                stdout?.rows ?? 30,
-                logScrollOffset,
-              );
-              // Count of events ABOVE the visible window (older).
-              // visible.length is the exact slice; the start index is
-              // events.length - logScrollOffset - visible.length.
-              const aboveCount = Math.max(
-                0,
-                historical.length - logScrollOffset - visible.length,
-              );
-              const belowCount = logScrollOffset;
+              const slice = sliceVisibleEvents(historical, stdout?.rows ?? 30, logScrollOffset);
               return (
                 <>
-                  {aboveCount > 0 ? (
-                    <Box>
-                      <Text color={COLOR.info} dimColor>
-                        ↑
-                      </Text>
-                      <Text dimColor>
-                        {`  ${aboveCount} event${aboveCount === 1 ? "" : "s"} above  ·  PgUp / wheel-up to scroll`}
-                      </Text>
-                    </Box>
-                  ) : null}
-                  {visible.map((item) => (
+                  {slice.events.map((item) => (
                     <EventRow key={item.id} event={item} projectRoot={currentRootDir} />
                   ))}
-                  {belowCount > 0 ? (
-                    <Box marginTop={1}>
-                      <Text color={COLOR.primary} bold>
-                        ↓
-                      </Text>
-                      <Text>{"  "}</Text>
-                      <Text color={COLOR.primary}>
-                        {`${belowCount} event${belowCount === 1 ? "" : "s"} below`}
-                      </Text>
-                      <Text dimColor>{"  · End / click here / wheel-down to jump"}</Text>
-                    </Box>
-                  ) : null}
                 </>
               );
             })()}
-          {/*
+            {/*
           Welcome card on the empty state. Visible only when nothing
           has happened yet (no past events, nothing in flight, no
           modal up). Removes the "what do I type?" friction without
           surviving past the first turn.
         */}
-          {!historical.some((e) => e.role === "user" || e.role === "assistant") &&
-          !busy &&
-          !streaming ? (
-            <WelcomeBanner inCodeMode={!!codeMode} dashboardUrl={dashboardUrl} />
-          ) : null}
-          {/*
+            {!historical.some((e) => e.role === "user" || e.role === "assistant") &&
+            !busy &&
+            !streaming ? (
+              <WelcomeBanner inCodeMode={!!codeMode} dashboardUrl={dashboardUrl} />
+            ) : null}
+            {/*
           Live rows are hidden while the ShellConfirm modal is up — the
           model's concurrent "please confirm" stream is noise the user
           doesn't need, and the picker shouldn't fight it for visual
           attention. They come back naturally once the user chooses and
           the next turn begins.
         */}
-          {!PLAIN_UI &&
-          !pendingShell &&
-          !pendingWorkspace &&
-          !pendingPlan &&
-          !stagedInput &&
-          !pendingEditReview &&
-          !pendingCheckpoint &&
-          !stagedCheckpointRevise &&
-          streaming ? (
-            <Box marginY={1}>
-              <EventRow event={streaming} projectRoot={currentRootDir} />
-            </Box>
-          ) : null}
-          {!PLAIN_UI &&
-          !pendingShell &&
-          !pendingWorkspace &&
-          !pendingPlan &&
-          !stagedInput &&
-          !pendingEditReview &&
-          !pendingCheckpoint &&
-          !stagedCheckpointRevise &&
-          ongoingTool ? (
-            <OngoingToolRow tool={ongoingTool} progress={toolProgress} />
-          ) : null}
-          {!PLAIN_UI &&
-          !pendingShell &&
-          !pendingWorkspace &&
-          !pendingPlan &&
-          !stagedInput &&
-          !pendingEditReview &&
-          !pendingCheckpoint &&
-          !stagedCheckpointRevise &&
-          subagentActivity ? (
-            <SubagentRow activity={subagentActivity} />
-          ) : null}
-          {!PLAIN_UI &&
-          !pendingShell &&
-          !pendingWorkspace &&
-          !pendingPlan &&
-          !stagedInput &&
-          !pendingEditReview &&
-          !pendingCheckpoint &&
-          !stagedCheckpointRevise &&
-          !ongoingTool &&
-          statusLine ? (
-            <StatusRow text={statusLine} />
-          ) : null}
-          {!PLAIN_UI &&
-          undoBanner &&
-          !pendingShell &&
-          !pendingWorkspace &&
-          !pendingPlan &&
-          !stagedInput &&
-          !pendingEditReview &&
-          !pendingCheckpoint &&
-          !stagedCheckpointRevise &&
-          !pendingChoice &&
-          !stagedChoiceCustom &&
-          !pendingRevision ? (
-            <UndoBanner banner={undoBanner} />
-          ) : null}
-          {/*
+            {!PLAIN_UI &&
+            !pendingShell &&
+            !pendingWorkspace &&
+            !pendingPlan &&
+            !stagedInput &&
+            !pendingEditReview &&
+            !pendingCheckpoint &&
+            !stagedCheckpointRevise &&
+            streaming ? (
+              <Box marginY={1}>
+                <EventRow event={streaming} projectRoot={currentRootDir} />
+              </Box>
+            ) : null}
+            {!PLAIN_UI &&
+            !pendingShell &&
+            !pendingWorkspace &&
+            !pendingPlan &&
+            !stagedInput &&
+            !pendingEditReview &&
+            !pendingCheckpoint &&
+            !stagedCheckpointRevise &&
+            ongoingTool ? (
+              <OngoingToolRow tool={ongoingTool} progress={toolProgress} />
+            ) : null}
+            {!PLAIN_UI &&
+            !pendingShell &&
+            !pendingWorkspace &&
+            !pendingPlan &&
+            !stagedInput &&
+            !pendingEditReview &&
+            !pendingCheckpoint &&
+            !stagedCheckpointRevise &&
+            subagentActivity ? (
+              <SubagentRow activity={subagentActivity} />
+            ) : null}
+            {!PLAIN_UI &&
+            !pendingShell &&
+            !pendingWorkspace &&
+            !pendingPlan &&
+            !stagedInput &&
+            !pendingEditReview &&
+            !pendingCheckpoint &&
+            !stagedCheckpointRevise &&
+            !ongoingTool &&
+            statusLine ? (
+              <StatusRow text={statusLine} />
+            ) : null}
+            {!PLAIN_UI &&
+            undoBanner &&
+            !pendingShell &&
+            !pendingWorkspace &&
+            !pendingPlan &&
+            !stagedInput &&
+            !pendingEditReview &&
+            !pendingCheckpoint &&
+            !stagedCheckpointRevise &&
+            !pendingChoice &&
+            !stagedChoiceCustom &&
+            !pendingRevision ? (
+              <UndoBanner banner={undoBanner} />
+            ) : null}
+            {/*
           Belt-and-suspenders fallback: if we're busy but NONE of the
           specific indicators (streaming, ongoingTool, statusLine) is
           visible, something is still happening — show a generic
@@ -4392,20 +4397,20 @@ export function App({
           without a label. Catches micro-gaps between events that the
           targeted status lines don't cover.
         */}
-          {!PLAIN_UI &&
-          !pendingShell &&
-          !pendingWorkspace &&
-          !pendingPlan &&
-          !stagedInput &&
-          !pendingEditReview &&
-          !pendingCheckpoint &&
-          !stagedCheckpointRevise &&
-          busy &&
-          !streaming &&
-          !ongoingTool &&
-          !statusLine ? (
-            <StatusRow text="processing…" />
-          ) : null}
+            {!PLAIN_UI &&
+            !pendingShell &&
+            !pendingWorkspace &&
+            !pendingPlan &&
+            !stagedInput &&
+            !pendingEditReview &&
+            !pendingCheckpoint &&
+            !stagedCheckpointRevise &&
+            busy &&
+            !streaming &&
+            !ongoingTool &&
+            !statusLine ? (
+              <StatusRow text="processing…" />
+            ) : null}
           </Box>
           {/* STICKY BOTTOM — either an active modal (replaces prompt
               for the duration of the confirm) or the input + suggestion

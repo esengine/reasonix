@@ -736,8 +736,7 @@ function CtxBreakdownBlock({
   const barWidth = 48;
   // Compute filled cells per segment proportionally to ctxMax. Segments
   // sum to <=barWidth; remainder is "free".
-  const cellOf = (n: number) =>
-    data.ctxMax > 0 ? Math.round((n / data.ctxMax) * barWidth) : 0;
+  const cellOf = (n: number) => (data.ctxMax > 0 ? Math.round((n / data.ctxMax) * barWidth) : 0);
   const sysCells = cellOf(data.systemTokens);
   const toolsCells = cellOf(data.toolsTokens);
   const logCells = cellOf(data.logTokens);
@@ -745,8 +744,7 @@ function CtxBreakdownBlock({
   const used = sysCells + toolsCells + logCells + inputCells;
   const freeCells = Math.max(0, barWidth - used);
 
-  const sevColor =
-    winPct >= 80 ? COLOR.err : winPct >= 60 ? COLOR.warn : COLOR.ok;
+  const sevColor = winPct >= 80 ? COLOR.err : winPct >= 60 ? COLOR.warn : COLOR.ok;
 
   // Wrapped in a brand-colored left-bar Box so the breakdown shares
   // the same conversation-column visual language as user / assistant /
@@ -845,7 +843,8 @@ function ReasoningBlock({ reasoning }: { reasoning: string }) {
   // its summary header. Rough is fine; the user reads "ballpark size"
   // not "exact bill".
   const tokensApprox = Math.max(1, Math.round(flat.length / 4.5));
-  const tokLabel = tokensApprox >= 1000 ? `${(tokensApprox / 1000).toFixed(1)}k` : `${tokensApprox}`;
+  const tokLabel =
+    tokensApprox >= 1000 ? `${(tokensApprox / 1000).toFixed(1)}k` : `${tokensApprox}`;
   // Layout (matches design/tui-redesign-ink.html R1 reasoning state):
   //   R1 ↯ reasoning · ~Nk tok
   //   │  <preview text — dim violet italic, left-bordered>

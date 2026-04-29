@@ -39,17 +39,23 @@ function isInteractiveTty(): boolean {
   return Boolean(process.stdout?.isTTY);
 }
 
+/** Module-level mirror of "is mouse tracking active right now?". Mutated
+ *  by both `useAltScreen` (on mount) and `setMouseTracking` (slash command). */
+let mouseTrackingOn = false;
+
 /**
  * Enter the alt screen on mount, restore on unmount. Mouse tracking
- * is INTENTIONALLY OFF by default — having the app intercept clicks
- * + drags fights the user's text-selection workflow (terminal can't
- * do native shift+drag selection while the app is consuming events,
- * and Ink's continuous re-rendering clears any selection that does
- * survive). PgUp / PgDn / Home / End cover scrolling without it.
- *
- * Wheel scrolling can be enabled per-session via `setMouseTracking()`
- * — the slash command `/mouse on` flips it on at runtime for users
- * who'd rather wheel-scroll than copy-paste.
+ * is ON by default in basic-button mode (1000 + 1006 SGR coords) so
+ * the wheel can drive the log scroll — the most-asked-for thing after
+ * the alt-screen switch. We deliberately use mode 1000 (press/release
+ * only) instead of 1002 (button + drag) so drag events DON'T go to
+ * the app: every modern terminal (Windows Terminal, iTerm2, WezTerm,
+ * gnome-terminal, kitty, alacritty, VS Code) lets the user hold
+ * **Shift while dragging** to bypass mouse tracking entirely and do
+ * native cell selection. So the user gets:
+ *   · plain wheel        → in-app log scroll (the regression we're fixing)
+ *   · shift + click+drag → native terminal selection (copy/paste)
+ *   · `/mouse off`       → fully disable for terminals that don't bypass
  *
  * Restore is idempotent and runs on SIGINT / SIGTERM / exit, so the
  * user's terminal returns to a sane state regardless of how the
@@ -58,9 +64,12 @@ function isInteractiveTty(): boolean {
 export function useAltScreen(): void {
   useEffect(() => {
     if (!isInteractiveTty()) return;
-    // Enter alt buffer + clear + cursor home. NO mouse tracking by
-    // default — see module comment.
-    process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H");
+    // Enter alt buffer + clear + cursor home + basic mouse tracking
+    // with SGR coordinates. Mode 1000 = press/release only (includes
+    // wheel as buttons 64/65). 1006 = SGR-encoded coords. Together
+    // they let us read the wheel without intercepting drag motion.
+    process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H\x1b[?1000h\x1b[?1006h");
+    mouseTrackingOn = true;
 
     // Belt-and-suspenders restore on every plausible exit path.
     let restored = false;
@@ -68,9 +77,9 @@ export function useAltScreen(): void {
       if (restored) return;
       restored = true;
       try {
-        // Best-effort disable both mouse modes (1002 + 1006) in case
-        // they were turned on at runtime, then leave alt screen.
-        process.stdout.write("\x1b[?1006l\x1b[?1002l\x1b[?1049l");
+        // Disable every mouse mode we might have turned on (1000 +
+        // 1002 + 1006), then leave alt screen.
+        process.stdout.write("\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[?1049l");
       } catch {
         /* terminal closed, nothing to do */
       }
@@ -92,19 +101,25 @@ export function useAltScreen(): void {
 }
 
 /**
- * Runtime toggle for mouse-event tracking (button + wheel). Invoked by
- * the `/mouse on|off` slash command. Off by default to keep native
- * text selection working; users who want wheel scrolling can flip it
- * on per-session.
+ * Runtime toggle for mouse-event tracking (basic button + wheel).
+ * Invoked by the `/mouse on|off` slash command. ON by default in
+ * basic-button mode 1000 — see {@link useAltScreen} for the rationale
+ * (wheel works, drag still does native shift+drag selection).
+ *
+ * `/mouse off` is the escape hatch for terminals that don't honor
+ * shift+drag bypass — flipping it off restores fully-native mouse
+ * behavior at the cost of in-app wheel scrolling (PgUp/PgDn still
+ * work).
  */
-let mouseTrackingOn = false;
 export function setMouseTracking(on: boolean): void {
   if (!isInteractiveTty()) return;
   if (on === mouseTrackingOn) return;
   if (on) {
-    process.stdout.write("\x1b[?1002h\x1b[?1006h");
+    process.stdout.write("\x1b[?1000h\x1b[?1006h");
   } else {
-    process.stdout.write("\x1b[?1006l\x1b[?1002l");
+    // Disable both 1000 and 1002 modes (we may have inherited the
+    // older 1002 default from a long-running session) plus SGR.
+    process.stdout.write("\x1b[?1006l\x1b[?1002l\x1b[?1000l");
   }
   mouseTrackingOn = on;
 }

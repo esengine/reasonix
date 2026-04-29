@@ -190,12 +190,7 @@ export function UndoBanner({
         {" u "}
       </Text>
       <Text dimColor>{" to undo  "}</Text>
-      <CharBar
-        pct={pct}
-        width={20}
-        color={urgent ? "#f87171" : "#c4b5fd"}
-        showLabel={false}
-      />
+      <CharBar pct={pct} width={20} color={urgent ? "#f87171" : "#c4b5fd"} showLabel={false} />
       <Text dimColor>{"  "}</Text>
       <Text color={urgent ? "#f87171" : "#c4b5fd"} bold={urgent}>
         {`${remainingSec}s`}

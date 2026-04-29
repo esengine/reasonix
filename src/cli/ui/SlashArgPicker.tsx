@@ -49,9 +49,7 @@ export function SlashArgPicker({
       <Text color={COLOR.accent} bold>
         {`/${spec.cmd}`}
       </Text>
-      {spec.argsHint ? (
-        <Text dimColor>{` ${spec.argsHint}`}</Text>
-      ) : null}
+      {spec.argsHint ? <Text dimColor>{` ${spec.argsHint}`}</Text> : null}
       <Text dimColor>{`  ${spec.summary}`}</Text>
     </Box>
   );

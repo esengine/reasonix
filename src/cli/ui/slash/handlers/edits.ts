@@ -1,4 +1,3 @@
-import type { EditMode } from "../../../../config.js";
 import {
   createCheckpoint,
   deleteCheckpoint,
@@ -7,6 +6,7 @@ import {
   listCheckpoints,
   restoreCheckpoint,
 } from "../../../../code/checkpoints.js";
+import type { EditMode } from "../../../../config.js";
 import { parseEditIndices } from "../../edit-history.js";
 import type { SlashHandler } from "../dispatch.js";
 import { runGitCommit, stripOuterQuotes } from "../helpers.js";
@@ -204,8 +204,7 @@ const checkpoint: SlashHandler = (args, _loop, ctx) => {
     const items = [...listCheckpoints(ctx.codeRoot)].reverse();
     if (items.length === 0) {
       return {
-        info:
-          "no checkpoints yet — `/checkpoint <name>` snapshots every file the session has touched. Restore later with `/restore <name>`.",
+        info: "no checkpoints yet — `/checkpoint <name>` snapshots every file the session has touched. Restore later with `/restore <name>`.",
       };
     }
     const lines = [`◈ checkpoints · ${items.length} stored`, ""];
@@ -285,13 +284,19 @@ const restore: SlashHandler = (args, _loop, ctx) => {
   const result = restoreCheckpoint(ctx.codeRoot, found.id);
   const lines = [`▸ restored "${found.name}" (${found.id}) from ${fmtAgo(found.createdAt)}`];
   if (result.restored.length > 0) {
-    lines.push(`  · wrote back ${result.restored.length} file${result.restored.length === 1 ? "" : "s"}`);
+    lines.push(
+      `  · wrote back ${result.restored.length} file${result.restored.length === 1 ? "" : "s"}`,
+    );
   }
   if (result.removed.length > 0) {
-    lines.push(`  · removed ${result.removed.length} file${result.removed.length === 1 ? "" : "s"} (didn't exist at checkpoint time)`);
+    lines.push(
+      `  · removed ${result.removed.length} file${result.removed.length === 1 ? "" : "s"} (didn't exist at checkpoint time)`,
+    );
   }
   if (result.skipped.length > 0) {
-    lines.push(`  ✗ ${result.skipped.length} file${result.skipped.length === 1 ? "" : "s"} skipped:`);
+    lines.push(
+      `  ✗ ${result.skipped.length} file${result.skipped.length === 1 ? "" : "s"} skipped:`,
+    );
     for (const s of result.skipped.slice(0, 5)) {
       lines.push(`    ${s.path} — ${s.reason}`);
     }

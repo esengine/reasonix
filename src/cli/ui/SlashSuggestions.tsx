@@ -66,9 +66,7 @@ export function SlashSuggestions({
           {"/ "}
         </Text>
         <Text dimColor>{`${total} command${total === 1 ? "" : "s"}`}</Text>
-        {hiddenAbove > 0 ? (
-          <Text dimColor>{`   ↑ ${hiddenAbove} above`}</Text>
-        ) : null}
+        {hiddenAbove > 0 ? <Text dimColor>{`   ↑ ${hiddenAbove} above`}</Text> : null}
       </Box>
       {shown.map((spec, i) => (
         <SuggestionRow key={spec.cmd} spec={spec} isSelected={windowStart + i === selectedIndex} />

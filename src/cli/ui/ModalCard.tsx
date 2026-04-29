@@ -66,13 +66,7 @@ export function ModalCard({
   const innerWidth = Math.min(76, Math.max(28, cols - 6));
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={accent}
-      paddingX={1}
-      marginY={1}
-    >
+    <Box flexDirection="column" borderStyle="round" borderColor={accent} paddingX={1} marginY={1}>
       {/* Header row — icon + bold title in accent color, dim subtitle
           right-aligned. The horizontal rule below it doubles as a
           separator and a visual weight that says "this is the thing

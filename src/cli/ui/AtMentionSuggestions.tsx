@@ -65,11 +65,11 @@ export function AtMentionSuggestions({
           {"@ "}
         </Text>
         <Text dimColor>
-          {query ? `${total} match${total === 1 ? "" : "es"} for "${query}"` : `${total} file${total === 1 ? "" : "s"}`}
+          {query
+            ? `${total} match${total === 1 ? "" : "es"} for "${query}"`
+            : `${total} file${total === 1 ? "" : "s"}`}
         </Text>
-        {hiddenAbove > 0 ? (
-          <Text dimColor>{`   ↑ ${hiddenAbove} above`}</Text>
-        ) : null}
+        {hiddenAbove > 0 ? <Text dimColor>{`   ↑ ${hiddenAbove} above`}</Text> : null}
       </Box>
       {shown.map((path, i) => (
         <FileRow key={path} path={path} isSelected={windowStart + i === selectedIndex} />

@@ -100,7 +100,10 @@ const jobs: SlashHandler = (_args, _loop, ctx) => {
   for (const r of rows) {
     const ico = statusIcon(r);
     const id = `#${String(r.id).padEnd(3)}`;
-    const cmd = r.command.length > cmdWidth ? `${r.command.slice(0, cmdWidth - 1)}…` : r.command.padEnd(cmdWidth);
+    const cmd =
+      r.command.length > cmdWidth
+        ? `${r.command.slice(0, cmdWidth - 1)}…`
+        : r.command.padEnd(cmdWidth);
     const meta = fmtMeta(r).padEnd(20);
     const age = fmtAge(Date.now() - r.startedAt).padStart(4);
     lines.push(`  ${ico}  ${id}  ${cmd}  ${meta}  ${age}`);

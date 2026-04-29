@@ -26,14 +26,7 @@
  * with hooks, fails in non-git dirs.
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
@@ -67,7 +60,9 @@ export interface CheckpointMeta {
 
 /** Sanitize a directory path into a safe filesystem name for the store. */
 function sanitizeRoot(rootDir: string): string {
-  return resolve(rootDir).replace(/[\\/:]+/g, "_").replace(/^_+/, "");
+  return resolve(rootDir)
+    .replace(/[\\/:]+/g, "_")
+    .replace(/^_+/, "");
 }
 
 function storeRoot(rootDir: string): string {

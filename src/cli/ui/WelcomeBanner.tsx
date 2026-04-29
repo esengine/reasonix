@@ -32,7 +32,6 @@
  */
 
 import { Box, Text, useStdout } from "ink";
-// biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope
 import React from "react";
 import { COLOR, GRADIENT } from "./theme.js";
 
@@ -58,22 +57,25 @@ interface QuickCard {
 }
 
 const CARDS_CHAT: QuickCard[] = [
-  { cmd: "/help",       desc: "every slash command + keyboard shortcut" },
-  { cmd: "/skill",      desc: "invoke a stored playbook by name" },
-  { cmd: "/dashboard",  desc: "open the embedded web UI (chat · stats · settings)" },
+  { cmd: "/help", desc: "every slash command + keyboard shortcut" },
+  { cmd: "/skill", desc: "invoke a stored playbook by name" },
+  { cmd: "/dashboard", desc: "open the embedded web UI (chat · stats · settings)" },
   { cmd: "/preset pro", desc: "switch to v4-pro for hard reasoning tasks" },
-  { cmd: "/exit",       desc: "quit the TUI (Ctrl+C twice also works)" },
+  { cmd: "/exit", desc: "quit the TUI (Ctrl+C twice also works)" },
 ];
 
 const CARDS_CODE: QuickCard[] = [
-  { cmd: "@file",       desc: "inline a file's contents in your message" },
-  { cmd: "!cmd",        desc: "run shell — output is captured for context" },
+  { cmd: "@file", desc: "inline a file's contents in your message" },
+  { cmd: "!cmd", desc: "run shell — output is captured for context" },
   { cmd: "/checkpoint", desc: "snapshot the workspace before a risky turn" },
-  { cmd: "/dashboard",  desc: "open the embedded web UI (chat · files · stats · settings)" },
-  { cmd: "/help",       desc: "every slash command + keyboard shortcut" },
+  { cmd: "/dashboard", desc: "open the embedded web UI (chat · files · stats · settings)" },
+  { cmd: "/help", desc: "every slash command + keyboard shortcut" },
 ];
 
-export function WelcomeBanner({ inCodeMode, dashboardUrl }: WelcomeBannerProps): React.ReactElement {
+export function WelcomeBanner({
+  inCodeMode,
+  dashboardUrl,
+}: WelcomeBannerProps): React.ReactElement {
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
   // Wordmark width: each letter + space between letters. With letter-
@@ -107,7 +109,9 @@ export function WelcomeBanner({ inCodeMode, dashboardUrl }: WelcomeBannerProps):
           {"◈ "}
         </Text>
         {WORDMARK.split("").map((letter, i) => (
-          <React.Fragment key={`mw-${letter}-${i}`}>
+          // Wordmark is fixed-string ("REASONIX") — letters are unique
+          // and the array never reorders, so per-letter key is stable.
+          <React.Fragment key={letter}>
             <Text bold color={GRADIENT[i % GRADIENT.length]}>
               {letter}
             </Text>
@@ -145,7 +149,9 @@ export function WelcomeBanner({ inCodeMode, dashboardUrl }: WelcomeBannerProps):
       {dashboardUrl ? (
         <Box marginTop={2}>
           <Text>{" ".repeat(Math.max(0, Math.floor((cols - (dashboardUrl.length + 9)) / 2)))}</Text>
-          <Text color={COLOR.brand} bold>{"▸ web · "}</Text>
+          <Text color={COLOR.brand} bold>
+            {"▸ web · "}
+          </Text>
           <Text color={COLOR.accent}>{dashboardUrl}</Text>
         </Box>
       ) : null}

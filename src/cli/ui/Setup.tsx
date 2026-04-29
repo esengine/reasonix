@@ -46,16 +46,14 @@ export function Setup({ onReady }: SetupProps) {
         </Text>
       </Box>
       <Box marginTop={1}>
-        <Text color={COLOR.info}>
-          Paste your DeepSeek API key to get started.
-        </Text>
+        <Text color={COLOR.info}>Paste your DeepSeek API key to get started.</Text>
       </Box>
       <Box>
         <Text dimColor>{"  free credit on signup · "}</Text>
         <Text color={COLOR.primary}>https://platform.deepseek.com/api_keys</Text>
       </Box>
       <Box>
-        <Text dimColor>{`  saved to `}</Text>
+        <Text dimColor>{"  saved to "}</Text>
         <Text dimColor>{defaultConfigPath()}</Text>
       </Box>
       <Box marginTop={1}>

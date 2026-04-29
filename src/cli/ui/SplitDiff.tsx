@@ -19,6 +19,7 @@
  */
 
 import { Box, Text, useStdout } from "ink";
+// biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for React.Fragment
 import React from "react";
 import type { SplitDiffRow } from "../../code/diff-preview.js";
 import { COLOR } from "./theme.js";
@@ -67,8 +68,7 @@ function Cell({
   const sgnPad = 1; // single-char sign
   const inner = Math.max(8, width - numPad - sgnPad - 2 /* spaces */);
 
-  const numStr =
-    side.num !== null ? String(side.num).padStart(numPad) : " ".repeat(numPad);
+  const numStr = side.num !== null ? String(side.num).padStart(numPad) : " ".repeat(numPad);
   const sign =
     side.kind === "del" ? "-" : side.kind === "add" ? "+" : side.kind === "pad" ? " " : " ";
   const raw = side.text;
@@ -104,9 +104,5 @@ function Cell({
     );
   }
   // ctx: same content both sides, dim
-  return (
-    <Text dimColor>
-      {`${numStr} ${sign} ${padded}`}
-    </Text>
-  );
+  return <Text dimColor>{`${numStr} ${sign} ${padded}`}</Text>;
 }

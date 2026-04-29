@@ -33,8 +33,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (realHome === undefined) delete process.env.HOME;
-  else process.env.HOME = realHome;
+  // `delete` is fine here — env-var cleanup in test teardown is not
+  // hot-path code. Assigning `undefined` would set the literal string.
+  if (realHome === undefined) {
+    // biome-ignore lint/performance/noDelete: env-var cleanup in test teardown
+    delete process.env.HOME;
+  } else process.env.HOME = realHome;
   rmSync(homeDir, { recursive: true, force: true });
   rmSync(workspace, { recursive: true, force: true });
 });
