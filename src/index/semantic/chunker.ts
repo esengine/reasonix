@@ -2,6 +2,13 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import ignore, { type Ignore } from "ignore";
+import {
+  type IndexFilters,
+  type ResolvedIndexConfig,
+  compileFilters,
+  defaultIndexConfig,
+} from "../config.js";
 
 export interface CodeChunk {
   /** Path relative to the index root, forward slashes. Stable across OS. */
@@ -12,96 +19,31 @@ export interface CodeChunk {
   text: string;
 }
 
+export type SkipReason =
+  | "defaultDir"
+  | "defaultFile"
+  | "binaryExt"
+  | "binaryContent"
+  | "tooLarge"
+  | "gitignore"
+  | "pattern"
+  | "readError";
+
 export interface ChunkOptions {
   /** Lines per window. Default 60. */
   windowLines?: number;
   /** Lines of overlap between consecutive windows. Default 12. */
   overlap?: number;
-  /** Skip files larger than this (bytes). Default 256 KB. */
-  maxFileBytes?: number;
   /** Default 4000 — keeps unicode-heavy slices under nomic-embed-text's 8K-token window. */
   maxChunkChars?: number;
+  /** Resolved exclude/limit settings. Falls back to package defaults when omitted. */
+  config?: ResolvedIndexConfig;
+  /** Tally callback for files that didn't make it into the index. */
+  onSkip?: (relPath: string, reason: SkipReason) => void;
 }
 
 /** Default character cap per chunk — sized for nomic-embed-text. */
 export const DEFAULT_MAX_CHUNK_CHARS = 4000;
-
-/** Keep in sync with src/tools/filesystem.ts directory_tree. */
-const SKIP_DIRS: ReadonlySet<string> = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  "out",
-  ".next",
-  ".nuxt",
-  "target",
-  ".venv",
-  "venv",
-  "__pycache__",
-  ".pytest_cache",
-  ".mypy_cache",
-  ".cache",
-  "coverage",
-  ".turbo",
-  ".vercel",
-  ".reasonix",
-]);
-
-const SKIP_FILES: ReadonlySet<string> = new Set([
-  "package-lock.json",
-  "yarn.lock",
-  "pnpm-lock.yaml",
-  "Cargo.lock",
-  "poetry.lock",
-  "Pipfile.lock",
-  "go.sum",
-  ".DS_Store",
-]);
-
-const BINARY_EXTS: ReadonlySet<string> = new Set([
-  // Images
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".ico",
-  ".tiff",
-  // Fonts
-  ".woff",
-  ".woff2",
-  ".ttf",
-  ".otf",
-  ".eot",
-  // Archives / binaries
-  ".zip",
-  ".tar",
-  ".gz",
-  ".rar",
-  ".7z",
-  ".exe",
-  ".dll",
-  ".so",
-  ".dylib",
-  ".class",
-  ".jar",
-  ".wasm",
-  ".o",
-  ".a",
-  // Media
-  ".mp3",
-  ".mp4",
-  ".wav",
-  ".ogg",
-  ".webm",
-  ".mov",
-  // Other
-  ".pdf",
-  ".sqlite",
-  ".db",
-]);
 
 export function chunkText(
   text: string,
@@ -153,10 +95,8 @@ function safeSplit(chunk: CodeChunk, maxChars: number): CodeChunk[] {
   };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    const lineLen = line.length + 1; // +newline
+    const lineLen = line.length + 1;
     if (lineLen > maxChars) {
-      // Single line dwarfs the cap. Flush current buffer, then emit
-      // a hard-truncated single-line chunk for this line.
       flush(chunk.startLine + i - 1);
       out.push({
         path: chunk.path,
@@ -178,19 +118,61 @@ function safeSplit(chunk: CodeChunk, maxChars: number): CodeChunk[] {
   return out;
 }
 
+async function loadGitignoreAt(dirAbs: string): Promise<Ignore | null> {
+  try {
+    const text = await fs.readFile(path.join(dirAbs, ".gitignore"), "utf8");
+    return ignore().add(text);
+  } catch {
+    return null;
+  }
+}
+
+function toForwardRel(root: string, abs: string): string {
+  return path.relative(root, abs).split(path.sep).join("/");
+}
+
+interface GitignoreLayer {
+  /** Absolute dir the gitignore lives in — patterns are evaluated relative to this. */
+  dirAbs: string;
+  ig: Ignore;
+}
+
+/** Returns true if any nested .gitignore — outermost to innermost — matches the path. */
+function ignoredByLayers(layers: readonly GitignoreLayer[], abs: string, isDir: boolean): boolean {
+  for (const layer of layers) {
+    const rel = path.relative(layer.dirAbs, abs).split(path.sep).join("/");
+    if (!rel || rel.startsWith("..")) continue;
+    if (layer.ig.ignores(isDir ? `${rel}/` : rel)) return true;
+  }
+  return false;
+}
+
+interface WalkFrame {
+  dir: string;
+  layers: readonly GitignoreLayer[];
+}
+
 export async function* walkChunks(
   root: string,
   opts: ChunkOptions = {},
 ): AsyncGenerator<CodeChunk> {
   const windowLines = opts.windowLines ?? 60;
   const overlap = Math.min(opts.overlap ?? 12, Math.max(0, windowLines - 1));
-  const maxFileBytes = opts.maxFileBytes ?? 256 * 1024;
   const maxChunkChars = opts.maxChunkChars ?? DEFAULT_MAX_CHUNK_CHARS;
+  const filters: IndexFilters = compileFilters(opts.config ?? defaultIndexConfig());
+  const onSkip = opts.onSkip ?? (() => {});
 
-  const stack: string[] = [root];
+  const initial: GitignoreLayer[] = [];
+  if (filters.respectGitignore) {
+    const rootIg = await loadGitignoreAt(root);
+    if (rootIg) initial.push({ dirAbs: root, ig: rootIg });
+  }
+
+  const stack: WalkFrame[] = [{ dir: root, layers: initial }];
   while (stack.length > 0) {
-    const dir = stack.pop();
-    if (!dir) break;
+    const frame = stack.pop();
+    if (!frame) break;
+    const { dir, layers } = frame;
     let entries: import("node:fs").Dirent[];
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -199,47 +181,78 @@ export async function* walkChunks(
     }
     for (const entry of entries) {
       const name = entry.name;
+      const abs = path.join(dir, name);
+      const rel = toForwardRel(root, abs);
       if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(name) || name.startsWith(".")) {
-          // .git/.next/.cache etc. plus any hidden dir — same default
-          // as `directory_tree`. Users opt in to dotfiles via a future
-          // flag; MVP keeps the index lean.
-          if (SKIP_DIRS.has(name) || name === ".git") continue;
-          // Allow other dotdirs that aren't in SKIP_DIRS (rare).
+        if (filters.dirSet.has(name)) {
+          onSkip(rel, "defaultDir");
+          continue;
         }
-        stack.push(path.join(dir, name));
+        if (filters.respectGitignore && ignoredByLayers(layers, abs, true)) {
+          onSkip(rel, "gitignore");
+          continue;
+        }
+        if (filters.patternMatch(`${rel}/`) || filters.patternMatch(rel)) {
+          onSkip(rel, "pattern");
+          continue;
+        }
+        const childLayers = filters.respectGitignore ? await extendLayers(layers, abs) : layers;
+        stack.push({ dir: abs, layers: childLayers });
         continue;
       }
       if (!entry.isFile()) continue;
-      if (SKIP_FILES.has(name)) continue;
+      if (filters.fileSet.has(name)) {
+        onSkip(rel, "defaultFile");
+        continue;
+      }
       const ext = path.extname(name).toLowerCase();
-      if (BINARY_EXTS.has(ext)) continue;
-      const abs = path.join(dir, name);
+      if (filters.extSet.has(ext)) {
+        onSkip(rel, "binaryExt");
+        continue;
+      }
+      if (filters.respectGitignore && ignoredByLayers(layers, abs, false)) {
+        onSkip(rel, "gitignore");
+        continue;
+      }
+      if (filters.patternMatch(rel)) {
+        onSkip(rel, "pattern");
+        continue;
+      }
       let stat: import("node:fs").Stats;
       try {
         stat = await fs.stat(abs);
       } catch {
+        onSkip(rel, "readError");
         continue;
       }
-      if (stat.size > maxFileBytes) continue;
-      // Read as utf-8. If decoding ever fails (random binary that
-      // sneaks past the ext check), skip rather than crashing the
-      // whole index build.
+      if (stat.size > filters.maxFileBytes) {
+        onSkip(rel, "tooLarge");
+        continue;
+      }
       let text: string;
       try {
         text = await fs.readFile(abs, "utf8");
       } catch {
+        onSkip(rel, "readError");
         continue;
       }
-      // Quick null-byte sniff — catches binary files with weird /
-      // missing extensions that BINARY_EXTS missed.
-      if (text.indexOf("\0") !== -1) continue;
-      const rel = path.relative(root, abs).split(path.sep).join("/");
+      if (text.indexOf("\0") !== -1) {
+        onSkip(rel, "binaryContent");
+        continue;
+      }
       for (const chunk of chunkText(text, rel, windowLines, overlap, maxChunkChars)) {
         yield chunk;
       }
     }
   }
+}
+
+async function extendLayers(
+  layers: readonly GitignoreLayer[],
+  dirAbs: string,
+): Promise<readonly GitignoreLayer[]> {
+  const ig = await loadGitignoreAt(dirAbs);
+  return ig ? [...layers, { dirAbs, ig }] : layers;
 }
 
 export async function chunkDirectory(root: string, opts: ChunkOptions = {}): Promise<CodeChunk[]> {

@@ -70,9 +70,11 @@
   "dependencies": {
     "commander": "^12.1.0",
     "eventsource-parser": "^3.0.0",
+    "ignore": "^7.0.5",
     "ink": "^5.1.0",
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
+    "picomatch": "^4.0.4",
     "react": "^18.3.1",
     "string-width": "^7.2.0"
   },
@@ -99,6 +101,7 @@
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.26.0",
     "@types/node": "^22.9.0",
+    "@types/picomatch": "^4.0.3",
     "@types/react": "^18.3.12",
     "esbuild": "^0.21.5",
     "simple-git-hooks": "^2.13.1",

@@ -3,6 +3,11 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import {
+  type IndexUserConfig,
+  type ResolvedIndexConfig,
+  resolveIndexConfig,
+} from "./index/config.js";
 
 /** Legacy `fast|smart|max` kept for back-compat with existing config.json files. */
 export type PresetName = "auto" | "flash" | "pro" | "fast" | "smart" | "max";
@@ -29,6 +34,7 @@ export interface ReasonixConfig {
       shellAllowed?: string[];
     };
   };
+  index?: IndexUserConfig;
 }
 
 export function defaultConfigPath(): string {
@@ -165,6 +171,20 @@ export function saveReasoningEffort(
 ): void {
   const cfg = readConfig(path);
   cfg.reasoningEffort = effort;
+  writeConfig(cfg, path);
+}
+
+export function loadIndexUserConfig(path: string = defaultConfigPath()): IndexUserConfig {
+  return readConfig(path).index ?? {};
+}
+
+export function loadIndexConfig(path: string = defaultConfigPath()): ResolvedIndexConfig {
+  return resolveIndexConfig(readConfig(path).index);
+}
+
+export function saveIndexConfig(user: IndexUserConfig, path: string = defaultConfigPath()): void {
+  const cfg = readConfig(path);
+  cfg.index = user;
   writeConfig(cfg, path);
 }
 

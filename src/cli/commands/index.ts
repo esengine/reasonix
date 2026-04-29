@@ -1,8 +1,9 @@
 /** `reasonix index` — progress writes go to stderr so stdout stays pipeable. */
 
 import { resolve } from "node:path";
+import { loadIndexConfig } from "../../config.js";
 import { buildIndex } from "../../index/semantic/builder.js";
-import type { BuildProgress, BuildResult } from "../../index/semantic/builder.js";
+import type { BuildProgress, BuildResult, SkipBuckets } from "../../index/semantic/builder.js";
 import { t } from "../../index/semantic/i18n.js";
 import { ollamaPreflight } from "../../index/semantic/preflight.js";
 
@@ -42,6 +43,7 @@ export async function indexCommand(opts: IndexCommandOptions = {}): Promise<void
       rebuild: opts.rebuild,
       model,
       baseUrl: opts.ollamaUrl,
+      indexConfig: loadIndexConfig(),
       onProgress: (p) => writer.update(p),
     });
   } catch (err) {
@@ -64,9 +66,26 @@ export async function indexCommand(opts: IndexCommandOptions = {}): Promise<void
       seconds,
     }),
   );
+  const breakdown = renderSkipBreakdown(result.skipBuckets);
+  if (breakdown) process.stderr.write(`${breakdown}\n`);
   if (result.filesChanged === 0 && !opts.rebuild) {
     process.stderr.write(t("indexNothingToDo"));
   }
+}
+
+function renderSkipBreakdown(buckets: SkipBuckets): string {
+  const total = Object.values(buckets).reduce((a, b) => a + b, 0);
+  if (total === 0) return "";
+  const parts: string[] = [];
+  if (buckets.gitignore) parts.push(`gitignore: ${buckets.gitignore}`);
+  if (buckets.pattern) parts.push(`pattern: ${buckets.pattern}`);
+  if (buckets.defaultDir) parts.push(`defaultDir: ${buckets.defaultDir}`);
+  if (buckets.defaultFile) parts.push(`defaultFile: ${buckets.defaultFile}`);
+  if (buckets.binaryExt) parts.push(`binaryExt: ${buckets.binaryExt}`);
+  if (buckets.binaryContent) parts.push(`binaryContent: ${buckets.binaryContent}`);
+  if (buckets.tooLarge) parts.push(`tooLarge: ${buckets.tooLarge}`);
+  if (buckets.readError) parts.push(`readError: ${buckets.readError}`);
+  return `  · skipped ${total} files (${parts.join(", ")})`;
 }
 
 interface ProgressWriter {

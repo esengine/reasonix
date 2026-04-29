@@ -2,6 +2,7 @@
 
 import { promises as fs } from "node:fs";
 import * as pathMod from "node:path";
+import { DEFAULT_INDEX_EXCLUDES } from "../index/config.js";
 import type { ToolRegistry } from "../tools.js";
 
 export interface FilesystemToolsOptions {
@@ -23,71 +24,11 @@ const DEFAULT_AUTO_PREVIEW_LINES = 200;
 const AUTO_PREVIEW_HEAD_LINES = 80;
 const AUTO_PREVIEW_TAIL_LINES = 40;
 
-/** Skipped unless `include_deps:true` — vendored/generated trees dominate match lists otherwise. */
-const SKIP_DIR_NAMES: ReadonlySet<string> = new Set([
-  "node_modules",
-  ".git",
-  ".hg",
-  ".svn",
-  "dist",
-  "build",
-  "out",
-  ".next",
-  ".nuxt",
-  "target", // Rust / Java
-  ".venv",
-  "venv",
-  "__pycache__",
-  ".pytest_cache",
-  ".mypy_cache",
-  ".cache",
-  "coverage",
-]);
+/** Skipped unless `include_deps:true` — shared with the semantic indexer via DEFAULT_INDEX_EXCLUDES. */
+const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(DEFAULT_INDEX_EXCLUDES.dirs);
 
 /** First line of binary defense; NUL-byte sniff is the second (catches mislabeled `.txt`). */
-const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".bmp",
-  ".ico",
-  ".webp",
-  ".tiff",
-  ".pdf",
-  ".zip",
-  ".tar",
-  ".gz",
-  ".bz2",
-  ".xz",
-  ".7z",
-  ".rar",
-  ".exe",
-  ".dll",
-  ".so",
-  ".dylib",
-  ".bin",
-  ".class",
-  ".jar",
-  ".war",
-  ".o",
-  ".obj",
-  ".lib",
-  ".a",
-  ".woff",
-  ".woff2",
-  ".ttf",
-  ".otf",
-  ".eot",
-  ".mp3",
-  ".mp4",
-  ".mov",
-  ".avi",
-  ".webm",
-  ".wasm",
-  ".pyc",
-  ".pyo",
-]);
+const BINARY_EXTENSIONS: ReadonlySet<string> = new Set(DEFAULT_INDEX_EXCLUDES.exts);
 
 function isLikelyBinaryByName(name: string): boolean {
   const dot = name.lastIndexOf(".");

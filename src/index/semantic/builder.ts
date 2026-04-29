@@ -1,7 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { type ResolvedIndexConfig, defaultIndexConfig } from "../config.js";
 import { walkChunks } from "./chunker.js";
-import type { CodeChunk } from "./chunker.js";
+import type { CodeChunk, SkipReason } from "./chunker.js";
 import { embed, embedAll, probeOllama } from "./embedding.js";
 import type { EmbedOptions } from "./embedding.js";
 import { normalize, openStore } from "./store.js";
@@ -11,17 +12,19 @@ import type { IndexEntry, SearchHit } from "./store.js";
 export const INDEX_DIR_NAME = path.join(".reasonix", "semantic");
 
 export interface BuildOptions extends EmbedOptions {
-  /** Skip files larger than this many bytes. Default 256 KB. */
-  maxFileBytes?: number;
   /** Lines per window. Default 60. */
   windowLines?: number;
   /** Window overlap. Default 12. */
   overlap?: number;
   /** Force a full rebuild (drop the existing index first). */
   rebuild?: boolean;
+  /** Resolved exclude/limit settings. Defaults to package defaults. */
+  indexConfig?: ResolvedIndexConfig;
   /** Progress callback for the CLI to render counters. */
   onProgress?: (info: BuildProgress) => void;
 }
+
+export type SkipBuckets = Record<SkipReason, number>;
 
 export interface BuildProgress {
   phase: "scan" | "embed" | "write" | "done";
@@ -30,6 +33,7 @@ export interface BuildProgress {
   chunksDone?: number;
   filesSkipped?: number;
   filesChanged?: number;
+  skipBuckets?: SkipBuckets;
 }
 
 export interface BuildResult {
@@ -40,7 +44,22 @@ export interface BuildResult {
   /** Chunks that failed to embed (Ollama 500, transient errors) and
    *  were skipped. Reported in the success line so users notice. */
   chunksSkipped: number;
+  /** Per-reason file-skip tally from the walk. */
+  skipBuckets: SkipBuckets;
   durationMs: number;
+}
+
+function emptyBuckets(): SkipBuckets {
+  return {
+    defaultDir: 0,
+    defaultFile: 0,
+    binaryExt: 0,
+    binaryContent: 0,
+    tooLarge: 0,
+    gitignore: 0,
+    pattern: 0,
+    readError: 0,
+  };
 }
 
 /** Probes Ollama first so a missing daemon fails before any chunking work. */
@@ -69,10 +88,14 @@ export async function buildIndex(root: string, opts: BuildOptions = {}): Promise
   const fileChunks = new Map<string, { chunks: CodeChunk[]; mtimeMs: number }>();
   let filesScanned = 0;
   let filesSkipped = 0;
+  const skipBuckets = emptyBuckets();
   for await (const chunk of walkChunks(root, {
     windowLines: opts.windowLines,
     overlap: opts.overlap,
-    maxFileBytes: opts.maxFileBytes,
+    config: opts.indexConfig ?? defaultIndexConfig(),
+    onSkip: (_p, reason) => {
+      skipBuckets[reason]++;
+    },
   })) {
     seenPaths.add(chunk.path);
     let bucket = fileChunks.get(chunk.path);
@@ -165,6 +188,7 @@ export async function buildIndex(root: string, opts: BuildOptions = {}): Promise
     filesChanged,
     chunksTotal,
     chunksDone,
+    skipBuckets,
   });
 
   return {
@@ -173,6 +197,7 @@ export async function buildIndex(root: string, opts: BuildOptions = {}): Promise
     chunksAdded,
     chunksRemoved: removed,
     chunksSkipped,
+    skipBuckets,
     durationMs: Date.now() - t0,
   };
 }
