@@ -3,6 +3,41 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] — 2026-04-29
+
+**Headline:** Mouse drag in the log now selects text directly, with the
+log auto-scrolling when the drag hits the viewport edge. Releasing the
+button copies the selection to the system clipboard via OSC 52 plus a
+tempfile fallback for terminals that don't honor it. The whole flow
+stays inside the alt-screen TUI — no more `/copy` dance to dump the
+log to main buffer.
+
+- feat(ui): app-owned mouse selection. Plain drag paints a reverse-
+  video highlight across the selected rows; the selection follows
+  scroll naturally because rows are tracked in absolute log-row
+  coordinates, not viewport-relative. Dragging past the top or bottom
+  edge of the content area starts a 60ms-tick auto-scroll that keeps
+  extending the selection while the cursor stays at the edge.
+  Releasing copies the plain-text rendering via OSC 52 (system
+  clipboard) plus a `<tmpdir>/reasonix-clip-<ts>.txt` fallback for
+  terminals or remote sessions that drop OSC 52. Shift+drag still
+  bypasses tracking so the terminal's native selection remains
+  available for visible-only copies.
+- feat(infra): `stdin-reader` now surfaces `mouseDrag` (SGR button 32)
+  and `mouseRelease` (tail `m`) events; previously dropped silently.
+  `alt-screen` switches from mode 1000 (press/release only) to mode
+  1002 (button-event tracking with drag motion).
+- feat(ui): `log-frame` extends `AtomViewport` with `firstRowAbs` so
+  the keystroke layer can map mouse coordinates back to absolute log
+  rows. New `extractSelection(atoms, sel)` walks the cell grid and
+  produces UTF-8 text honoring 2-wide chars (CJK / emoji) with ANSI
+  styling stripped.
+- chore(ui): `/copy` slash command, the `copyMode` lifecycle, the
+  alt-screen exit + main-buffer dump, and the `setMouseTracking` /
+  `isMouseTrackingOn` helpers all removed. The new flow doesn't need
+  to leave alt-screen, doesn't pollute main scrollback, and doesn't
+  have the "two histories stacked" bug the dump approach kept hitting.
+
 ## [0.15.0] — 2026-04-29
 
 **Headline:** Event-log sidecar lands as a real kernel artifact and
