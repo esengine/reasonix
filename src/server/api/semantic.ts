@@ -1,5 +1,6 @@
 /** Job state in a module-scoped Map keyed by project root so multi-root dashboards don't collide; CLI `reasonix index` runs independently. */
 
+import { loadIndexConfig } from "../../config.js";
 import { buildIndex, indexExists } from "../../index/semantic/builder.js";
 import type { BuildProgress, BuildResult } from "../../index/semantic/builder.js";
 import {
@@ -255,6 +256,7 @@ async function runIndex(root: string, job: JobRecord, ctx: DashboardContext): Pr
   try {
     const result = await buildIndex(root, {
       rebuild: job.rebuild,
+      indexConfig: loadIndexConfig(ctx.configPath),
       onProgress: (p) => {
         job.phase = p.phase;
         if (p.filesScanned !== undefined) job.filesScanned = p.filesScanned;

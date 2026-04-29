@@ -3,6 +3,7 @@ import { handleEditMode } from "./api/edit-mode.js";
 import { handleFile, handleFiles } from "./api/file.js";
 import { handleHealth } from "./api/health.js";
 import { handleHooks } from "./api/hooks.js";
+import { handleIndexConfig } from "./api/index-config.js";
 import { handleMcp } from "./api/mcp.js";
 import { handleMemory } from "./api/memory.js";
 import { handleMessages } from "./api/messages.js";
@@ -76,6 +77,8 @@ export async function handleApi(
         return await handleFile(method, rest, body, ctx);
       case "semantic":
         return await handleSemantic(method, rest, body, ctx);
+      case "index-config":
+        return await handleIndexConfig(method, rest, body, ctx);
       default:
         return { status: 404, body: { error: `no such endpoint: /${head}` } };
     }

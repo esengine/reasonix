@@ -3265,8 +3265,222 @@ function SemanticPanel() {
         <button disabled=${busy || running || !ready} onClick=${() => start(true)}>Rebuild (wipe + full)</button>
         <button disabled=${busy || !running} onClick=${stop}>Stop</button>
       </div>
+
+      <${SemanticExcludesCard} />
     </div>
   `;
+}
+
+function SemanticExcludesCard() {
+  const [data, setData] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
+  const [open, setOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await api("/index-config");
+      setData(r);
+      setDraft(toDraft(r.resolved));
+    } catch (err) {
+      setError(err.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open && !data) load();
+  }, [open, data, load]);
+
+  const reset = useCallback(() => {
+    if (data) setDraft(toDraft(data.defaults));
+    setPreview(null);
+  }, [data]);
+
+  const save = useCallback(async () => {
+    if (!draft) return;
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const payload = fromDraft(draft);
+      const r = await api("/index-config", { method: "POST", body: payload });
+      setInfo(`saved · ${r.changed.length || 0} fields updated · re-run index to apply`);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }, [draft, load]);
+
+  const runPreview = useCallback(async () => {
+    if (!draft) return;
+    setBusy(true);
+    setError(null);
+    setInfo("running dry walk against project root…");
+    try {
+      const payload = fromDraft(draft);
+      const r = await api("/index-config/preview", { method: "POST", body: payload });
+      setPreview(r);
+      setInfo(null);
+    } catch (err) {
+      setError(err.message);
+      setInfo(null);
+    } finally {
+      setBusy(false);
+    }
+  }, [draft]);
+
+  return html`
+    <div class="section-title" style="margin-top: 18px;">
+      <span style="cursor: pointer;" onClick=${() => setOpen(!open)}>
+        ${open ? "▼" : "▶"} Excludes
+      </span>
+      <span class="muted" style="margin-left: 8px; font-weight: normal; font-size: 12px;">
+        config-driven skip rules applied during indexing
+      </span>
+    </div>
+    ${
+      !open
+        ? null
+        : !draft
+          ? html`<div class="muted">loading…</div>`
+          : html`
+            <div class="card" style="font-size: 13px;">
+              ${info ? html`<div class="notice">${info}</div>` : null}
+              ${error ? html`<div class="notice err">${error}</div>` : null}
+              <div class="muted" style="margin-bottom: 10px;">
+                One value per line. Dirs / files match by basename. Patterns use picomatch (e.g. <code>**/*.generated.ts</code>, <code>vendor/**</code>).
+              </div>
+              <${ExcludesField} label="Exclude dirs" value=${draft.excludeDirs} onChange=${(v) => setDraft({ ...draft, excludeDirs: v })} />
+              <${ExcludesField} label="Exclude files" value=${draft.excludeFiles} onChange=${(v) => setDraft({ ...draft, excludeFiles: v })} />
+              <${ExcludesField} label="Exclude extensions" value=${draft.excludeExts} onChange=${(v) => setDraft({ ...draft, excludeExts: v })} />
+              <${ExcludesField} label="Exclude patterns (glob)" value=${draft.excludePatterns} onChange=${(v) => setDraft({ ...draft, excludePatterns: v })} />
+              <div class="row" style="margin-top: 10px; gap: 16px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <input type="checkbox" checked=${draft.respectGitignore} onChange=${(e) => setDraft({ ...draft, respectGitignore: e.target.checked })} />
+                  Respect <code>.gitignore</code>
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  Max file size:
+                  <input type="number" min="1024" step="1024" value=${draft.maxFileBytes} onChange=${(e) => setDraft({ ...draft, maxFileBytes: Number(e.target.value) || 0 })} style="width: 110px;" />
+                  <span class="muted">bytes</span>
+                </label>
+              </div>
+              <div class="row" style="margin-top: 12px;">
+                <button class="primary" disabled=${busy} onClick=${save}>Save</button>
+                <button disabled=${busy} onClick=${runPreview}>Preview (dry-walk)</button>
+                <button disabled=${busy} onClick=${reset}>Reset to defaults</button>
+              </div>
+              ${preview ? html`<${ExcludesPreview} preview=${preview} />` : null}
+            </div>
+          `
+    }
+  `;
+}
+
+function ExcludesPreview({ preview }) {
+  const buckets = preview.skipBuckets || {};
+  const samples = preview.skipSamples || {};
+  const totalSkipped = Object.values(buckets).reduce((a, b) => a + (b || 0), 0);
+  const reasons = [
+    "gitignore",
+    "pattern",
+    "defaultDir",
+    "defaultFile",
+    "binaryExt",
+    "binaryContent",
+    "tooLarge",
+    "readError",
+  ].filter((k) => (buckets[k] || 0) > 0);
+  return html`
+    <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border, #2a2a2a);">
+      <div style="font-weight: 500; margin-bottom: 6px;">
+        Preview — would index <strong>${preview.filesIncluded}</strong> file(s), skip <strong>${totalSkipped}</strong>
+      </div>
+      ${
+        reasons.length === 0
+          ? html`<div class="muted" style="font-size: 12px;">nothing skipped — all walked files would be indexed.</div>`
+          : html`
+            <div style="font-size: 12px;">
+              ${reasons.map(
+                (r) => html`
+                  <details style="margin-bottom: 6px;">
+                    <summary><strong>${r}: ${buckets[r]}</strong></summary>
+                    <ul style="margin: 4px 0 4px 18px; padding: 0;">
+                      ${(samples[r] || []).map(
+                        (p) => html`<li><code style="font-size: 11.5px;">${p}</code></li>`,
+                      )}
+                      ${
+                        (buckets[r] || 0) > (samples[r] || []).length
+                          ? html`<li class="muted">…${buckets[r] - samples[r].length} more</li>`
+                          : null
+                      }
+                    </ul>
+                  </details>
+                `,
+              )}
+            </div>
+          `
+      }
+      ${
+        preview.sampleIncluded?.length
+          ? html`
+            <details style="margin-top: 8px;">
+              <summary class="muted" style="font-size: 12px;">first ${preview.sampleIncluded.length} included file(s)</summary>
+              <ul style="margin: 4px 0 4px 18px; padding: 0; font-size: 12px;">
+                ${preview.sampleIncluded.map((p) => html`<li><code style="font-size: 11.5px;">${p}</code></li>`)}
+              </ul>
+            </details>
+          `
+          : null
+      }
+    </div>
+  `;
+}
+
+function ExcludesField({ label, value, onChange }) {
+  return html`
+    <div style="margin-bottom: 8px;">
+      <label style="display: block; font-weight: 500; margin-bottom: 4px;">${label}</label>
+      <textarea
+        rows="4"
+        style="width: 100%; font-family: var(--mono, monospace); font-size: 12px;"
+        value=${value}
+        onChange=${(e) => onChange(e.target.value)}
+      ></textarea>
+    </div>
+  `;
+}
+
+function toDraft(c) {
+  return {
+    excludeDirs: (c.excludeDirs ?? []).join("\n"),
+    excludeFiles: (c.excludeFiles ?? []).join("\n"),
+    excludeExts: (c.excludeExts ?? []).join("\n"),
+    excludePatterns: (c.excludePatterns ?? []).join("\n"),
+    respectGitignore: c.respectGitignore !== false,
+    maxFileBytes: c.maxFileBytes ?? 262144,
+  };
+}
+
+function fromDraft(d) {
+  const lines = (s) =>
+    s
+      .split(/\r?\n/)
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+  return {
+    excludeDirs: lines(d.excludeDirs),
+    excludeFiles: lines(d.excludeFiles),
+    excludeExts: lines(d.excludeExts),
+    excludePatterns: lines(d.excludePatterns),
+    respectGitignore: !!d.respectGitignore,
+    maxFileBytes: d.maxFileBytes,
+  };
 }
 
 function SemanticJobView({ job, running }) {
@@ -3321,8 +3535,32 @@ function SemanticJobView({ job, running }) {
             } · ${(job.result.durationMs / 1000).toFixed(1)}s</div>`
           : null
       }
+      ${
+        job.result?.skipBuckets
+          ? html`<${SkipBucketsView} buckets=${job.result.skipBuckets} />`
+          : null
+      }
     </div>
   `;
+}
+
+function SkipBucketsView({ buckets }) {
+  const order = [
+    ["gitignore", "gitignore"],
+    ["pattern", "pattern"],
+    ["defaultDir", "defaultDir"],
+    ["defaultFile", "defaultFile"],
+    ["binaryExt", "binaryExt"],
+    ["binaryContent", "binaryContent"],
+    ["tooLarge", "tooLarge"],
+    ["readError", "readError"],
+  ];
+  const total = order.reduce((a, [k]) => a + (buckets[k] || 0), 0);
+  if (total === 0) return null;
+  const parts = order
+    .filter(([k]) => (buckets[k] || 0) > 0)
+    .map(([k, label]) => `${label}: ${buckets[k]}`);
+  return html`<div><span class="kv-key">skipped</span>${total} files <span class="muted">(${parts.join(", ")})</span></div>`;
 }
 
 function McpPanel() {
