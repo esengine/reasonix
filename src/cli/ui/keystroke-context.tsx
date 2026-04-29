@@ -20,9 +20,9 @@
  * — see `stdin-reader.ts`.
  */
 
+import { useInput } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React as a runtime value
 import React, { createContext, useContext, useEffect, useRef } from "react";
-import { useInput } from "ink";
 import { type KeyEvent, type StdinReader, getStdinReader } from "./stdin-reader.js";
 
 interface KeystrokeBus {

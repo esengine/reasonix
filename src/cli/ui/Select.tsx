@@ -89,7 +89,7 @@ export function SingleSelect<V extends string>({
         setEditingContext((v) => (v ?? "").slice(0, -1));
       } else if (ev.tab) {
         // Tab while editing appends ", " to the context text
-        setEditingContext((v) => (v ?? "") + ", ");
+        setEditingContext((v) => `${v ?? ""}, `);
       } else if (ev.input) {
         setEditingContext((v) => (v ?? "") + ev.input);
       }
@@ -116,16 +116,19 @@ export function SingleSelect<V extends string>({
   const canDenyWithContext = activeItem?.denyWithContext;
   const resolvedFooter = (() => {
     if (isEditing) return "[Enter] confirm · [Esc] cancel · [↑↓] change option";
-    return footer ?? (canDenyWithContext ? "[↑↓] navigate · [Enter] select · [Tab] add context · [Esc] cancel" : undefined);
+    return (
+      footer ??
+      (canDenyWithContext
+        ? "[↑↓] navigate · [Enter] select · [Tab] add context · [Esc] cancel"
+        : undefined)
+    );
   })();
 
   return (
     <Box flexDirection="column">
       {items.map((item, i) => {
         const showEditing = i === index && isEditing;
-        const displayLabel = showEditing
-          ? `${item.label}, ${editingContext}`
-          : item.label;
+        const displayLabel = showEditing ? `${item.label}, ${editingContext}` : item.label;
         return (
           <SelectRow
             key={item.value}
