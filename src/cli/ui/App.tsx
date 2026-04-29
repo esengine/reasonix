@@ -83,7 +83,8 @@ import {
 } from "./edit-history.js";
 import { appendGlobalMemory, appendProjectMemory, detectHashMemory } from "./hash-memory.js";
 import { useKeystroke } from "./keystroke-context.js";
-import { BottomHint, ScrollBar, eventToItems, renderLogItem, sliceLogItems } from "./log-rows.js";
+import { eventsToAtoms, renderViewport, viewportLog } from "./log-frame.js";
+import { BottomHint, ScrollBar } from "./log-rows.js";
 import { formatLoopStatus } from "./loop.js";
 import { handleMcpBrowseSlash } from "./mcp-browse.js";
 import { formatLongPaste } from "./paste-collapse.js";
@@ -324,17 +325,15 @@ export function App({
     const curLen = historical.length;
     lastHistoricalLenRef.current = curLen;
     if (curLen > prevLen && scrollTargetRef.current > 0) {
-      // Row-deltas: convert each newly-appended event to its row
-      // pipeline and sum the rows. Exact, regardless of role. The
-      // projectRoot + width args only matter when the row item is
-      // RENDERED; we're only counting here, so undefined / default
-      // width is fine for the delta sum.
+      // Row-deltas: convert each newly-appended event to its Atom
+      // representation and sum the rows. Exact for `frame` atoms
+      // (frame.rows.length is precise); estimated for `ink` atoms
+      // (`atom.rows`). projectRoot only matters when the atom is
+      // RENDERED — we're only counting here, so undefined is fine.
       const cols = stdout?.columns ?? 80;
       let deltaRows = 0;
-      for (let i = prevLen; i < curLen; i++) {
-        for (const it of eventToItems(historical[i]!, undefined, cols)) {
-          deltaRows += it.kind === "row" ? 1 : it.rows;
-        }
+      for (const a of eventsToAtoms(historical.slice(prevLen, curLen), undefined, cols)) {
+        deltaRows += a.kind === "frame" ? a.frame.rows.length : a.rows;
       }
       if (deltaRows > 0) {
         scrollTargetRef.current += deltaRows;
@@ -4247,15 +4246,16 @@ export function App({
                   const reservedRows = 10;
                   const available = Math.max(8, (stdout?.rows ?? 30) - reservedRows);
                   const cols = stdout?.columns ?? 80;
-                  // Build flat row list across all events, slice by row offset.
-                  // Migrated roles (info / warn / error / step-progress /
-                  // assistant) produce 1-row LogRows; everything else falls
-                  // back to a multi-row LogBlock wrapping <EventRow>.
-                  const items = historical.flatMap((e) => eventToItems(e, currentRootDir, cols));
-                  const slice = sliceLogItems(items, available, logScrollOffset);
-                  scrollMaxRowsRef.current = slice.maxScrollRows;
-                  lastTotalRowsRef.current = slice.totalRows;
-                  return <>{slice.items.map(renderLogItem)}</>;
+                  // Build atom list across all events, slice by row range.
+                  // Migrated roles produce `frame` atoms (row-precise clip
+                  // via topSkip / bottomSkip); unmigrated roles produce
+                  // `ink` atoms (snap to atom boundaries — wheel briefly
+                  // sticks at their edges until those roles are migrated).
+                  const atoms = eventsToAtoms(historical, currentRootDir, cols);
+                  const v = viewportLog(atoms, logScrollOffset, available);
+                  scrollMaxRowsRef.current = v.maxScrollRows;
+                  lastTotalRowsRef.current = v.totalRows;
+                  return renderViewport(v);
                 })()}
                 {/*
           Welcome card on the empty state. Visible only when nothing
