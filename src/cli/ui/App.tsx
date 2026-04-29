@@ -59,6 +59,7 @@ import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../tran
 import { appendUsage, defaultUsageLogPath } from "../../usage.js";
 import { AtMentionSuggestions } from "./AtMentionSuggestions.js";
 import { ChoiceConfirm, type ChoiceConfirmChoice } from "./ChoiceConfirm.js";
+import { ChromeBar } from "./ChromeBar.js";
 import { EditConfirm, type EditReviewChoice } from "./EditConfirm.js";
 import { type DisplayEvent, EventRow } from "./EventLog.js";
 import { ModeStatusBar, OngoingToolRow, StatusRow, SubagentRow, UndoBanner } from "./LiveRows.js";
@@ -74,7 +75,6 @@ import { WelcomeBanner } from "./WelcomeBanner.js";
 import { WorkspaceConfirm, type WorkspaceConfirmChoice } from "./WorkspaceConfirm.js";
 import { useAltScreen } from "./alt-screen.js";
 import { detectBangCommand, formatBangUserMessage } from "./bang.js";
-import { chromeFrame } from "./chrome-frame.js";
 import {
   describeRepair,
   formatEditResults,
@@ -85,7 +85,7 @@ import { renderFrame } from "./frame-render.js";
 import { appendGlobalMemory, appendProjectMemory, detectHashMemory } from "./hash-memory.js";
 import { useKeystroke } from "./keystroke-context.js";
 import { eventsToAtoms, renderViewport, viewportLog } from "./log-frame.js";
-import { BottomHint, ScrollBar } from "./log-rows.js";
+import { BottomHint } from "./log-rows.js";
 import { formatLoopStatus } from "./loop.js";
 import { handleMcpBrowseSlash } from "./mcp-browse.js";
 import { formatLongPaste } from "./paste-collapse.js";
@@ -524,6 +524,10 @@ export function App({
   // Tab cycles, `/mode <review|auto>` sets explicitly. Persisted so
   // toggling once survives a relaunch.
   const [editMode, setEditMode] = useState<EditMode>(() => (codeMode ? loadEditMode() : "review"));
+  const [preset, setPreset] = useState<"auto" | "flash" | "pro">(() => {
+    if (model === "deepseek-v4-pro") return "pro";
+    return "auto";
+  });
   // Interceptor closure reads the live mode through this ref — so we
   // install the registry hook once (in useEffect below) and avoid tearing
   // down + reattaching it every time the user cycles modes.
@@ -1951,14 +1955,15 @@ export function App({
           if (codeMode) togglePlanMode(on);
         },
         applyPresetLive: (name: string) => {
-          // Canonicalize legacy names + reach into the live loop so the
-          // change takes effect on the next turn (no session restart).
           const settings = resolvePreset(name as PresetName);
           loop.configure({
             model: settings.model,
             autoEscalate: settings.autoEscalate,
             reasoningEffort: settings.reasoningEffort,
           });
+          const canonical: "auto" | "flash" | "pro" =
+            settings.model === "deepseek-v4-pro" ? "pro" : settings.autoEscalate ? "auto" : "flash";
+          setPreset(canonical);
         },
         applyEffortLive: (effort) => {
           loop.configure({ reasoningEffort: effort });
@@ -4175,22 +4180,22 @@ export function App({
           width={stdout?.columns ?? 80}
           overflow="hidden"
         >
-          {renderFrame(
-            chromeFrame({
-              summary,
-              width: stdout?.columns ?? 80,
-              planMode,
-              editMode: codeMode ? editMode : undefined,
-              balance,
-              updateAvailable,
-              proArmed,
-              escalated: turnOnPro,
-              budgetUsd: loop.budgetUsd,
-              rootDir: codeMode ? currentRootDir : undefined,
-              sessionName: session ?? null,
-            }),
-            "chrome",
-          )}
+          <ChromeBar
+            summary={summary}
+            planMode={planMode}
+            preset={preset}
+            balance={balance}
+            updateAvailable={updateAvailable}
+            proArmed={proArmed}
+            escalated={turnOnPro}
+            budgetUsd={loop.budgetUsd}
+            rootDir={codeMode ? currentRootDir : undefined}
+            sessionName={session ?? null}
+            scrollRatio={
+              scrollMaxRowsRef.current > 0 ? logScrollOffset / scrollMaxRowsRef.current : 0
+            }
+          />
+
           {/* SCROLLABLE LOG REGION — historical events render inline
               (no Static, since alt-screen kills scrollback anyway).
               EXPLICIT height instead of `flexGrow={1}` so the height
@@ -4203,12 +4208,8 @@ export function App({
               behind a confirm dialog is rarely useful, and rendering
               both fights for the same vertical space. */}
           <Box
-            // Outer row-flex wrapper: log content on the left (flexGrow=1)
-            // + a 1-cell ScrollBar on the right that shows the user's
-            // current vertical position within the row-flattened log.
-            // Height is shared by both children, modal-active collapses
-            // both to 0 so the modal owns the screen.
-            flexDirection="row"
+            flexDirection="column"
+            flexGrow={1}
             height={
               pendingShell ||
               pendingWorkspace ||
@@ -4367,26 +4368,15 @@ export function App({
                 up — points to how many rows of newer content they're
                 missing and how to jump back. Hidden at offset=0 since
                 there's nothing below to point to. */}
-              <BottomHint rowsBelow={logScrollOffset} />
+              <BottomHint
+                rowsBelow={logScrollOffset}
+                totalRows={lastTotalRowsRef.current}
+                viewportRows={Math.max(
+                  4,
+                  Math.max(5, (stdout?.rows ?? 30) - 9) - (logScrollOffset > 0 ? 1 : 0),
+                )}
+              />
             </Box>
-            {/* Vertical scrollbar — fills the same height as the log
-                region. Reads scroll position from the refs the slicer
-                fills synchronously inside the IIFE above, so the thumb
-                is always in sync with what's just been rendered. */}
-            <ScrollBar
-              // Height matches the parent log column (rows - 9).
-              // viewportRows mirrors the slicer's "available" so thumb
-              // math, log slice, and bar cell count all use the same
-              // number — no off-by-one drift between thumb position
-              // and visible content.
-              height={Math.max(5, (stdout?.rows ?? 30) - 9)}
-              totalRows={lastTotalRowsRef.current}
-              viewportRows={Math.max(
-                4,
-                Math.max(5, (stdout?.rows ?? 30) - 9) - (logScrollOffset > 0 ? 1 : 0),
-              )}
-              scrollOffsetRows={logScrollOffset}
-            />
           </Box>
           {/* STICKY BOTTOM — either an active modal (replaces prompt
               for the duration of the confirm) or the input + suggestion

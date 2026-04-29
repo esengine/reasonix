@@ -560,62 +560,6 @@ export function renderLogItem(item: LogItem): React.ReactElement {
 }
 
 /**
- * Vertical scrollbar rendered as a 1-cell-wide column on the right
- * edge of the log viewport. Each cell is one terminal row; the
- * "thumb" cells render in brand color, the rest in dim grey.
- *
- * Hidden when `totalRows <= viewportRows` (everything fits — no
- * scroll needed). The thumb's vertical position is proportional to
- * `scrollOffsetRows` and its size is proportional to
- * `viewportRows / totalRows`, clamped to a 1-row minimum so the
- * thumb never disappears for very long logs.
- *
- * **Clamping:** `scrollOffsetRows` is intentionally clamped inside
- * this component instead of trusting the caller — if the row pipeline
- * undercounts a `LogBlock`'s height, the caller's `logScrollOffset`
- * could land past `maxScroll`, which would otherwise make the thumb
- * shrink toward zero as the user wheels into "empty" territory. The
- * clamp keeps the visible thumb in sync with where content actually
- * is, even when the row estimates drift.
- */
-export function ScrollBar({
-  height,
-  totalRows,
-  viewportRows,
-  scrollOffsetRows,
-}: {
-  height: number;
-  totalRows: number;
-  viewportRows: number;
-  scrollOffsetRows: number;
-}) {
-  if (totalRows <= viewportRows || height <= 0) return null;
-  // Clamp to the same `maxScroll` semantics the slicer uses so the
-  // thumb never enters the "scrolling into emptiness" range.
-  const maxScroll = Math.max(0, totalRows - viewportRows);
-  const offset = Math.max(0, Math.min(scrollOffsetRows, maxScroll));
-  const viewportBottomFrac = (totalRows - offset) / totalRows;
-  const viewportTopFrac = Math.max(0, viewportBottomFrac - viewportRows / totalRows);
-  const thumbStart = Math.floor(viewportTopFrac * height);
-  const thumbEnd = Math.min(height, Math.ceil(viewportBottomFrac * height));
-  const thumbSize = Math.max(1, thumbEnd - thumbStart);
-  const cells: React.ReactElement[] = [];
-  for (let i = 0; i < height; i++) {
-    const inThumb = i >= thumbStart && i < thumbStart + thumbSize;
-    cells.push(
-      <Text key={`sb-${i}`} color={inThumb ? COLOR.brand : COLOR.info} dimColor={!inThumb}>
-        {inThumb ? "█" : "│"}
-      </Text>,
-    );
-  }
-  return (
-    <Box flexDirection="column" width={1} flexShrink={0}>
-      {cells}
-    </Box>
-  );
-}
-
-/**
  * One-row hint pinned at the bottom of the log viewport when the user
  * has scrolled up. Tells them how many rows of newer content sit
  * below the visible window and how to jump back. Hidden when the user
@@ -624,16 +568,46 @@ export function ScrollBar({
  * `rowsBelow` is the same as the active `logScrollOffset` (rows from
  * the bottom that aren't currently visible).
  */
-export function BottomHint({ rowsBelow }: { rowsBelow: number }) {
+export function BottomHint({
+  rowsBelow,
+  totalRows,
+  viewportRows,
+}: {
+  rowsBelow: number;
+  totalRows: number;
+  viewportRows: number;
+}) {
   if (rowsBelow <= 0) return null;
+  const maxScroll = Math.max(1, totalRows - viewportRows);
+  const ratioFromTop = Math.max(0, Math.min(1, (totalRows - rowsBelow - viewportRows) / maxScroll));
+  const pct = Math.round((1 - ratioFromTop) * 100);
+  const rowsAbove = Math.max(0, totalRows - viewportRows - rowsBelow);
+  const barCells = 16;
+  const markerAt = Math.max(0, Math.min(barCells - 1, Math.round(ratioFromTop * (barCells - 1))));
+  const left = "─".repeat(markerAt);
+  const right = "─".repeat(barCells - 1 - markerAt);
   return (
     <Box height={1} flexShrink={0}>
       <Text color={COLOR.primary} bold>
-        ↓
+        {`↑ ${rowsAbove}`}
       </Text>
       <Text>{"  "}</Text>
-      <Text color={COLOR.primary}>{`${rowsBelow} row${rowsBelow === 1 ? "" : "s"} below`}</Text>
-      <Text dimColor>{"  ·  End to jump · wheel-down to scroll"}</Text>
+      <Text dimColor>▕</Text>
+      <Text color={COLOR.info} dimColor>
+        {left}
+      </Text>
+      <Text color={COLOR.brand} bold>
+        ●
+      </Text>
+      <Text color={COLOR.info} dimColor>
+        {right}
+      </Text>
+      <Text dimColor>▏</Text>
+      <Text>{"  "}</Text>
+      <Text color={COLOR.primary} bold>{`${pct}%`}</Text>
+      <Text>{"  "}</Text>
+      <Text color={COLOR.primary}>{`↓ ${rowsBelow}`}</Text>
+      <Text dimColor>{"  ·  End to jump · wheel to scroll"}</Text>
     </Box>
   );
 }

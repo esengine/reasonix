@@ -3,6 +3,33 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.5] — 2026-04-29
+
+**Headline:** TUI overhaul. Chrome reverts to native Ink Box +
+flexGrow (Phase 6a's Frame-compiler chrome was clipping pills on
+Windows Terminal / ConPTY). Vertical scrollbar replaced with a
+`[↑ N%]` chrome pill + horizontal mini-bar in the bottom hint —
+column-aligned scrollbars are unreliable while some log atoms
+still render through legacy ReactElements. Streaming gains the
+design's `responding ░▒▓█▓▒░░░░` marquee and a `▌` cursor blink
+at end-of-body.
+
+- chrome: `ChromeBar` uses native flex; preset pill (`[auto]` /
+  `[flash]` / `[pro]`) replaces edit-mode pill (edit mode still
+  surfaces via `ModeStatusBar`); CNY balance renders as `w ¥8.50`;
+  cost pill includes inline budget when set.
+- streaming: full body text streams in (was 140-char tail) with a
+  blinking primary-color cursor; `responding` row shows a 12-cell
+  marching wave (`░▒▓█▓▒`) at 120ms ticks. Matches
+  `design/tui-redesign-ink.html`.
+- scroll: vertical `ScrollBar` removed; chrome shows `[↑ N%]` when
+  scrolled, `BottomHint` shows `↑ N · ▕──●──▏ X% · ↓ M · End`.
+- frame: `src/frame/width.ts` delegates to the `string-width`
+  package; hand-rolled width tables removed.
+- chore: project `CLAUDE.md` codifies code/comment conventions
+  (terse comments, no Phase-N essays, libraries over hand-rolled
+  unicode math).
+
 ## [0.12.15] — 2026-04-28
 
 **Headline:** Every user-facing string that still said

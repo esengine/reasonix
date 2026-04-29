@@ -951,31 +951,15 @@ function StreamingAssistant({ event }: { event: DisplayEvent }) {
     );
   }
 
-  const tail = lastLine(event.text, 140);
-  const reasoningTail = event.reasoning ? lastLine(event.reasoning, 120) : "";
   const toolCallBuild = event.toolCallBuild;
-  // Four distinct phases a turn can be in — label them plainly so
-  // the user doesn't have to decode "streaming · 391 + think 4506
-  // chars" to figure out what's happening:
-  //   pre-first-byte: request in flight, no bytes back yet
-  //   reasoning-only: R1 thinking, no visible content yet
-  //   tool-call-only: tool_call arguments streaming, no content/reasoning bytes
-  //   writing: content streaming (R1 has already produced its thought)
-  //   both: rare — content present AND reasoning still growing
-  // We can't cheaply distinguish "reasoning still growing" from
-  // "reasoning finished but we already saw it", so when content is
-  // present we just say "writing response" and surface both counts.
-  const preFirstByte = !event.text && !event.reasoning && !toolCallBuild;
-  const reasoningOnly = !event.text && !!event.reasoning && !toolCallBuild;
-  const toolCallOnly = !event.text && !event.reasoning && !!toolCallBuild;
+  const text = event.text;
+  const reasoning = event.reasoning;
+  const preFirstByte = !text && !reasoning && !toolCallBuild;
+  const reasoningOnly = !text && !!reasoning && !toolCallBuild;
+  const toolCallOnly = !text && !reasoning && !!toolCallBuild;
 
-  // Phase verb + accent color — rendered inline as `assistant · thinking`
-  // bracket-text style, NOT a solid-bg pill. Matches the design doc's
-  // streaming state: same shape as a finished assistant turn (◆ + meta
-  // row + body), just with a phase verb in place of the model badge
-  // and a blinking cursor at the tail.
-  let phaseVerb: string;
-  let phaseColor: string;
+  let phaseVerb: string | null = null;
+  let phaseColor: string = COLOR.assistant;
   if (preFirstByte) {
     phaseVerb = "waiting";
     phaseColor = COLOR.warn;
@@ -985,43 +969,21 @@ function StreamingAssistant({ event }: { event: DisplayEvent }) {
   } else if (toolCallOnly) {
     phaseVerb = `dispatching ${toolCallBuild.name}`;
     phaseColor = COLOR.accent;
-  } else {
-    phaseVerb = event.reasoning ? "writing (after R1)" : "writing";
-    phaseColor = COLOR.assistant;
   }
 
-  // Compact detail string — tail of the visible content, short enough
-  // to fit in the body row. Never the phase noise (chars counters,
-  // ready tail) — that's Reasonix-internal, not user-facing.
-  const detail =
-    tail ||
-    (reasoningTail ? `↳ ${reasoningTail}` : "") ||
-    (preFirstByte
-      ? "waiting for first byte — 5-60s typical"
-      : reasoningOnly
-        ? `R1 thinking · ~${Math.round((event.reasoning?.length ?? 0) / 4)} tok so far`
-        : toolCallOnly
-          ? `assembling ${toolCallBuild.name}${formatToolCallIndex(toolCallBuild)} · ${toolCallBuild.chars} chars${formatReadyTail(toolCallBuild)}`
-          : event.reasoning
-            ? "R1 still reasoning — body or tool call arrives when thinking finishes"
-            : "");
-
-  // Same turn shape as the finished assistant render: glyph + meta row,
-  // then a left-accent-bordered body. The cursor block ▌ at the tail
-  // is the streaming signal — same idiom as a terminal cursor, blinks
-  // via Pulse but rendered as plain ▌ here so it doesn't compete with
-  // the spinner glyph next to ◆.
+  const verb = phaseVerb ?? "responding";
+  const verbColor = phaseVerb ? phaseColor : COLOR.info;
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
         <PulsingAssistantGlyph />
         <Text>{"  "}</Text>
-        <Pulse />
-        <Text>{"  "}</Text>
-        <Text color={phaseColor} bold>
-          {phaseVerb}
+        <Text color={verbColor} dimColor={!phaseVerb}>
+          {verb}
         </Text>
-        <Text dimColor>{"  ·  "}</Text>
+        <Text> </Text>
+        <Marquee />
+        <Text> </Text>
         <Elapsed />
       </Box>
       <Box
@@ -1034,30 +996,50 @@ function StreamingAssistant({ event }: { event: DisplayEvent }) {
         paddingLeft={1}
         flexDirection="column"
       >
-        {detail ? (
-          <Text dimColor wrap="truncate-end">
-            {detail}
-            {/* trailing cursor block — same blink cadence as Pulse */}
-            <Text color={COLOR.primary}>{" ▌"}</Text>
+        {reasoning ? <ReasoningBlock reasoning={reasoning} /> : null}
+        {text ? (
+          <Text>
+            {text}
+            <BlinkingCursor />
           </Text>
         ) : (
-          <Text color={COLOR.primary}>▌</Text>
+          <Text dimColor>
+            {preFirstByte
+              ? "waiting for first byte — 5-60s typical"
+              : reasoningOnly
+                ? `R1 thinking · ~${Math.round((reasoning?.length ?? 0) / 4)} tok so far`
+                : toolCallOnly
+                  ? `assembling ${toolCallBuild.name}${formatToolCallIndex(toolCallBuild)} · ${toolCallBuild.chars} chars${formatReadyTail(toolCallBuild)}`
+                  : ""}
+            <Text> </Text>
+            <BlinkingCursor />
+          </Text>
         )}
       </Box>
     </Box>
   );
 }
 
-/**
- * Blinking indicator so the user can tell the stream is alive even
- * when the reasoner hasn't produced body text yet. Uses the shared
- * tick (TICK_MS ≈ 120ms) scaled down 4× so the visible blink rate
- * lands around 500ms — feels like a heartbeat, not a progress bar.
- */
-function Pulse() {
+/** Blinking ▌ at the end of the streaming body. ~960ms cycle (matches the
+ *  design's 900ms steps(2) blink; integer-tick approximation). */
+function BlinkingCursor() {
   const tick = useTick();
-  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-  return <Text color="cyan">{frames[Math.floor(tick / 4) % frames.length]}</Text>;
+  const visible = Math.floor(tick / 4) % 2 === 0;
+  return <Text color={COLOR.primary}>{visible ? "▌" : " "}</Text>;
+}
+
+/** Char-marching responding indicator. 12-cell track; a 5-char wave
+ *  (▒▓█▓▒) shifts one cell per fast tick (120ms). Matches the design
+ *  HTML's `.thinking .marquee` exactly. */
+const MARQUEE_W = 12;
+const MARQUEE_WAVE = ["▒", "▓", "█", "▓", "▒"] as const;
+function Marquee() {
+  const tick = useTick();
+  const cells = new Array(MARQUEE_W).fill("░");
+  for (let i = 0; i < MARQUEE_WAVE.length; i++) {
+    cells[(tick + i) % MARQUEE_W] = MARQUEE_WAVE[i]!;
+  }
+  return <Text color={COLOR.primary}>{cells.join("")}</Text>;
 }
 
 /**
@@ -1081,18 +1063,6 @@ function formatReadyTail(tb: { readyCount?: number } | undefined): string {
   const n = tb?.readyCount ?? 0;
   if (n <= 0) return "";
   return ` · ${n} ready`;
-}
-
-export function lastLine(s: string, maxChars: number): string {
-  // The streaming row only ever shows the last ~maxChars characters,
-  // so collapsing whitespace across the entire (possibly multi-KB)
-  // buffer on every 30Hz flush is wasted work. Slice a generous tail
-  // first — `maxChars * 4` covers the worst case where the tail is
-  // mostly whitespace that collapses away — then flatten just that.
-  const tailSlice = s.length > maxChars * 4 ? s.slice(-maxChars * 4) : s;
-  const flat = tailSlice.replace(/\s+/g, " ").trim();
-  if (!flat) return "";
-  return flat.length <= maxChars ? flat : `…${flat.slice(-maxChars)}`;
 }
 
 function StatsLine({ stats }: { stats: TurnStats }) {
