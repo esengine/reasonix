@@ -16,18 +16,27 @@ MIT-licensed. Node ≥20.10 required.
 
 | Path | What |
 |---|---|
-| `src/` | All source — `mcp/`, `tools/`, `cli/`, `code/`, `repair/`, `index/` |
 | `src/cli/` | CLI entry + commands (`chat.tsx`, `code.tsx`, `diff.ts`, etc.) + Ink TUI in `ui/` |
 | `src/tools/` | Tool defs (filesystem, shell, MCP, plan, subagent, web, workspace) |
 | `src/mcp/` | MCP client, transports (stdio, SSE), registry, spec |
 | `src/repair/` | Tool-call repair pipeline (flatten, scavenge, storm, truncation) |
 | `src/index/` | Semantic vector index |
+| `src/code/` | SEARCH/REPLACE edit-block parser + apply gate |
+| `src/core/` | Event-log kernel — `events.ts` (Event union), `reducers.ts` (pure projections), `eventize.ts` |
+| `src/ports/` | Port interfaces — ModelClient, ToolHost, EventSink, MemoryStore, HookRunner, CheckpointStore |
+| `src/adapters/` | Concrete adapters for the ports (e.g. `event-sink-jsonl.ts`, `event-source-jsonl.ts`) |
+| `src/frame/` | Frame compiler (cell grid → ANSI) used by the TUI log renderer |
+| `src/memory/` | Project / session / user / runtime memory stores |
+| `src/transcript/` | Transcript log (write), diff, replay |
+| `src/telemetry/` | Usage records + cross-session stats |
+| `src/server/` | Dashboard HTTP server + REST API |
 | `tests/` | Vitest tests, flat `*.test.ts` |
 | `examples/` | `basic-chat.ts`, `mcp-server-demo.ts`, etc. |
 | `benchmarks/` | Harvest + tau-bench harnesses |
+| `dashboard/` | Compiled dashboard SPA assets |
 | `data/` | Tokenizer data (`deepseek-tokenizer.json.gz`) |
 | `dist/` | Build output — **do not edit** |
-| `.github/` | CI + issue templates |
+| `.github/` | CI + issue / PR templates |
 
 ## Commands
 
