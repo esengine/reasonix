@@ -559,7 +559,12 @@ export function App({
   // a useMemo dep. Without this, walkthroughActive alone wouldn't
   // re-render after a partial apply.
   const [pendingTick, setPendingTick] = useState(0);
-  const editReviewResolveRef = useRef<((c: EditReviewChoice) => void) | null>(null);
+  /** Result from the EditConfirm modal: choice plus optional deny context. */
+  interface EditReviewResult {
+    choice: EditReviewChoice;
+    denyContext?: string;
+  }
+  const editReviewResolveRef = useRef<((r: EditReviewResult) => void) | null>(null);
   // Per-turn override: set by "apply-rest-of-turn" so subsequent edits
   // in the SAME turn skip the modal and land like AUTO. Resets to "ask"
   // at handleSubmit entry so the next user turn starts fresh.
@@ -1433,7 +1438,7 @@ export function App({
       if (resolve) {
         editReviewResolveRef.current = null;
         setPendingEditReview(null);
-        resolve("reject");
+        resolve({ choice: "reject" });
       }
       // Esc during a busy turn also kills any active /loop — the user
       // is taking over. Loops persist past plain Esc when the system is
@@ -1712,7 +1717,7 @@ export function App({
       // land all at once with no mid-stream opportunity to prompt.
       if (turnEditPolicyRef.current === "apply-all") return applyNow();
 
-      const choice = await new Promise<EditReviewChoice>((resolveChoice) => {
+      const { choice, denyContext } = await new Promise<EditReviewResult>((resolveChoice) => {
         editReviewResolveRef.current = resolveChoice;
         setPendingEditReview(block);
       });
@@ -1722,15 +1727,16 @@ export function App({
       setPendingEditReview(null);
 
       if (choice === "reject") {
+        const context = denyContext ? ` because: ${denyContext}` : "";
         setHistorical((prev) => [
           ...prev,
           {
             id: `er-${Date.now()}-${Math.random()}`,
             role: "info",
-            text: `▸ rejected edit to ${block.path}`,
+            text: `▸ rejected edit to ${block.path}${context}`,
           },
         ]);
-        return `User rejected this edit to ${block.path}. Don't retry the same SEARCH/REPLACE — either try a different approach or ask the user what they want instead.`;
+        return `User rejected this edit to ${block.path}${context}. Don't retry the same SEARCH/REPLACE — either try a different approach or ask the user what they want instead.`;
       }
       if (choice === "apply-rest-of-turn") {
         turnEditPolicyRef.current = "apply-all";
@@ -2137,7 +2143,7 @@ export function App({
           if (resolve) {
             editReviewResolveRef.current = null;
             setPendingEditReview(null);
-            resolve(choice);
+            resolve({ choice, denyContext: undefined });
           }
         },
         resolveWorkspaceConfirm: (choice) => {
@@ -3545,7 +3551,7 @@ export function App({
    *     config so next invocation auto-runs.
    */
   const handleShellConfirm = useCallback(
-    async (choice: ShellConfirmChoice) => {
+    async (choice: ShellConfirmChoice, denyContext?: string) => {
       const pending = pendingShell;
       if (!pending || !codeMode) return;
       const { command: cmd, kind } = pending;
@@ -3553,11 +3559,12 @@ export function App({
 
       let synthetic: string;
       if (choice === "deny") {
+        const context = denyContext ? ` because: ${denyContext}` : "";
         setHistorical((prev) => [
           ...prev,
-          { id: `sh-deny-${Date.now()}`, role: "info", text: `▸ denied: ${cmd}` },
+          { id: `sh-deny-${Date.now()}`, role: "info", text: `▸ denied: ${cmd}${context}` },
         ]);
-        synthetic = `I denied running \`${cmd}\`. Please continue without running it.`;
+        synthetic = `I denied running \`${cmd}\`${context}. Please continue without running it.`;
       } else {
         if (choice === "always_allow") {
           const prefix = derivePrefix(cmd);
@@ -3666,7 +3673,7 @@ export function App({
    *     against the new sandbox.
    */
   const handleWorkspaceConfirm = useCallback(
-    async (choice: WorkspaceConfirmChoice) => {
+    async (choice: WorkspaceConfirmChoice, denyContext?: string) => {
       const pending = pendingWorkspace;
       if (!pending) return;
       const target = pending.path;
@@ -3674,15 +3681,16 @@ export function App({
 
       let synthetic: string;
       if (choice === "deny") {
+        const context = denyContext ? ` because: ${denyContext}` : "";
         setHistorical((prev) => [
           ...prev,
           {
             id: `ws-deny-${Date.now()}`,
             role: "info",
-            text: `▸ denied workspace switch: ${target}`,
+            text: `▸ denied workspace switch: ${target}${context}`,
           },
         ]);
-        synthetic = `I denied switching the workspace to \`${target}\`. Please continue without changing directories.`;
+        synthetic = `I denied switching the workspace to \`${target}\`${context}. Please continue without changing directories.`;
       } else {
         const info = applyCwdChange(target);
         setHistorical((prev) => [
@@ -4451,11 +4459,11 @@ export function App({
           ) : pendingEditReview ? (
             <EditConfirm
               block={pendingEditReview}
-              onChoose={(choice) => {
+              onChoose={(choice, denyContext) => {
                 const resolve = editReviewResolveRef.current;
                 if (resolve) {
                   editReviewResolveRef.current = null;
-                  resolve(choice);
+                  resolve({ choice, denyContext });
                 }
               }}
             />
