@@ -20,7 +20,7 @@ export interface ShellConfirmProps {
    * approving will block the TUI or not.
    */
   kind?: "run_command" | "run_background";
-  onChoose: (choice: ShellConfirmChoice) => void;
+  onChoose: (choice: ShellConfirmChoice, denyContext?: string) => void;
 }
 
 /**
@@ -33,12 +33,25 @@ export interface ShellConfirmProps {
  *   3. Deny — tell the model the user refused.
  * Arrow keys + Enter. No y/n hotkey — too easy to trigger by accident
  * when the user was mid-typing a response.
+ *
+ * The "Deny" item supports inline context: pressing Tab appends `,`
+ * and lets the user type a reason directly on the selected item. The
+ * context is returned as the second argument to `onChoose`.
  */
 export function ShellConfirm({ command, allowPrefix, kind, onChoose }: ShellConfirmProps) {
   const isBackground = kind === "run_background";
   const subtitle = isBackground
     ? "long-running process — keeps running after approval, /kill to stop"
     : "model wants to run a shell command";
+
+  // Deny item with inline context support (Tab → `, ` + inline typing)
+  const denyItem = {
+    value: "deny" as const,
+    label: "Deny",
+    hint: "Not what you wanted? Press Tab to append `,` and tell the model what to do instead.",
+    denyWithContext: true as const,
+  };
+
   return (
     <ModalCard
       accent={COLOR.err}
@@ -65,15 +78,14 @@ export function ShellConfirm({ command, allowPrefix, kind, onChoose }: ShellConf
             label: `Always allow "${allowPrefix}" in this project`,
             hint: "Save the prefix to ~/.reasonix/config.json; future matches auto-run.",
           },
-          {
-            value: "deny",
-            label: "Deny",
-            hint: "Tell the model the user refused; it will continue without this command.",
-          },
+          denyItem,
         ]}
-        onSubmit={(v) => onChoose(v as ShellConfirmChoice)}
+        onSubmit={(v, ctx) => {
+          if (v === "deny") onChoose("deny", ctx);
+          else onChoose(v as ShellConfirmChoice);
+        }}
         onCancel={() => onChoose("deny")}
-        footer="↑↓ navigate · ⏎ select · esc deny"
+        footer="[↑↓] navigate  ·  [Enter] select  ·  [Tab] add context  ·  [Esc] deny"
       />
     </ModalCard>
   );

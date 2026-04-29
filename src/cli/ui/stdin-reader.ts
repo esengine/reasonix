@@ -212,11 +212,17 @@ export class StdinReader {
 
   start(): void {
     if (this.started) return;
-    if (!stdin.isTTY) {
-      // Non-TTY (piped input). We can't run interactively — don't try.
+    // Try to enter raw mode. In Node.js `process.stdin.isTTY` is `true`
+    // in TTY environments and `undefined` when piped, but bun leaves
+    // `isTTY` as `undefined` even in a real terminal. A direct
+    // `setRawMode` call is the universal check — it throws in
+    // non-TTY or closed pipes, and succeeds otherwise.
+    try {
+      stdin.setRawMode(true);
+    } catch {
+      // Not a TTY or not supported — can't run interactively.
       return;
     }
-    stdin.setRawMode(true);
     stdin.setEncoding("utf8");
     stdin.resume();
     this.listener = (chunk) =>
@@ -231,12 +237,10 @@ export class StdinReader {
       stdin.off("data", this.listener);
       this.listener = null;
     }
-    if (stdin.isTTY) {
-      try {
-        stdin.setRawMode(false);
-      } catch {
-        // setRawMode may throw if stdin is already closed; ignore.
-      }
+    try {
+      stdin.setRawMode(false);
+    } catch {
+      // setRawMode may throw if stdin is already closed; ignore.
     }
     stdin.pause();
     this.cancelEscTimer();

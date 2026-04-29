@@ -20,6 +20,7 @@
  * — see `stdin-reader.ts`.
  */
 
+import { useInput } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React as a runtime value
 import React, { createContext, useContext, useEffect, useRef } from "react";
 import { type KeyEvent, type StdinReader, getStdinReader } from "./stdin-reader.js";
@@ -91,18 +92,56 @@ export function KeystrokeProvider({
  * Handler identity changes are tolerated — we re-subscribe via
  * useEffect on every render. Wrap your handler in `useCallback` if
  * you want to avoid that.
+ *
+ * **Ink fallback:** When no `KeystrokeProvider` is mounted in the
+ * tree (e.g. the Setup/Wizard screens), this hook falls back to
+ * Ink v5's built-in `useInput`. This ensures components like
+ * `SingleSelect` work both inside and outside the KeystrokeProvider.
+ * Without this fallback, a component using `useKeystroke` outside a
+ * KeystrokeProvider silently never receives events.
  */
 export function useKeystroke(handler: KeystrokeHandler, isActive = true): void {
   const bus = useContext(KeystrokeContext);
-  // Latest-handler ref so we can subscribe ONCE per active toggle
-  // and still call the freshest closure on each event.
+  // Latest-handler ref so we can call the freshest closure on every
+  // event regardless of re-render schedule.
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
+  // Primary: subscribe via KeystrokeBus (our StdinReader + fan-out).
   useEffect(() => {
     if (!bus || !isActive) return undefined;
     return bus.subscribe((ev) => handlerRef.current(ev));
   }, [bus, isActive]);
+
+  // Fallback: when no KeystrokeProvider is mounted, use Ink's
+  // native useInput. The effect and this useInput are both always
+  // called, but only one actually dispatches based on whether bus
+  // is present. This avoids the `readable` vs `data` listener
+  // conflict on stdin.
+  useInput(
+    (input, key) => {
+      if (bus) return; // KeystrokeProvider is active — skip fallback
+      handlerRef.current({
+        input,
+        upArrow: key.upArrow,
+        downArrow: key.downArrow,
+        leftArrow: key.leftArrow,
+        rightArrow: key.rightArrow,
+        return: key.return,
+        escape: key.escape,
+        backspace: key.backspace,
+        delete: key.delete,
+        tab: key.tab,
+        shift: key.shift,
+        ctrl: key.ctrl,
+        meta: key.meta,
+        pageUp: key.pageUp,
+        pageDown: key.pageDown,
+        // Ink v5 Key type doesn't include home/end — omitted
+      });
+    },
+    { isActive: !bus && isActive },
+  );
 }
 
 /**

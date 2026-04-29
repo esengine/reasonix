@@ -2,6 +2,7 @@ import { Box, Text, useStdout } from "ink";
 import React, { useMemo, useState } from "react";
 import { formatEditBlockSplit } from "../../code/diff-preview.js";
 import type { EditBlock } from "../../code/edit-blocks.js";
+import { DenyContextInput } from "./DenyContextInput.js";
 import { ModalCard } from "./ModalCard.js";
 import { SplitDiff } from "./SplitDiff.js";
 import { useKeystroke } from "./keystroke-context.js";
@@ -21,7 +22,12 @@ export type EditReviewChoice = "apply" | "reject" | "apply-rest-of-turn" | "flip
 
 export interface EditConfirmProps {
   block: EditBlock;
-  onChoose: (choice: EditReviewChoice) => void;
+  /**
+   * `onChoose` receives the choice and an optional context string when
+   * the user rejects with an explanation (pressing `n` opens a context
+   * input; Enter submits the context, Esc goes back to review).
+   */
+  onChoose: (choice: EditReviewChoice, denyContext?: string) => void;
 }
 
 /**
@@ -76,8 +82,20 @@ export function EditConfirm({ block, onChoose }: EditConfirmProps) {
   // keypress drove the offset past the new ceiling.
   const effectiveScroll = Math.min(scroll, maxScroll);
 
+  // Phase: "review" shows the diff with hotkeys; "context" shows the
+  // DenyContextInput after the user pressed `n` (reject).
+  const [phase, setPhase] = useState<"review" | "context">("review");
+
   useKeystroke((ev) => {
     if (ev.paste) return;
+
+    // Context-input phase: route everything to DenyContextInput's
+    // logic is handled inside that component via its own useKeystroke.
+    // We only reach this handler for non-context events — the context
+    // phase shows DenyContextInput which has its own keystroke hook,
+    // so this handler's actions are no-ops during context input.
+    if (phase === "context") return;
+
     const input = ev.input;
     const key = ev;
     // Action keys first — decision wins over scroll so a user who
@@ -88,7 +106,9 @@ export function EditConfirm({ block, onChoose }: EditConfirmProps) {
       return;
     }
     if (input === "n") {
-      onChoose("reject");
+      // Instead of immediately rejecting, enter the context-input
+      // phase so the user can explain *why* they're rejecting.
+      setPhase("context");
       return;
     }
     if (input === "a") {
@@ -145,31 +165,24 @@ export function EditConfirm({ block, onChoose }: EditConfirmProps) {
       `viewing ${effectiveScroll + 1}-${effectiveScroll + visibleRows.length}/${totalLines}`,
     );
   }
-  const footer = (
-    <Text dimColor>
-      {"["}
-      <Text color="#67e8f9" bold>
-        y
-      </Text>
-      {"/Enter] apply  ·  ["}
-      <Text color="#67e8f9" bold>
-        n
-      </Text>
-      {"] reject  ·  ["}
-      <Text color="#67e8f9" bold>
-        a
-      </Text>
-      {"] apply rest  ·  ["}
-      <Text color="#67e8f9" bold>
-        A
-      </Text>
-      {"] flip AUTO  ·  ["}
-      <Text color="#67e8f9" bold>
-        ↑↓/Space
-      </Text>
-      {"] scroll  ·  [Esc] abort"}
-    </Text>
-  );
+
+  // Context-input phase: show DenyContextInput instead of the diff
+  if (phase === "context") {
+    return (
+      <ModalCard
+        accent={isNew ? "#86efac" : "#fcd34d"}
+        icon={isNew ? "✚" : "✎"}
+        title={`${tag}  ${block.path}`}
+        subtitle="rejecting — add context (optional)"
+      >
+        <DenyContextInput
+          label="Reason for rejecting (or Enter to reject without context): "
+          onSubmit={(context) => onChoose("reject", context)}
+          onCancel={() => setPhase("review")}
+        />
+      </ModalCard>
+    );
+  }
 
   return (
     <ModalCard
@@ -177,7 +190,6 @@ export function EditConfirm({ block, onChoose }: EditConfirmProps) {
       icon={isNew ? "✚" : "✎"}
       title={`${tag}  ${block.path}`}
       subtitle={subtitleParts.join("  ·  ")}
-      footer={footer}
     >
       {hiddenAbove > 0 ? (
         <Text
@@ -202,6 +214,31 @@ export function EditConfirm({ block, onChoose }: EditConfirmProps) {
           dimColor
         >{`  ↓ ${hiddenBelow} line${hiddenBelow === 1 ? "" : "s"} below  (↓/j or Space/PgDn)`}</Text>
       ) : null}
+      <Box marginTop={1}>
+        <Text dimColor>
+          {"["}
+          <Text color="#67e8f9" bold>
+            y
+          </Text>
+          {"/Enter] apply  ·  ["}
+          <Text color="#67e8f9" bold>
+            n
+          </Text>
+          {"] reject with reason  ·  ["}
+          <Text color="#67e8f9" bold>
+            a
+          </Text>
+          {"] apply rest  ·  ["}
+          <Text color="#67e8f9" bold>
+            A
+          </Text>
+          {"] flip AUTO  ·  ["}
+          <Text color="#67e8f9" bold>
+            ↑↓/Space
+          </Text>
+          {"] scroll  ·  [Esc] abort"}
+        </Text>
+      </Box>
     </ModalCard>
   );
 }
