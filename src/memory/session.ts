@@ -49,7 +49,7 @@ export function findSessionsByPrefix(prefix: string): string[] {
   if (!existsSync(dir)) return [];
   try {
     const files = readdirSync(dir)
-      .filter((f) => f.endsWith(".jsonl") && f.startsWith(prefix))
+      .filter((f) => f.endsWith(".jsonl") && !f.endsWith(".events.jsonl") && f.startsWith(prefix))
       .sort()
       .reverse();
     return files.map((f) => f.replace(/\.jsonl$/, ""));

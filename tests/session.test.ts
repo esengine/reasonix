@@ -225,6 +225,23 @@ describe("session persistence", () => {
       expect(preview!.messageCount).toBe(1);
     });
 
+    it("ignores timestamped sessions that have only .events.jsonl (no messages file)", () => {
+      // Simulate: a "new" created a timestamped session, App mounted and
+      // wrote .events.jsonl, but no messages were ever sent — so no .jsonl.
+      appendSessionMessage("myproject", { role: "user", content: "real messages" });
+      const eventsPath = sessionPath("myproject-20260430T200000").replace(
+        /\.jsonl$/,
+        ".events.jsonl",
+      );
+      writeFileSync(eventsPath, "{}");
+
+      const { resolved, preview } = resolveSession("myproject");
+      // Should fall back to the base session, not the empty timestamped one
+      expect(resolved).toBe("myproject");
+      expect(preview).toBeDefined();
+      expect(preview!.messageCount).toBe(1);
+    });
+
     it("picks the latest prefixed session over the base name", () => {
       appendSessionMessage("project", { role: "user", content: "old" });
       appendSessionMessage("project-20260430T091500", { role: "user", content: "newer" });
@@ -307,6 +324,9 @@ describe("session persistence", () => {
       // Write a .pending.json sidecar
       const pendingPath = sessionPath("alpha-001").replace(/\.jsonl$/, ".pending.json");
       writeFileSync(pendingPath, "{}");
+      // Write a .events.jsonl sidecar — ends with .jsonl but is NOT a session
+      const eventsPath = sessionPath("alpha-001").replace(/\.jsonl$/, ".events.jsonl");
+      writeFileSync(eventsPath, "{}");
 
       const result = findSessionsByPrefix("alpha-");
       expect(result).toEqual(["alpha-001"]);
