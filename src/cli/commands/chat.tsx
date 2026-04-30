@@ -1,4 +1,3 @@
-import { existsSync, statSync } from "node:fs";
 import { render } from "ink";
 import React, { useState } from "react";
 import { loadApiKey, searchEnabled } from "../../config.js";
@@ -10,11 +9,7 @@ import { parseMcpSpec } from "../../mcp/spec.js";
 import { SseTransport } from "../../mcp/sse.js";
 import { type McpTransport, StdioTransport } from "../../mcp/stdio.js";
 import { StreamableHttpTransport } from "../../mcp/streamable-http.js";
-import {
-  loadSessionMessages,
-  rewriteSession,
-  sessionPath as sessionPathOf,
-} from "../../memory/session.js";
+import { resolveSession, timestampSuffix } from "../../memory/session.js";
 import { ToolRegistry } from "../../tools.js";
 import { registerChoiceTool } from "../../tools/choice.js";
 import { registerMemoryTools } from "../../tools/memory.js";
@@ -99,6 +94,13 @@ interface RootProps extends ChatOptions {
   progressSink: { current: ((info: ProgressInfo) => void) | null };
   /** Present when the session has prior messages; drives the picker. */
   sessionPreview?: { messageCount: number; lastActive: Date };
+  /**
+   * Original base session name before any timestamp resolution. Used
+   * by the "new" handler to generate fresh timestamped names without
+   * nesting (e.g. `code-reasonix` stays the base even when the
+   * effective session is `code-reasonix-20260430T143200`).
+   */
+  baseSession?: string;
 }
 
 function Root({
@@ -114,6 +116,9 @@ function Root({
   // `null` once the picker is resolved (or was never needed). Starts as
   // the preview so we can render the picker once before mounting App.
   const [pending, setPending] = useState<typeof sessionPreview>(sessionPreview);
+  // Effective session name — starts as the prop (resolved by chatCommand)
+  // but changes when the user picks "new" (creates a timestamped name).
+  const [effectiveSession, setEffectiveSession] = useState<string | undefined>(appProps.session);
 
   if (!key) {
     return (
@@ -141,11 +146,13 @@ function Root({
           messageCount={pending.messageCount}
           lastActive={pending.lastActive}
           onChoose={(choice) => {
-            if (choice === "new" || choice === "delete") {
-              // Wipe the session file. "new" and "delete" do the same thing
-              // at this step — the distinction is only in the picker's
-              // wording. A future enhancement could archive on "new".
-              rewriteSession(appProps.session!, []);
+            if (choice === "new") {
+              // Create a new timestamped session instead of truncating
+              // the old one. The old session files remain intact on disk
+              // and can be resumed via --session <name> --resume.
+              const base = appProps.baseSession ?? appProps.session!;
+              const ts = timestampSuffix();
+              setEffectiveSession(`${base}-${ts}`);
             }
             setPending(undefined);
           }}
@@ -163,7 +170,7 @@ function Root({
         harvest={appProps.harvest}
         branch={appProps.branch}
         budgetUsd={appProps.budgetUsd}
-        session={appProps.session}
+        session={effectiveSession}
         tools={tools}
         mcpSpecs={mcpSpecs}
         mcpServers={mcpServers}
@@ -303,22 +310,13 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
     registerChoiceTool(tools);
   }
 
-  // Decide whether to show the session picker. It's gated on: session
-  // persistence is on, the session file already has prior messages, and
-  // the caller didn't pre-commit to one of the choices via --resume /
-  // --new flags. `--new` wipes the file now (before the loop opens),
-  // so the App mounts against a fresh log.
-  let sessionPreview: { messageCount: number; lastActive: Date } | undefined;
-  if (opts.session && !opts.forceResume && !opts.forceNew) {
-    const prior = loadSessionMessages(opts.session);
-    if (prior.length > 0) {
-      const p = sessionPathOf(opts.session);
-      const mtime = existsSync(p) ? statSync(p).mtime : new Date();
-      sessionPreview = { messageCount: prior.length, lastActive: mtime };
-    }
-  } else if (opts.session && opts.forceNew) {
-    rewriteSession(opts.session, []);
-  }
+  // Resolve the effective session name and decide whether to show the
+  // session picker. Delegated to resolveSession() in session.ts.
+  const { resolved: resolvedSession, preview: sessionPreview } = resolveSession(
+    opts.session,
+    opts.forceNew,
+    opts.forceResume,
+  );
 
   // No startup clear, no resize listener. Earlier attempts wrote
   // various combinations of \x1b[2J / \x1b[3J / cursor-home to
@@ -340,6 +338,8 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
       progressSink={progressSink}
       sessionPreview={sessionPreview}
       {...opts}
+      session={resolvedSession}
+      baseSession={opts.session}
     />,
     // patchConsole:false — we never log to console during the TUI, and the
     // patch is a known redraw-glitch source on winpty/MINTTY terminals.

@@ -36,6 +36,68 @@ export function sanitizeName(name: string): string {
   return cleaned || "default";
 }
 
+/** Compact sortable timestamp: YYYYMMDDHHmm (e.g. 202604301432) */
+export function timestampSuffix(): string {
+  return new Date().toISOString().replace(/[^\d]/g, "").slice(0, 12);
+}
+
+/** Alpha-reverse by filename — newest session first (no stat I/O).
+ *  TODO: switch to `statSync(f).mtimeMs` for "most recently used" order
+ *  (costs O(n) reads but discounts idle-but-recent activity). */
+export function findSessionsByPrefix(prefix: string): string[] {
+  const dir = sessionsDir();
+  if (!existsSync(dir)) return [];
+  try {
+    const files = readdirSync(dir)
+      .filter((f) => f.endsWith(".jsonl") && f.startsWith(prefix))
+      .sort()
+      .reverse();
+    return files.map((f) => f.replace(/\.jsonl$/, ""));
+  } catch {
+    return [];
+  }
+}
+
+/** Session picker metadata. */
+export interface SessionPreview {
+  messageCount: number;
+  lastActive: Date;
+}
+
+/** Resolve session name + picker preview. Priority order in description.md. */
+export function resolveSession(
+  sessionName: string | undefined,
+  forceNew?: boolean,
+  forceResume?: boolean,
+): { resolved: string | undefined; preview: SessionPreview | undefined } {
+  let resolved = sessionName;
+  let preview: SessionPreview | undefined;
+
+  if (sessionName && forceNew) {
+    resolved = `${sessionName}-${timestampSuffix()}`;
+  } else if (sessionName && !forceResume) {
+    let sessionToCheck = sessionName;
+    const prefixed = findSessionsByPrefix(`${sessionName}-`);
+    if (prefixed.length > 0) {
+      sessionToCheck = prefixed[0]!;
+    }
+    const prior = loadSessionMessages(sessionToCheck);
+    if (prior.length > 0) {
+      resolved = sessionToCheck;
+      const p = sessionPath(sessionToCheck);
+      const mtime = existsSync(p) ? statSync(p).mtime : new Date();
+      preview = { messageCount: prior.length, lastActive: mtime };
+    }
+  } else if (sessionName && forceResume) {
+    const prefixed = findSessionsByPrefix(`${sessionName}-`);
+    if (prefixed.length > 0) {
+      resolved = prefixed[0]!;
+    }
+  }
+
+  return { resolved, preview };
+}
+
 export function loadSessionMessages(name: string): ChatMessage[] {
   const path = sessionPath(name);
   if (!existsSync(path)) return [];
@@ -105,13 +167,19 @@ export function deleteSession(name: string): boolean {
   try {
     unlinkSync(path);
     // Best-effort cleanup of side-car files that belong to this session
-    // so `/forget` doesn't leave orphans in `sessionsDir()`. Currently
-    // just the pending-edits checkpoint (src/code/pending-edits.ts).
-    const sidecar = path.replace(/\.jsonl$/, ".pending.json");
-    try {
-      unlinkSync(sidecar);
-    } catch {
-      /* no sidecar present — expected for sessions without pending edits */
+    // so `/forget` doesn't leave orphans in `sessionsDir()`:
+    //   - .pending.json   pending-edits checkpoint (src/code/pending-edits.ts)
+    //   - .plan.json      structured plan state (src/code/plan-store.ts)
+    const sidecars = [
+      path.replace(/\.jsonl$/, ".pending.json"),
+      path.replace(/\.jsonl$/, ".plan.json"),
+    ];
+    for (const sc of sidecars) {
+      try {
+        unlinkSync(sc);
+      } catch {
+        /* no sidecar present — expected */
+      }
     }
     return true;
   } catch {

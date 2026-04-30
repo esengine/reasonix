@@ -94,6 +94,25 @@ describe("plan-store roundtrip", () => {
     expect(() => clearPlanState("nonexistent")).not.toThrow();
   });
 
+  it("loadPlanState returns the plan even with no session messages (orphaned plan file)", () => {
+    // Bug: when a session is wiped (--new, /forget, session picker
+    // "new"/"delete") the plan-state sidecar was historically NOT
+    // cleaned up.  On next launch loadPlanState would find the stale
+    // file and the UI would show a spurious "RESUMED PLAN" banner.
+    // This test documents that loadPlanState itself has no guard
+    // against the orphan — the fix lives in the session-wipe paths
+    // (deleteSession, rewriteSession callers) that must clear the
+    // plan file proactively.
+    savePlanState("orphan", [{ id: "s1", title: "t", action: "a" }], []);
+    // Simulate: the session JSONL is empty / doesn't exist, but the
+    // plan file was left behind.
+    expect(loadPlanState("orphan")).not.toBeNull();
+    // After clearPlanState (simulating the fix in the wipe paths),
+    // the orphan is gone.
+    clearPlanState("orphan");
+    expect(loadPlanState("orphan")).toBeNull();
+  });
+
   it("returns null on malformed JSON", () => {
     writeFixture(planStatePath("broken"), "not json {");
     expect(loadPlanState("broken")).toBeNull();
