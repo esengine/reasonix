@@ -3979,7 +3979,13 @@ function EditorPanel({ onClose } = {}) {
         viewRef.current = null;
       }
     };
-  }, [cmReady, activeIdx, tabs[activeIdx]?.path, viewMode]);
+  }, [cmReady, activeIdx, tabs[activeIdx]?.path]);
+
+  // Becoming visible after display:none — CM6 measures lazily, force it.
+  useEffect(() => {
+    if (viewMode === "preview") return;
+    viewRef.current?.requestMeasure?.();
+  }, [viewMode]);
 
   const closeTab = useCallback((idx) => {
     const tab = tabsRef.current[idx];
@@ -4220,28 +4226,22 @@ function EditorPanel({ onClose } = {}) {
             ${(() => {
               const isMd = langFromPath(tab.path) === "markdown";
               const mode = isMd ? viewMode : "edit";
-              if (mode === "preview") {
-                return html`
-                  <div
-                    class="editor-host editor-md-preview md"
-                    dangerouslySetInnerHTML=${{ __html: previewMarked.parse(tab.content ?? "") }}
-                  ></div>
-                `;
-              }
-              if (mode === "split") {
-                return html`
-                  <div class="editor-split">
-                    <div ref=${editorContainerRef} class="editor-host editor-split-pane"></div>
-                    <div
-                      class="editor-host editor-md-preview md editor-split-pane"
-                      dangerouslySetInnerHTML=${{
-                        __html: previewMarked.parse(tab.content ?? ""),
-                      }}
-                    ></div>
-                  </div>
-                `;
-              }
-              return html`<div ref=${editorContainerRef} class="editor-host"></div>`;
+              // Stable DOM across mode toggles — CM-managed children + Preact reconciliation don't mix when the host moves.
+              return html`
+                <div class="editor-stage" data-mode=${mode}>
+                  <div ref=${editorContainerRef} class="editor-host"></div>
+                  ${
+                    isMd
+                      ? html`<div
+                          class="editor-md-preview md"
+                          dangerouslySetInnerHTML=${{
+                            __html: previewMarked.parse(tab.content ?? ""),
+                          }}
+                        ></div>`
+                      : null
+                  }
+                </div>
+              `;
             })()}
           `
             : html`

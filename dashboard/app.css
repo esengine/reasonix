@@ -2313,19 +2313,25 @@ textarea:focus {
 }
 
 /* Split view — left half source (CodeMirror), right half preview. */
-.editor-split {
+.editor-stage {
   flex: 1;
   display: flex;
   min-height: 0;
   overflow: hidden;
 }
-.editor-split-pane {
+.editor-stage > .editor-host,
+.editor-stage > .editor-md-preview {
   flex: 1;
   min-width: 0;
-  border: none;
-  border-radius: 0;
+  min-height: 0;
 }
-.editor-split .editor-split-pane + .editor-split-pane {
+.editor-stage[data-mode="edit"] > .editor-md-preview {
+  display: none;
+}
+.editor-stage[data-mode="preview"] > .editor-host {
+  display: none;
+}
+.editor-stage[data-mode="split"] > .editor-host + .editor-md-preview {
   border-left: 1px solid #181a1f;
 }
 

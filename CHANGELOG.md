@@ -3,6 +3,20 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.1] — 2026-04-29
+
+**Headline:** Fix a render crash in the dashboard's Editor that triggered
+when toggling Edit / Split / Preview on a markdown file. Mixing the
+CodeMirror-managed DOM with sibling `dangerouslySetInnerHTML` while the
+host element changed shape across modes confused Preact's reconciler
+(`Failed to execute 'insertBefore' on 'Node'`).
+
+- fix(dashboard): Editor mode toggle no longer restructures the DOM.
+  CM container and markdown preview are now always rendered at the same
+  vnode positions; `data-mode` on a single `.editor-stage` wrapper
+  drives visibility via CSS. CM stays mounted across mode switches and
+  is poked with `requestMeasure()` when it becomes visible again.
+
 ## [0.17.0] — 2026-04-29
 
 **Headline:** `reasonix index` is now config-driven — what gets walked
