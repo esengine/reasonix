@@ -3335,42 +3335,41 @@ function SemanticExcludesCard() {
   }, [draft]);
 
   return html`
-    <div class="section-title" style="margin-top: 18px;">
-      <span style="cursor: pointer;" onClick=${() => setOpen(!open)}>
-        ${open ? "▼" : "▶"} Excludes
-      </span>
-      <span class="muted" style="margin-left: 8px; font-weight: normal; font-size: 12px;">
-        config-driven skip rules applied during indexing
-      </span>
+    <div class="excludes-toggle" onClick=${() => setOpen(!open)}>
+      <span class="caret">${open ? "▼" : "▶"}</span>
+      <span class="label">Excludes</span>
+      <span class="hint">config-driven skip rules applied during indexing</span>
     </div>
     ${
       !open
         ? null
         : !draft
-          ? html`<div class="muted">loading…</div>`
+          ? html`<div class="empty">loading…</div>`
           : html`
-            <div class="card" style="font-size: 13px;">
+            <div class="card excludes-card">
               ${info ? html`<div class="notice">${info}</div>` : null}
               ${error ? html`<div class="notice err">${error}</div>` : null}
-              <div class="muted" style="margin-bottom: 10px;">
-                One value per line. Dirs / files match by basename. Patterns use picomatch (e.g. <code>**/*.generated.ts</code>, <code>vendor/**</code>).
+              <div class="lead">
+                One value per line. Dirs / files match by basename. Patterns use picomatch syntax (e.g. <code>**/*.generated.ts</code>, <code>vendor/**</code>, <code>!keep-me</code>).
               </div>
-              <${ExcludesField} label="Exclude dirs" value=${draft.excludeDirs} onChange=${(v) => setDraft({ ...draft, excludeDirs: v })} />
-              <${ExcludesField} label="Exclude files" value=${draft.excludeFiles} onChange=${(v) => setDraft({ ...draft, excludeFiles: v })} />
-              <${ExcludesField} label="Exclude extensions" value=${draft.excludeExts} onChange=${(v) => setDraft({ ...draft, excludeExts: v })} />
-              <${ExcludesField} label="Exclude patterns (glob)" value=${draft.excludePatterns} onChange=${(v) => setDraft({ ...draft, excludePatterns: v })} />
-              <div class="row" style="margin-top: 10px; gap: 16px;">
-                <label style="display: flex; align-items: center; gap: 6px;">
+              <div class="excludes-grid">
+                <${ExcludesField} label="Exclude dirs" value=${draft.excludeDirs} onChange=${(v) => setDraft({ ...draft, excludeDirs: v })} />
+                <${ExcludesField} label="Exclude files" value=${draft.excludeFiles} onChange=${(v) => setDraft({ ...draft, excludeFiles: v })} />
+                <${ExcludesField} label="Exclude extensions" value=${draft.excludeExts} onChange=${(v) => setDraft({ ...draft, excludeExts: v })} />
+                <${ExcludesField} label="Exclude patterns (glob)" value=${draft.excludePatterns} onChange=${(v) => setDraft({ ...draft, excludePatterns: v })} />
+              </div>
+              <div class="excludes-options">
+                <label>
                   <input type="checkbox" checked=${draft.respectGitignore} onChange=${(e) => setDraft({ ...draft, respectGitignore: e.target.checked })} />
                   Respect <code>.gitignore</code>
                 </label>
-                <label style="display: flex; align-items: center; gap: 6px;">
-                  Max file size:
-                  <input type="number" min="1024" step="1024" value=${draft.maxFileBytes} onChange=${(e) => setDraft({ ...draft, maxFileBytes: Number(e.target.value) || 0 })} style="width: 110px;" />
+                <label>
+                  Max file size
+                  <input type="number" min="1024" step="1024" value=${draft.maxFileBytes} onChange=${(e) => setDraft({ ...draft, maxFileBytes: Number(e.target.value) || 0 })} />
                   <span class="muted">bytes</span>
                 </label>
               </div>
-              <div class="row" style="margin-top: 12px;">
+              <div class="excludes-actions">
                 <button class="primary" disabled=${busy} onClick=${save}>Save</button>
                 <button disabled=${busy} onClick=${runPreview}>Preview (dry-walk)</button>
                 <button disabled=${busy} onClick=${reset}>Reset to defaults</button>
@@ -3397,42 +3396,36 @@ function ExcludesPreview({ preview }) {
     "readError",
   ].filter((k) => (buckets[k] || 0) > 0);
   return html`
-    <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border, #2a2a2a);">
-      <div style="font-weight: 500; margin-bottom: 6px;">
+    <div class="excludes-preview">
+      <div class="summary">
         Preview — would index <strong>${preview.filesIncluded}</strong> file(s), skip <strong>${totalSkipped}</strong>
       </div>
       ${
         reasons.length === 0
-          ? html`<div class="muted" style="font-size: 12px;">nothing skipped — all walked files would be indexed.</div>`
-          : html`
-            <div style="font-size: 12px;">
-              ${reasons.map(
-                (r) => html`
-                  <details style="margin-bottom: 6px;">
-                    <summary><strong>${r}: ${buckets[r]}</strong></summary>
-                    <ul style="margin: 4px 0 4px 18px; padding: 0;">
-                      ${(samples[r] || []).map(
-                        (p) => html`<li><code style="font-size: 11.5px;">${p}</code></li>`,
-                      )}
-                      ${
-                        (buckets[r] || 0) > (samples[r] || []).length
-                          ? html`<li class="muted">…${buckets[r] - samples[r].length} more</li>`
-                          : null
-                      }
-                    </ul>
-                  </details>
-                `,
-              )}
-            </div>
-          `
+          ? html`<div class="muted">nothing skipped — all walked files would be indexed.</div>`
+          : reasons.map(
+              (r) => html`
+                <details>
+                  <summary><strong>${r}: ${buckets[r]}</strong></summary>
+                  <ul>
+                    ${(samples[r] || []).map((p) => html`<li><code>${p}</code></li>`)}
+                    ${
+                      (buckets[r] || 0) > (samples[r] || []).length
+                        ? html`<li class="muted">…${buckets[r] - samples[r].length} more</li>`
+                        : null
+                    }
+                  </ul>
+                </details>
+              `,
+            )
       }
       ${
         preview.sampleIncluded?.length
           ? html`
-            <details style="margin-top: 8px;">
-              <summary class="muted" style="font-size: 12px;">first ${preview.sampleIncluded.length} included file(s)</summary>
-              <ul style="margin: 4px 0 4px 18px; padding: 0; font-size: 12px;">
-                ${preview.sampleIncluded.map((p) => html`<li><code style="font-size: 11.5px;">${p}</code></li>`)}
+            <details>
+              <summary>first ${preview.sampleIncluded.length} included file(s)</summary>
+              <ul>
+                ${preview.sampleIncluded.map((p) => html`<li><code>${p}</code></li>`)}
               </ul>
             </details>
           `
@@ -3444,14 +3437,9 @@ function ExcludesPreview({ preview }) {
 
 function ExcludesField({ label, value, onChange }) {
   return html`
-    <div style="margin-bottom: 8px;">
-      <label style="display: block; font-weight: 500; margin-bottom: 4px;">${label}</label>
-      <textarea
-        rows="4"
-        style="width: 100%; font-family: var(--mono, monospace); font-size: 12px;"
-        value=${value}
-        onChange=${(e) => onChange(e.target.value)}
-      ></textarea>
+    <div class="excludes-field">
+      <label>${label}</label>
+      <textarea rows="5" value=${value} onChange=${(e) => onChange(e.target.value)}></textarea>
     </div>
   `;
 }
