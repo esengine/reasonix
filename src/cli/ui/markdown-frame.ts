@@ -7,6 +7,7 @@ import {
   borderLeft,
   empty,
   pad,
+  stringWidth,
   text,
   vstack,
 } from "../../frame/index.js";
@@ -81,40 +82,16 @@ function segmentsToFrame(segs: readonly InlineSegment[], width: number): Frame {
   const atoms: Cell[] = [];
   for (const seg of segs) {
     if (!seg.text) continue;
-    // Use a generous width so the segment doesn't pre-wrap inside text()
-    const f = text(seg.text, { ...seg.opts, width: Math.max(width, seg.text.length * 2 + 4) });
+    // Render at the segment's exact visual width so text() adds no padding cells
+    const f = text(seg.text, { ...seg.opts, width: stringWidth(seg.text) });
     if (f.rows.length > 0) {
-      // Strip trailing space-padding the text() helper adds; the
-      // segment's actual cells are the leading non-space prefix.
-      let stop = f.rows[0]!.length;
-      while (
-        stop > 0 &&
-        f.rows[0]![stop - 1]!.char === " " &&
-        f.rows[0]![stop - 1]!.fg === undefined &&
-        f.rows[0]![stop - 1]!.bg === undefined
-      ) {
-        stop--;
-      }
-      for (let i = 0; i < stop; i++) atoms.push(f.rows[0]![i]!);
+      for (const c of f.rows[0]!) atoms.push(c);
     }
     // Multi-line segments (rare with inline markup, but possible if
     // text contained \n) — append blank cells then continue.
     for (let li = 1; li < f.rows.length; li++) {
-      // Insert a newline marker via a sentinel cell? Simpler: emit
-      // a hard-break row right now and continue with the next line.
-      // To keep `atoms` 1-D, we encode \n as a special cell char and
-      // handle in the wrap loop. Use a SOH sentinel char that won't
-      // appear in real text.
       atoms.push({ char: "\n", width: 1 });
-      let stop = f.rows[li]!.length;
-      while (
-        stop > 0 &&
-        f.rows[li]![stop - 1]!.char === " " &&
-        f.rows[li]![stop - 1]!.fg === undefined
-      ) {
-        stop--;
-      }
-      for (let i = 0; i < stop; i++) atoms.push(f.rows[li]![i]!);
+      for (const c of f.rows[li]!) atoms.push(c);
     }
   }
   // Greedy wrap: walk atoms, accumulate cells until current row width
