@@ -965,10 +965,27 @@ cd reasonix
 npm install
 npm run dev code        # run CLI from source via tsx
 npm run build           # tsup to dist/
-npm test                # vitest (1482 tests)
+npm test                # vitest (1665 tests)
 npm run lint            # biome
 npm run typecheck       # tsc --noEmit
 ```
+
+---
+
+## Contributing
+
+Looking for somewhere to start? These are scoped, well-described, and don't need deep familiarity with the loop or rendering pipeline:
+
+- [#15 — Add `--json` flag to `reasonix doctor`](https://github.com/esengine/reasonix/issues/15) · CLI · 2-3h
+- [#16 — Make `web_search` / `web_fetch` errors actionable](https://github.com/esengine/reasonix/issues/16) · tools · 2-3h
+- [#17 — Suggest the closest slash command on "unknown command"](https://github.com/esengine/reasonix/issues/17) · TUI · 2-3h
+- [#18 — Unit tests for `clipboard.ts`](https://github.com/esengine/reasonix/issues/18) · tests · 2-3h
+
+Each issue has background, current behaviour, expected behaviour, file pointers with line numbers, acceptance criteria, and hints. Browse all [`good first issue`](https://github.com/esengine/reasonix/labels/good%20first%20issue)s.
+
+Have an opinion on what Reasonix should be? The [Discussions](https://github.com/esengine/reasonix/discussions) are open — CLI design, dashboard design, and the future-features wishlist all want input.
+
+The repo's code style is enforced by `tests/comment-policy.test.ts` and `npm run verify` (the pre-push gate). Read [`CLAUDE.md`](./CLAUDE.md) before your first PR — short rules, strictly enforced.
 
 ---
 
