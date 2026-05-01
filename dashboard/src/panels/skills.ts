@@ -25,6 +25,7 @@ export function SkillsPanel() {
   const [info, setInfo] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newScope, setNewScope] = useState<"global" | "project">("global");
+  const [filter, setFilter] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -102,84 +103,114 @@ export function SkillsPanel() {
     }
   }, [newName, newScope, load, openSkill]);
 
-  if (!data && !error) return html`<div class="boot">loading skills…</div>`;
-  if (error && !data) return html`<div class="notice err">${error}</div>`;
+  if (!data && !error)
+    return html`<div class="card" style="color:var(--fg-3)">loading skills…</div>`;
+  if (error && !data) return html`<div class="card accent-err">${error}</div>`;
   if (!data) return null;
 
-  if (open) {
-    return html`
-      <div>
-        <div class="panel-header">
-          <h2 class="panel-title">Skill · ${open.scope}/${open.name}</h2>
-          <button onClick=${() => setOpen(null)} style="margin-left: auto;">← back</button>
-        </div>
-        ${info ? html`<div class="notice">${info}</div>` : null}
-        ${error ? html`<div class="notice err">${error}</div>` : null}
-        <textarea
-          style="width: 100%; height: 520px; font-family: var(--mono); font-size: 13px; background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px;"
-          value=${body}
-          onInput=${(e: Event) => setBody((e.target as HTMLTextAreaElement).value)}
-          disabled=${busy}
-        ></textarea>
-        <div class="row" style="margin-top: 8px;">
-          <button class="primary" disabled=${busy} onClick=${save}>Save</button>
-          <button class="danger" disabled=${busy} onClick=${remove}>Delete</button>
-          <span class="muted" style="font-size: 12px; margin-left: auto;">re-loaded on next /new or session restart</span>
-        </div>
-      </div>
-    `;
-  }
-
-  const renderList = (label: string, items: SkillEntry[], scope: Scope) => html`
-    <div class="section-title">${label} (${items.length})</div>
-    ${
-      items.length === 0
-        ? html`<div class="empty">none</div>`
-        : html`
-        <table>
-          <thead><tr><th>name</th><th>description</th><th></th></tr></thead>
-          <tbody>
-            ${items.map(
-              (s) => html`
-              <tr key=${s.name} style="cursor: ${scope === "builtin" ? "default" : "pointer"};" onClick=${() => scope !== "builtin" && openSkill(scope, s.name)}>
-                <td><code>${s.name}</code></td>
-                <td>${s.description ?? html`<span class="muted">(no description)</span>`}</td>
-                <td>${scope === "builtin" ? html`<span class="pill pill-dim">builtin</span>` : null}</td>
-              </tr>
-            `,
-            )}
-          </tbody>
-        </table>
-      `
-    }
-  `;
+  const allWith = [
+    ...data.project.map((s) => ({ scope: "project" as Scope, ...s })),
+    ...data.global.map((s) => ({ scope: "global" as Scope, ...s })),
+    ...data.builtin.map((s) => ({ scope: "builtin" as Scope, ...s })),
+  ];
+  const filtered = filter.trim()
+    ? allWith.filter(
+        (s) =>
+          s.name.toLowerCase().includes(filter.toLowerCase()) ||
+          (s.description ?? "").toLowerCase().includes(filter.toLowerCase()),
+      )
+    : allWith;
 
   return html`
-    <div>
-      <div class="panel-header">
-        <h2 class="panel-title">Skills</h2>
-        <span class="panel-subtitle">click to edit · creates land in next /new</span>
-      </div>
-      ${error ? html`<div class="notice err">${error}</div>` : null}
+    <div class="sessions-grid">
+      <div class="sessions-list">
+        <div class="ssl-h">
+          <input
+            type="text"
+            placeholder="filter skills"
+            value=${filter}
+            onInput=${(e: Event) => setFilter((e.target as HTMLInputElement).value)}
+            style="flex:1"
+          />
+        </div>
+        <div class="chips" style="padding:0 12px 8px">
+          <span class="chip-f active">all <span class="ct">${allWith.length}</span></span>
+          <span class="chip-f">project <span class="ct">${data.project.length}</span></span>
+          <span class="chip-f">global <span class="ct">${data.global.length}</span></span>
+          <span class="chip-f">builtin <span class="ct">${data.builtin.length}</span></span>
+        </div>
 
-      <div class="section-title">Create new</div>
-      <div class="card row">
-        <select value=${newScope} onChange=${(e: Event) => setNewScope((e.target as HTMLSelectElement).value as "global" | "project")}>
-          <option value="global">global</option>
-          ${data.paths.project ? html`<option value="project">project</option>` : null}
-        </select>
-        <input
-          type="text"
-          placeholder="skill-name"
-          value=${newName}
-          onInput=${(e: Event) => setNewName((e.target as HTMLInputElement).value)}
-        />
-        <button class="primary" disabled=${busy || !newName.trim()} onClick=${create}>Create</button>
+        <div style="padding:0 12px 8px;display:flex;gap:6px">
+          <select
+            value=${newScope}
+            onChange=${(e: Event) => setNewScope((e.target as HTMLSelectElement).value as "global" | "project")}
+            style="flex:0 0 auto"
+          >
+            <option value="global">global</option>
+            ${data.paths.project ? html`<option value="project">project</option>` : null}
+          </select>
+          <input
+            type="text"
+            placeholder="new skill"
+            value=${newName}
+            onInput=${(e: Event) => setNewName((e.target as HTMLInputElement).value)}
+            style="flex:1"
+          />
+          <button class="btn primary" disabled=${busy || !newName.trim()} onClick=${create}>+</button>
+        </div>
+
+        <div class="ssl-rows">
+          ${filtered.map((s) => {
+            const sel = open?.scope === s.scope && open?.name === s.name;
+            return html`
+              <div
+                class=${`ssl-row ${sel ? "sel" : ""}`}
+                style=${s.scope === "builtin" ? "cursor:default" : ""}
+                onClick=${() => s.scope !== "builtin" && openSkill(s.scope, s.name)}
+              >
+                <span class="name">
+                  ${s.name}
+                  ${s.scope === "builtin" ? html`<span class="pill">builtin</span>` : null}
+                </span>
+                <span class="preview">${s.description ?? "(no description)"}</span>
+                <span class="meta"><span class="dim">${s.scope}</span></span>
+              </div>
+            `;
+          })}
+        </div>
       </div>
 
-      ${renderList("Project", data.project, "project")}
-      ${renderList("Global", data.global, "global")}
-      ${renderList("Builtin (read-only)", data.builtin, "builtin")}
+      <div class="sessions-detail">
+        ${
+          open == null
+            ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
+                Pick a skill on the left, or create a new one above.
+              </div>`
+            : html`
+                <div class="sessions-detail-h">
+                  <span class="name">${open.scope}/${open.name}</span>
+                  <span class="ws">${body.length.toLocaleString()} chars</span>
+                  <span class="actions">
+                    <button class="btn primary" disabled=${busy} onClick=${save}>Save</button>
+                    <button class="btn" disabled=${busy} onClick=${remove}
+                      style="border-color:var(--c-err);color:var(--c-err)">Delete</button>
+                    <button class="btn ghost" onClick=${() => setOpen(null)}>← back</button>
+                  </span>
+                </div>
+                ${info ? html`<div style="margin-bottom:8px"><span class="pill ok">${info}</span></div>` : null}
+                ${error ? html`<div class="card accent-err" style="margin-bottom:8px">${error}</div>` : null}
+                <textarea
+                  style="width:100%;min-height:520px;background:var(--bg-input);color:var(--fg-0);border:1px solid var(--bd);border-radius:var(--r);padding:12px;font-family:var(--font-mono);font-size:13px;line-height:1.55;resize:vertical"
+                  value=${body}
+                  onInput=${(e: Event) => setBody((e.target as HTMLTextAreaElement).value)}
+                  disabled=${busy}
+                ></textarea>
+                <div style="margin-top:8px;color:var(--fg-3);font-size:11.5px">
+                  re-loaded on next <code class="mono">/new</code> or session restart
+                </div>
+              `
+        }
+      </div>
     </div>
   `;
 }
