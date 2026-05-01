@@ -41,7 +41,9 @@ export function MemoryPanel() {
     setBusy(true);
     try {
       const path =
-        scope === "project" ? "/memory/project" : `/memory/${scope}/${encodeURIComponent(name ?? "")}`;
+        scope === "project"
+          ? "/memory/project"
+          : `/memory/${scope}/${encodeURIComponent(name ?? "")}`;
       const r = await api<{ body: string }>(path);
       setBody(r.body);
     } catch (err) {
@@ -71,102 +73,109 @@ export function MemoryPanel() {
     }
   }, [open, body, load]);
 
-  if (!tree && !error) return html`<div class="boot">loading memory…</div>`;
-  if (error && !tree) return html`<div class="notice err">${error}</div>`;
+  if (!tree && !error)
+    return html`<div class="card" style="color:var(--fg-3)">loading memory…</div>`;
+  if (error && !tree) return html`<div class="card accent-err">${error}</div>`;
   if (!tree) return null;
 
-  if (open) {
+  const fileRow = (scope: Scope, f: MemoryFile) => {
+    const sel = open && open.scope === scope && open.name === f.name;
     return html`
-      <div>
-        <div class="panel-header">
-          <h2 class="panel-title">Memory · ${open.scope}${open.name ? `/${open.name}` : ""}</h2>
-          <button onClick=${() => setOpen(null)} style="margin-left: auto;">← back</button>
-        </div>
-        ${info ? html`<div class="notice">${info}</div>` : null}
-        ${error ? html`<div class="notice err">${error}</div>` : null}
-        <textarea
-          style="width: 100%; height: 480px; font-family: var(--mono); font-size: 13px; background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px;"
-          value=${body}
-          onInput=${(e: Event) => setBody((e.target as HTMLTextAreaElement).value)}
-          disabled=${busy}
-        ></textarea>
-        <div class="row" style="margin-top: 8px;">
-          <button class="primary" disabled=${busy} onClick=${save}>Save</button>
-          <span class="muted" style="font-size: 12px;">${body.length.toLocaleString()} chars · re-applied on next /new or session restart</span>
-        </div>
+      <div
+        class=${`ssl-row ${sel ? "sel" : ""}`}
+        onClick=${() => openFile(scope, f.name)}
+      >
+        <span class="name">${f.name}</span>
+        <span class="meta">
+          <span class="dim">${scope}</span>
+          <span><span class="v">${fmtBytes(f.size)}</span></span>
+          <span>${fmtRelativeTime(f.mtime)}</span>
+        </span>
       </div>
     `;
-  }
+  };
 
   return html`
-    <div>
-      <div class="panel-header">
-        <h2 class="panel-title">Memory</h2>
-        <span class="panel-subtitle">REASONIX.md (committable) + private notes (~/.reasonix/memory)</span>
-      </div>
-      <div class="section-title">Project — REASONIX.md</div>
-      ${
-        tree.project.path
-          ? html`
-          <div class="card row" style="cursor: pointer;" onClick=${() => openFile("project")}>
-            <span><code>${tree.project.path}</code></span>
-            <span class="pill ${tree.project.exists ? "pill-ok" : "pill-dim"}" style="margin-left: auto;">
-              ${tree.project.exists ? "exists" : "create"}
-            </span>
-          </div>
-        `
-          : html`<div class="empty">No active project.</div>`
-      }
-
-      <div class="section-title">Global — ~/.reasonix/memory/global</div>
-      ${
-        tree.global.files.length === 0
-          ? html`<div class="empty">No global memory files yet.</div>`
-          : html`
-          <table>
-            <thead><tr><th>name</th><th class="numeric">size</th><th class="numeric">touched</th></tr></thead>
-            <tbody>
-              ${tree.global.files.map(
-                (f) => html`
-                <tr key=${f.name} style="cursor: pointer;" onClick=${() => openFile("global", f.name)}>
-                  <td><code>${f.name}</code></td>
-                  <td class="numeric">${fmtBytes(f.size)}</td>
-                  <td class="numeric muted">${fmtRelativeTime(f.mtime)}</td>
-                </tr>
-              `,
-              )}
-            </tbody>
-          </table>
-        `
-      }
-
-      ${
-        tree.projectMem.path
-          ? html`
-          <div class="section-title">Project private — ~/.reasonix/memory/&lt;hash&gt;</div>
+    <div class="sessions-grid">
+      <div class="sessions-list">
+        <div class="ssl-h" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
+          memory · ${
+            (tree.project.path ? 1 : 0) +
+            tree.global.files.length +
+            tree.projectMem.files.length
+          } files
+        </div>
+        <div class="ssl-rows">
           ${
-            tree.projectMem.files.length === 0
-              ? html`<div class="empty">No project-private memory yet.</div>`
-              : html`
-              <table>
-                <thead><tr><th>name</th><th class="numeric">size</th><th class="numeric">touched</th></tr></thead>
-                <tbody>
-                  ${tree.projectMem.files.map(
-                    (f) => html`
-                    <tr key=${f.name} style="cursor: pointer;" onClick=${() => openFile("project-mem", f.name)}>
-                      <td><code>${f.name}</code></td>
-                      <td class="numeric">${fmtBytes(f.size)}</td>
-                      <td class="numeric muted">${fmtRelativeTime(f.mtime)}</td>
-                    </tr>
-                  `,
-                  )}
-                </tbody>
-              </table>
-            `
+            tree.project.path
+              ? html`
+                <div
+                  class=${`ssl-row ${open?.scope === "project" ? "sel" : ""}`}
+                  onClick=${() => openFile("project")}
+                >
+                  <span class="name">
+                    REASONIX.md
+                    ${
+                      tree.project.exists
+                        ? html`<span class="pill ok">exists</span>`
+                        : html`<span class="pill">create</span>`
+                    }
+                  </span>
+                  <span class="preview">${tree.project.path}</span>
+                  <span class="meta"><span class="dim">project</span></span>
+                </div>
+              `
+              : null
           }
-        `
-          : null
-      }
+          ${tree.global.files.map((f) => fileRow("global", f))}
+          ${tree.projectMem.files.map((f) => fileRow("project-mem", f))}
+          ${
+            (tree.global.files.length === 0 &&
+              tree.projectMem.files.length === 0 &&
+              !tree.project.path)
+              ? html`<div style="color:var(--fg-3);padding:14px;font-size:12px">
+                  No memory files yet.
+                </div>`
+              : null
+          }
+        </div>
+      </div>
+
+      <div class="sessions-detail">
+        ${
+          open == null
+            ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
+                Pick a memory file on the left.
+                <div style="margin-top:12px;font-size:11.5px">
+                  Project REASONIX.md is committable; global notes live in
+                  <code class="mono">~/.reasonix/memory/</code>.
+                </div>
+              </div>`
+            : html`
+                <div class="sessions-detail-h">
+                  <span class="name">
+                    ${open.scope}${open.name ? `/${open.name}` : ""}
+                  </span>
+                  <span class="ws">${body.length.toLocaleString()} chars</span>
+                  <span class="actions">
+                    <button class="btn primary" disabled=${busy} onClick=${save}>Save</button>
+                    <button class="btn ghost" onClick=${() => setOpen(null)}>← back</button>
+                  </span>
+                </div>
+                ${info ? html`<div style="margin-bottom:8px"><span class="pill ok">${info}</span></div>` : null}
+                ${error ? html`<div class="card accent-err" style="margin-bottom:8px">${error}</div>` : null}
+                <textarea
+                  style="width:100%;min-height:480px;background:var(--bg-input);color:var(--fg-0);border:1px solid var(--bd);border-radius:var(--r);padding:12px;font-family:var(--font-mono);font-size:13px;line-height:1.55;resize:vertical"
+                  value=${body}
+                  onInput=${(e: Event) => setBody((e.target as HTMLTextAreaElement).value)}
+                  disabled=${busy}
+                ></textarea>
+                <div style="margin-top:8px;color:var(--fg-3);font-size:11.5px">
+                  re-applied on next <code class="mono">/new</code> or session restart
+                </div>
+              `
+        }
+      </div>
     </div>
   `;
 }
