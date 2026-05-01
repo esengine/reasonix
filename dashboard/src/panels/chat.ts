@@ -53,6 +53,15 @@ interface ModalEnvelope {
   modal?: ModalState | null;
 }
 
+interface RailPlan {
+  id: string;
+  title: string;
+  totalSteps: number;
+  completedSteps: number;
+  status: "active" | "done";
+  whenMs: number;
+}
+
 interface OverviewLite {
   editMode?: string;
   preset?: string;
@@ -61,6 +70,7 @@ interface OverviewLite {
   model?: string;
   semanticIndex?: boolean;
   budgetUsd?: number | null;
+  cockpit?: { recentPlans?: ReadonlyArray<RailPlan> | null };
 }
 
 interface SubmitResponse {
@@ -89,6 +99,7 @@ export function ChatPanel() {
   const [stats, setStats] = useState<ChatStats | null>(null);
   const [overviewModel, setOverviewModel] = useState<string | null>(null);
   const [budgetUsd, setBudgetUsd] = useState<number | null>(null);
+  const [activePlan, setActivePlan] = useState<RailPlan | null>(null);
   const [semanticIndex, setSemanticIndex] = useState<boolean | null>(null);
   const [semanticBannerDismissed, setSemanticBannerDismissed] = useState<boolean>(() => {
     try {
@@ -378,6 +389,8 @@ export function ChatPanel() {
         setStats(o.stats ?? null);
         setOverviewModel(o.model ?? null);
         setBudgetUsd(o.budgetUsd ?? null);
+        const recent = o.cockpit?.recentPlans ?? [];
+        setActivePlan(recent.find((p) => p.status === "active") ?? null);
         setSemanticIndex(o.semanticIndexExists ?? null);
       } catch {
         /* swallow */
@@ -613,7 +626,7 @@ export function ChatPanel() {
           <${ChatStatusBar} stats=${stats} model=${overviewModel} />
         </div>
 
-        <${SideRail} stats=${stats} budgetUsd=${budgetUsd} />
+        <${SideRail} stats=${stats} budgetUsd=${budgetUsd} activePlan=${activePlan} />
       </div>
     </div>
   `;
@@ -622,28 +635,36 @@ export function ChatPanel() {
 interface SideRailProps {
   stats: ChatStats | null;
   budgetUsd: number | null;
+  activePlan: RailPlan | null;
 }
 
-function SideRail({ stats, budgetUsd }: SideRailProps) {
-  if (!stats) return html`<aside class="chat-rail"></aside>`;
-  const cachePct = Math.round(stats.cacheHitRatio * 100);
+function SideRail({ stats, budgetUsd, activePlan }: SideRailProps) {
+  if (!stats && !activePlan) return html`<aside class="chat-rail"></aside>`;
+  const cachePct = stats ? Math.round(stats.cacheHitRatio * 100) : 0;
   const cacheTone = cachePct >= 80 ? "ok" : cachePct >= 50 ? "" : "warn";
-  const showBudget = typeof budgetUsd === "number" && budgetUsd > 0;
+  const showBudget = stats != null && typeof budgetUsd === "number" && budgetUsd > 0;
   const budgetPct = showBudget ? Math.min(120, (stats.totalCostUsd / budgetUsd) * 100) : 0;
   const budgetTone = budgetPct >= 100 ? "err" : budgetPct >= 80 ? "warn" : "";
   return html`
     <aside class="chat-rail">
-      <div class="rail-card">
-        <div class="rh">Session</div>
-        <div class="rail-kv"><span class="k">turns</span><span class="v">${stats.turns.toLocaleString()}</span></div>
-        <div class="rail-kv"><span class="k">prompt tok</span><span class="v">${stats.lastPromptTokens.toLocaleString()}</span></div>
-        <div class="rail-kv"><span class="k">cost</span><span class="v">${fmtUsd(stats.totalCostUsd)}</span></div>
-        <div class="progress-row" style="margin-top:8px">
-          <span class="lbl">cache hit</span>
-          <div class=${`progress ${cacheTone}`}><div class="progress-fill" style=${`width:${cachePct}%`}></div></div>
-          <span class="v">${cachePct}%</span>
-        </div>
-      </div>
+      ${activePlan ? html`<${ActivePlanCard} plan=${activePlan} />` : null}
+      ${
+        stats
+          ? html`
+            <div class="rail-card">
+              <div class="rh">Session</div>
+              <div class="rail-kv"><span class="k">turns</span><span class="v">${stats.turns.toLocaleString()}</span></div>
+              <div class="rail-kv"><span class="k">prompt tok</span><span class="v">${stats.lastPromptTokens.toLocaleString()}</span></div>
+              <div class="rail-kv"><span class="k">cost</span><span class="v">${fmtUsd(stats.totalCostUsd)}</span></div>
+              <div class="progress-row" style="margin-top:8px">
+                <span class="lbl">cache hit</span>
+                <div class=${`progress ${cacheTone}`}><div class="progress-fill" style=${`width:${cachePct}%`}></div></div>
+                <span class="v">${cachePct}%</span>
+              </div>
+            </div>
+          `
+          : null
+      }
       ${
         showBudget
           ? html`
@@ -659,6 +680,28 @@ function SideRail({ stats, budgetUsd }: SideRailProps) {
           : null
       }
     </aside>
+  `;
+}
+
+function ActivePlanCard({ plan }: { plan: RailPlan }) {
+  const dots = [];
+  for (let i = 0; i < plan.totalSteps; i++) {
+    const done = i < plan.completedSteps;
+    const active = i === plan.completedSteps;
+    dots.push(
+      html`<div class=${`step-dot ${done ? "done" : active ? "active" : ""}`}>${i + 1}</div>`,
+    );
+    if (i < plan.totalSteps - 1) {
+      dots.push(html`<div class=${`step-line ${done ? "done" : active ? "active" : ""}`}></div>`);
+    }
+  }
+  return html`
+    <div class="rail-card">
+      <div class="rh">Active plan</div>
+      <div class="steps" style="margin-bottom:8px">${dots}</div>
+      <div class="rail-kv"><span class="k" style="font-family:var(--font-sans);color:var(--fg-1);font-size:12.5px">${plan.title}</span></div>
+      <div class="rail-kv"><span class="k">progress</span><span class="v">${plan.completedSteps} / ${plan.totalSteps}</span></div>
+    </div>
   `;
 }
 
