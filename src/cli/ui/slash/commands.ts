@@ -98,7 +98,12 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     summary:
       "cross-session cost dashboard (today / week / month / all-time · cache hit · vs Claude)",
   },
-  { cmd: "cost", summary: "show the most recent turn's token + spend breakdown (Usage card)" },
+  {
+    cmd: "cost",
+    argsHint: "[text]",
+    summary:
+      "bare → last turn's spend (Usage card); with text → estimate cost of sending it next (worst-case + likely-cache)",
+  },
   { cmd: "doctor", summary: "health check (api / config / api-reach / index / hooks / project)" },
   { cmd: "think", summary: "dump the last turn's full R1 reasoning (reasoner only)" },
   {

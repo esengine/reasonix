@@ -83,6 +83,7 @@ const help: SlashHandler = () => ({
     "  /compact [tokens]        shrink large tool results in history (default 4000 tokens/result)",
     "  /think                   dump the most recent turn's full R1 reasoning (reasoner only)",
     "  /tool [N]                list tool calls (or dump full output of #N, 1=most recent)",
+    "  /cost [text]             bare → last turn's spend; with text → estimate cost of sending it next",
     "  /memory [sub]            show pinned memory (REASONIX.md + ~/.reasonix/memory).",
     "                            subs: list | show <name> | forget <name> | clear <scope> confirm",
     "  /skill [sub]             list / run user skills (project/.reasonix/skills + ~/.reasonix/skills).",

@@ -1,4 +1,9 @@
-import { DEEPSEEK_CONTEXT_TOKENS, DEFAULT_CONTEXT_TOKENS } from "../../../../telemetry/stats.js";
+import {
+  DEEPSEEK_CONTEXT_TOKENS,
+  DEEPSEEK_PRICING,
+  DEFAULT_CONTEXT_TOKENS,
+} from "../../../../telemetry/stats.js";
+import { countTokens } from "../../../../tokenizer.js";
 import { computeCtxBreakdown } from "../../ctx-breakdown.js";
 import type { SlashHandler } from "../dispatch.js";
 import { compactNum, formatToolList } from "../helpers.js";
@@ -161,7 +166,10 @@ const compact: SlashHandler = (args, loop) => {
   };
 };
 
-const cost: SlashHandler = (_args, loop, ctx) => {
+const cost: SlashHandler = (args, loop, ctx) => {
+  if (args.length > 0) {
+    return estimateCost(args.join(" "), loop);
+  }
   const t = loop.stats.turns[loop.stats.turns.length - 1];
   if (!t) {
     return { info: "no turn yet — `/cost` shows the most recent turn's token + spend breakdown." };
@@ -183,6 +191,45 @@ const cost: SlashHandler = (_args, loop, ctx) => {
   });
   return {};
 };
+
+/** /cost <text> — pre-turn estimate. Pairs with /budget for the cost-aware-prompt loop. */
+function estimateCost(userText: string, loop: import("../../../../loop.js").CacheFirstLoop) {
+  const pricing = DEEPSEEK_PRICING[loop.model];
+  if (!pricing) {
+    return {
+      info: `▸ /cost: no pricing table for model "${loop.model}". Add one to telemetry/stats.ts.`,
+    };
+  }
+  const userTokens = countTokens(userText);
+  const breakdown = computeCtxBreakdown(loop);
+  const promptTokens =
+    breakdown.systemTokens + breakdown.toolsTokens + breakdown.logTokens + userTokens;
+
+  const turns = loop.stats.turns;
+  const avgOutput =
+    turns.length > 0
+      ? Math.round(turns.reduce((s, t) => s + t.usage.completionTokens, 0) / turns.length)
+      : 800;
+  const cacheHit = loop.stats.summary().cacheHitRatio;
+
+  const inputUsdMiss = (promptTokens * pricing.inputCacheMiss) / 1_000_000;
+  const inputUsdLikely =
+    (promptTokens * ((1 - cacheHit) * pricing.inputCacheMiss + cacheHit * pricing.inputCacheHit)) /
+    1_000_000;
+  const outputUsd = (avgOutput * pricing.output) / 1_000_000;
+
+  const fmt = (n: number) => `$${n < 0.01 ? n.toFixed(5) : n.toFixed(4)}`;
+  const lines = [
+    `▸ /cost estimate · ${loop.model} · ${promptTokens.toLocaleString()} prompt tokens` +
+      ` (sys ${compactNum(breakdown.systemTokens)} + tools ${compactNum(breakdown.toolsTokens)}` +
+      ` + log ${compactNum(breakdown.logTokens)} + msg ${compactNum(userTokens)})`,
+    `  worst case (full miss): ${fmt(inputUsdMiss)} input + ~${fmt(outputUsd)} output (${avgOutput.toLocaleString()} avg) ≈ ${fmt(inputUsdMiss + outputUsd)}`,
+    turns.length > 0
+      ? `  likely (${Math.round(cacheHit * 100)}% session cache hit): ${fmt(inputUsdLikely)} input + ~${fmt(outputUsd)} output ≈ ${fmt(inputUsdLikely + outputUsd)}`
+      : "  likely: matches worst case until cache fills (no completed turns yet)",
+  ];
+  return { info: lines.join("\n") };
+}
 
 export const handlers: Record<string, SlashHandler> = {
   think,

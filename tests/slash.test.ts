@@ -840,6 +840,29 @@ describe("handleSlash", () => {
     expect(r.info).toMatch(/context:/);
   });
 
+  it("/cost with text estimates worst-case + likely cost for the prospective prompt", () => {
+    const loop = makeLoop();
+    loop.stats.record(1, loop.model, new Usage(10_000, 500, 10_500, 8_000, 2_000));
+    loop.log.append({ role: "user", content: "earlier message" });
+    loop.log.append({ role: "assistant", content: "earlier reply" });
+    const r = handleSlash("cost", ["draft", "this", "long", "prompt", "right", "here"], loop);
+    expect(r.info).toMatch(/\/cost estimate/);
+    expect(r.info).toMatch(/prompt tokens/);
+    expect(r.info).toMatch(/worst case.*\$/);
+    expect(r.info).toMatch(/likely.*cache hit/);
+  });
+
+  it("/cost with text but no completed turns notes cache hasn't filled yet", () => {
+    const r = handleSlash("cost", ["hello"], makeLoop());
+    expect(r.info).toMatch(/worst case/);
+    expect(r.info).toMatch(/no completed turns yet/);
+  });
+
+  it("/cost with no args + no completed turns falls through to the existing post-turn message", () => {
+    const r = handleSlash("cost", [], makeLoop());
+    expect(r.info).toMatch(/no turn yet/);
+  });
+
   it("/status with pendingEditCount=0 hides the edits line", () => {
     const r = handleSlash("status", [], makeLoop(), { pendingEditCount: 0 });
     expect(r.info).not.toMatch(/pending/);
