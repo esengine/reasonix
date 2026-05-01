@@ -19,6 +19,16 @@ interface McpData {
   servers: McpServer[];
 }
 
+function specLabel(spec: string): string {
+  const eq = spec.indexOf("=");
+  return eq > 0 ? spec.slice(0, eq) : spec;
+}
+
+function specCommand(spec: string): string {
+  const eq = spec.indexOf("=");
+  return eq > 0 ? spec.slice(eq + 1) : spec;
+}
+
 type McpFilter = "all" | "live" | "unbridged";
 
 export function McpPanel() {
@@ -29,6 +39,7 @@ export function McpPanel() {
   const [newSpec, setNewSpec] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<McpServer | null>(null);
+  const [openUnbridged, setOpenUnbridged] = useState<string | null>(null);
   const [filter, setFilter] = useState<McpFilter>("all");
 
   const load = useCallback(async () => {
@@ -129,10 +140,13 @@ export function McpPanel() {
               ? data.servers.map((s) => html`
                   <div
                     class=${`ssl-row ${open?.label === s.label ? "sel" : ""}`}
-                    onClick=${() => setOpen(s)}
+                    onClick=${() => {
+                      setOpen(s);
+                      setOpenUnbridged(null);
+                    }}
                   >
                     <span class="name">${s.label} <span class="pill ok">live</span></span>
-                    <span class="preview">${s.spec}</span>
+                    <span class="preview">${specCommand(s.spec)}</span>
                     <span class="meta"><span><span class="v">${fmtNum(s.toolCount)}</span> tools</span></span>
                   </div>
                 `)
@@ -141,20 +155,16 @@ export function McpPanel() {
           ${
             showUnbridged
               ? unbridgedSpecs.map((spec) => html`
-                  <div class="ssl-row" style="cursor:default">
-                    <span class="name">(unbridged) <span class="pill">config</span></span>
-                    <span class="preview">${spec}</span>
-                    <span class="meta">
-                      <button
-                        class="btn ghost"
-                        style="font-size:10.5px;padding:2px 6px;color:var(--c-err);border-color:var(--c-err)"
-                        disabled=${busy}
-                        onClick=${(e: Event) => {
-                          e.stopPropagation();
-                          removeSpec(spec);
-                        }}
-                      >remove</button>
-                    </span>
+                  <div
+                    class=${`ssl-row ${openUnbridged === spec ? "sel" : ""}`}
+                    onClick=${() => {
+                      setOpenUnbridged(spec);
+                      setOpen(null);
+                    }}
+                  >
+                    <span class="name">${specLabel(spec)} <span class="pill">unbridged</span></span>
+                    <span class="preview">${specCommand(spec)}</span>
+                    <span class="meta"><span class="dim">in config · not loaded</span></span>
                   </div>
                 `)
               : null
@@ -164,7 +174,34 @@ export function McpPanel() {
 
       <div class="sessions-detail">
         ${
-          open == null
+          openUnbridged != null
+            ? html`
+              <div class="sessions-detail-h">
+                <span class="name">${specLabel(openUnbridged)}</span>
+                <span class="ws"><span class="pill">unbridged · in config</span></span>
+                <span class="actions">
+                  <button class="btn" disabled=${busy} onClick=${() => removeSpec(openUnbridged)}
+                    style="border-color:var(--c-err);color:var(--c-err)">Remove</button>
+                  <button class="btn ghost" onClick=${() => setOpenUnbridged(null)}>← back</button>
+                </span>
+              </div>
+              <div class="card" style="margin-bottom:12px">
+                <div class="card-h"><span class="title">spec</span></div>
+                <code class="mono" style="font-size:11.5px;color:var(--fg-2);word-break:break-all">${openUnbridged}</code>
+              </div>
+              <div class="card accent-warn">
+                <div class="card-h"><span class="title" style="color:var(--c-warn)">Why unbridged?</span></div>
+                <div class="card-b" style="font-size:13px;line-height:1.6">
+                  This spec lives in your <code class="mono">config.json</code> but isn't bridged into the live session.
+                  MCP servers attach when <code class="mono">reasonix code</code> starts; the dashboard alone can't
+                  spawn the child process.
+                  <div style="margin-top:10px;color:var(--fg-3);font-size:12px">
+                    To activate: restart <code class="mono">reasonix code</code>, then refresh this dashboard.
+                  </div>
+                </div>
+              </div>
+            `
+            : open == null
             ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
                 Pick an MCP server on the left to inspect tools / resources / prompts.
               </div>`
