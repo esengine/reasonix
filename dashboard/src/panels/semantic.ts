@@ -491,7 +491,6 @@ function SemanticExcludesCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -504,8 +503,8 @@ function SemanticExcludesCard() {
   }, []);
 
   useEffect(() => {
-    if (open && !data) load();
-  }, [open, data, load]);
+    load();
+  }, [load]);
 
   const reset = useCallback(() => {
     if (data) setDraft(toDraft(data.defaults));
@@ -519,7 +518,10 @@ function SemanticExcludesCard() {
     setInfo(null);
     try {
       const payload = fromDraft(draft);
-      const r = await api<{ changed: string[] }>("/index-config", { method: "POST", body: payload });
+      const r = await api<{ changed: string[] }>("/index-config", {
+        method: "POST",
+        body: payload,
+      });
       setInfo(`saved · ${r.changed.length || 0} fields updated · re-run index to apply`);
       await load();
     } catch (err) {
@@ -536,7 +538,10 @@ function SemanticExcludesCard() {
     setInfo("running dry walk against project root…");
     try {
       const payload = fromDraft(draft);
-      const r = await api<PreviewData>("/index-config/preview", { method: "POST", body: payload });
+      const r = await api<PreviewData>("/index-config/preview", {
+        method: "POST",
+        body: payload,
+      });
       setPreview(r);
       setInfo(null);
     } catch (err) {
@@ -547,50 +552,89 @@ function SemanticExcludesCard() {
     }
   }, [draft]);
 
+  if (!draft) {
+    return html`
+      <div class="card">
+        <div class="card-h"><span class="title">index config</span></div>
+        <div style="color:var(--fg-3);font-size:12.5px">loading…</div>
+      </div>
+    `;
+  }
+
   return html`
-    <div class="excludes-toggle" onClick=${() => setOpen(!open)}>
-      <span class="caret">${open ? "▼" : "▶"}</span>
-      <span class="label">Excludes</span>
-      <span class="hint">config-driven skip rules applied during indexing</span>
+    <div class="card">
+      <div class="card-h">
+        <span class="title">index config</span>
+        <span class="meta">
+          <a
+            class="mono"
+            style="color:var(--c-brand);text-decoration:none;font-size:11px;cursor:pointer"
+            onClick=${reset}
+          >reset</a>
+        </span>
+      </div>
+      ${info ? html`<div style="margin-bottom:8px"><span class="pill ok">${info}</span></div>` : null}
+      ${error ? html`<div class="card accent-err" style="margin-bottom:8px">${error}</div>` : null}
+
+      <${ChipFormRow}
+        label="exclude dirs"
+        value=${draft.excludeDirs}
+        onChange=${(v: string[]) => setDraft({ ...draft, excludeDirs: v })}
+        placeholder="dist"
+      />
+      <${ChipFormRow}
+        label="exclude files"
+        value=${draft.excludeFiles}
+        onChange=${(v: string[]) => setDraft({ ...draft, excludeFiles: v })}
+        placeholder="package-lock.json"
+      />
+      <${ChipFormRow}
+        label="exclude exts"
+        value=${draft.excludeExts}
+        onChange=${(v: string[]) => setDraft({ ...draft, excludeExts: v })}
+        placeholder=".lock"
+      />
+      <${ChipFormRow}
+        label="exclude patterns"
+        sub="glob"
+        value=${draft.excludePatterns}
+        onChange=${(v: string[]) => setDraft({ ...draft, excludePatterns: v })}
+        placeholder="**/*.test.ts"
+      />
+
+      <div
+        class="checkbox-row"
+        style="margin-top:8px;cursor:pointer"
+        onClick=${() => setDraft({ ...draft, respectGitignore: !draft.respectGitignore })}
+      >
+        <span class=${`box ${draft.respectGitignore ? "on" : ""}`}>${draft.respectGitignore ? "✓" : ""}</span>
+        <span>respect <code class="mono">.gitignore</code></span>
+      </div>
+
+      <div class="form-row" style="margin-top:10px">
+        <span class="lbl">max file bytes</span>
+        <input
+          class="input mono"
+          type="number"
+          min="1024"
+          step="1024"
+          value=${draft.maxFileBytes}
+          onInput=${(e: Event) =>
+            setDraft({ ...draft, maxFileBytes: Number((e.target as HTMLInputElement).value) || 0 })}
+          style="font-size:12px"
+        />
+        <span class="help">skip files larger than ~${(draft.maxFileBytes / 1024 / 1024).toFixed(1)} MiB</span>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn ghost" style="flex:1" disabled=${busy} onClick=${runPreview}>
+          <span class="g">⊕</span><span>Preview</span>
+        </button>
+        <button class="btn primary" style="flex:1" disabled=${busy} onClick=${save}>Save</button>
+      </div>
+
+      ${preview ? html`<div style="margin-top:10px"><${ExcludesPreview} preview=${preview} /></div>` : null}
     </div>
-    ${
-      !open
-        ? null
-        : !draft
-          ? html`<div class="empty">loading…</div>`
-          : html`
-            <div class="card excludes-card">
-              ${info ? html`<div class="notice">${info}</div>` : null}
-              ${error ? html`<div class="notice err">${error}</div>` : null}
-              <div class="lead">
-                One value per line. Dirs / files match by basename. Patterns use picomatch syntax (e.g. <code>**/*.generated.ts</code>, <code>vendor/**</code>, <code>!keep-me</code>).
-              </div>
-              <div class="excludes-grid">
-                <${ChipExcludesField} label="exclude dirs" value=${draft.excludeDirs} onChange=${(v: string[]) => setDraft({ ...draft, excludeDirs: v })} />
-                <${ChipExcludesField} label="exclude files" value=${draft.excludeFiles} onChange=${(v: string[]) => setDraft({ ...draft, excludeFiles: v })} />
-                <${ChipExcludesField} label="exclude exts" value=${draft.excludeExts} onChange=${(v: string[]) => setDraft({ ...draft, excludeExts: v })} placeholder=".lock" />
-                <${ChipExcludesField} label="exclude patterns · glob" value=${draft.excludePatterns} onChange=${(v: string[]) => setDraft({ ...draft, excludePatterns: v })} placeholder="**/*.test.ts" />
-              </div>
-              <div class="excludes-options">
-                <label>
-                  <input type="checkbox" checked=${draft.respectGitignore} onChange=${(e: Event) => setDraft({ ...draft, respectGitignore: (e.target as HTMLInputElement).checked })} />
-                  Respect <code>.gitignore</code>
-                </label>
-                <label>
-                  Max file size
-                  <input type="number" min="1024" step="1024" value=${draft.maxFileBytes} onChange=${(e: Event) => setDraft({ ...draft, maxFileBytes: Number((e.target as HTMLInputElement).value) || 0 })} />
-                  <span style="color:var(--fg-3)">bytes</span>
-                </label>
-              </div>
-              <div class="excludes-actions">
-                <button class="primary" disabled=${busy} onClick=${save}>Save</button>
-                <button disabled=${busy} onClick=${runPreview}>Preview (dry-walk)</button>
-                <button disabled=${busy} onClick=${reset}>Reset to defaults</button>
-              </div>
-              ${preview ? html`<${ExcludesPreview} preview=${preview} />` : null}
-            </div>
-          `
-    }
   `;
 }
 
@@ -648,13 +692,15 @@ function ExcludesPreview({ preview }: { preview: PreviewData }) {
   `;
 }
 
-function ChipExcludesField({
+function ChipFormRow({
   label,
+  sub,
   value,
   onChange,
   placeholder = "+ add",
 }: {
   label: string;
+  sub?: string;
   value: string[];
   onChange: (v: string[]) => void;
   placeholder?: string;
@@ -671,9 +717,12 @@ function ChipExcludesField({
     setAdding("");
   };
   return html`
-    <div class="excludes-field">
-      <label>${label}</label>
-      <div class="chip-edit-row">
+    <div class="form-row">
+      <span class="lbl">
+        ${label}
+        ${sub ? html`<span style="color:var(--fg-3);font-weight:400;text-transform:none;letter-spacing:0"> · ${sub}</span>` : null}
+      </span>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
         ${value.map(
           (e) => html`
             <span class="chip-f">
