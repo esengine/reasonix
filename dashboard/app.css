@@ -64,6 +64,13 @@
 
 * { box-sizing: border-box; }
 html, body { background: var(--bg); color: var(--fg-1); margin: 0; padding: 0; }
+
+* { scrollbar-width: thin; scrollbar-color: var(--bd-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--bd); border: 2px solid var(--bg); border-radius: 6px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--fg-4); }
+*::-webkit-scrollbar-corner { background: transparent; }
 body {
   font-family: var(--font-sans);
   font-size: 14px;
@@ -1057,8 +1064,8 @@ html, body, #root { height: 100%; }
 button.primary { background: var(--c-brand); color: var(--bg); border: 1px solid var(--c-brand); padding: 5px 12px; border-radius: var(--r); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
 button.primary:hover { background: rgba(121,192,255,.85); }
 button.danger { background: transparent; color: var(--c-err); border: 1px solid var(--c-err); padding: 5px 12px; border-radius: var(--r); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
-button:not(.primary):not(.danger):not(.btn) { background: var(--bg-elev-2); color: var(--fg-1); border: 1px solid var(--bd); padding: 5px 12px; border-radius: var(--r); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
-button:hover:not(.primary):not(.danger):not(.btn) { background: var(--bg-hover); border-color: var(--bd-strong); }
+button:not(.primary):not(.danger):not(.btn):not(.mode-btn):not(.chat-banner-close):not(.chat-inflight-abort) { background: var(--bg-elev-2); color: var(--fg-1); border: 1px solid var(--bd); padding: 5px 12px; border-radius: var(--r); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
+button:hover:not(.primary):not(.danger):not(.btn):not(.mode-btn):not(.chat-banner-close):not(.chat-inflight-abort) { background: var(--bg-hover); border-color: var(--bd-strong); }
 input[type=text], input[type=number], input[type=password], textarea, select { background: var(--bg-input); color: var(--fg-0); border: 1px solid var(--bd); border-radius: var(--r); padding: 5px 10px; font-family: var(--font-mono); font-size: 12.5px; outline: none; }
 input:focus, textarea:focus, select:focus { border-color: var(--c-brand); }
 .kv-key { display: inline-block; min-width: 70px; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; margin-right: 8px; }
