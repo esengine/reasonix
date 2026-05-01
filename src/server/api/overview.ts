@@ -5,6 +5,7 @@ import { indexExists } from "../../index/semantic/builder.js";
 import { VERSION } from "../../version.js";
 import type { DashboardContext, DashboardStats } from "../context.js";
 import type { ApiResult } from "../router.js";
+import { type CockpitData, computeCockpit } from "./cockpit.js";
 
 export interface OverviewResponse {
   /** Reasonix version string (drives the "vs latest" comparison in the SPA). */
@@ -29,6 +30,7 @@ export interface OverviewResponse {
   /** Live session stats — null in standalone mode. */
   stats: DashboardStats | null;
   semanticIndexExists: boolean | null;
+  cockpit: CockpitData;
 }
 
 export async function handleOverview(
@@ -59,6 +61,7 @@ export async function handleOverview(
     reasoningEffort: cfg.reasoningEffort ?? "max",
     stats: ctx.getStats?.() ?? null,
     semanticIndexExists,
+    cockpit: computeCockpit(ctx),
   };
   return { status: 200, body: overview };
 }
