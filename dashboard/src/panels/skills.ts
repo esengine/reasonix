@@ -5,6 +5,7 @@ import { html } from "../lib/html.js";
 interface SkillEntry {
   name: string;
   description?: string;
+  runs7d?: number;
 }
 
 interface SkillsData {
@@ -173,7 +174,14 @@ export function SkillsPanel() {
                   ${s.scope === "builtin" ? html`<span class="pill">builtin</span>` : null}
                 </span>
                 <span class="preview">${s.description ?? "(no description)"}</span>
-                <span class="meta"><span class="dim">${s.scope}</span></span>
+                <span class="meta">
+                  ${
+                    typeof s.runs7d === "number" && s.runs7d > 0
+                      ? html`<span><span class="v">${s.runs7d}</span> runs · 7d</span>`
+                      : null
+                  }
+                  <span class="dim">${s.scope}</span>
+                </span>
               </div>
             `;
           })}

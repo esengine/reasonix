@@ -12,6 +12,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { SKILLS_DIRNAME, SKILL_FILE } from "../../skills.js";
+import { readUsageLog } from "../../telemetry/usage.js";
 import type { DashboardContext } from "../context.js";
 import type { ApiResult } from "../router.js";
 
@@ -90,6 +91,18 @@ function listSkills(dir: string, scope: "project" | "global"): SkillListEntry[] 
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function countSubagentRuns(usageLogPath: string): Map<string, number> {
+  const cutoff = Date.now() - 7 * 86_400_000;
+  const counts = new Map<string, number>();
+  for (const r of readUsageLog(usageLogPath)) {
+    if (r.kind !== "subagent" || r.ts < cutoff) continue;
+    const skill = r.subagent?.skillName?.trim();
+    if (!skill) continue;
+    counts.set(skill, (counts.get(skill) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export async function handleSkills(
   method: string,
   rest: string[],
@@ -99,17 +112,26 @@ export async function handleSkills(
   const cwd = ctx.getCurrentCwd?.();
 
   if (method === "GET" && rest.length === 0) {
+    const runs7d = countSubagentRuns(ctx.usageLogPath);
+    const tag = (rows: SkillListEntry[]) =>
+      rows.map((r) => ({ ...r, runs7d: runs7d.get(r.name) ?? 0 }));
     return {
       status: 200,
       body: {
-        global: listSkills(globalSkillsDir(), "global"),
-        project: cwd ? listSkills(projectSkillsDir(cwd), "project") : [],
+        global: tag(listSkills(globalSkillsDir(), "global")),
+        project: cwd ? tag(listSkills(projectSkillsDir(cwd), "project")) : [],
         builtin: [
-          { name: "explore", scope: "builtin", description: "subagent — broad codebase survey" },
+          {
+            name: "explore",
+            scope: "builtin",
+            description: "subagent — broad codebase survey",
+            runs7d: runs7d.get("explore") ?? 0,
+          },
           {
             name: "research",
             scope: "builtin",
             description: "subagent — deep web + repo research",
+            runs7d: runs7d.get("research") ?? 0,
           },
         ],
         paths: {
