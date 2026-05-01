@@ -5,13 +5,14 @@ import {
   CheckpointModal,
   ChoiceModal,
   EditReviewModal,
+  parseToolArgs,
   PlanModal,
   RevisionModal,
   ShellModal,
   WorkspaceModal,
 } from "../components/chat-internals.js";
-import { api } from "../lib/api.js";
-import { showToast } from "../lib/bus.js";
+import { MODE, TOKEN, api } from "../lib/api.js";
+import { appBus, showToast } from "../lib/bus.js";
 import { fmtUsd } from "../lib/format.js";
 import { html } from "../lib/html.js";
 
