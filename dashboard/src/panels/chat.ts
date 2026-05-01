@@ -1,10 +1,11 @@
-// @ts-nocheck — bulk JS-style migration. ChatPanel is 700+ LoC of interleaved useState / SSE handlers / refs; type-tightening tracked as a follow-up in #28.
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import {
   ChatMessage,
+  type ChatMsg,
   CheckpointModal,
   ChoiceModal,
   EditReviewModal,
+  type OnResolve,
   parseToolArgs,
   PlanModal,
   RevisionModal,
@@ -16,44 +17,78 @@ import { appBus, showToast } from "../lib/bus.js";
 import { fmtUsd } from "../lib/format.js";
 import { html } from "../lib/html.js";
 
+interface StreamingState {
+  id: string;
+  text: string;
+  reasoning: string;
+}
+
+interface ActiveToolState {
+  id: string;
+  toolName?: string;
+  args?: string;
+}
+
+interface ModalState {
+  kind: string;
+  [k: string]: unknown;
+}
+
+interface ChatStats {
+  contextCapTokens: number;
+  lastPromptTokens: number;
+  lastTurnCostUsd: number;
+  totalCostUsd: number;
+  cacheHitRatio: number;
+  turns: number;
+  balance?: { total_balance: string; currency: string }[];
+}
+
+interface MessagesResponse {
+  messages?: ChatMsg[];
+  busy?: boolean;
+}
+
+interface ModalEnvelope {
+  modal?: ModalState | null;
+}
+
+interface OverviewLite {
+  editMode?: string;
+  preset?: string;
+  reasoningEffort?: string;
+  stats?: ChatStats;
+  model?: string;
+  semanticIndex?: boolean;
+}
+
+interface SubmitResponse {
+  reply?: ChatMsg;
+  error?: string;
+}
+
+interface SettingsPatch {
+  preset?: string;
+  reasoningEffort?: string;
+}
+
 export function ChatPanel() {
-  const [messages, setMessages] = useState([]);
-  const [streaming, setStreaming] = useState(null); // { id, text, reasoning }
-  // Tool currently dispatched but not yet returning. Set on `tool_start`,
-  // cleared on `tool` / `error`. Drives the in-flight row so the user
-  // sees what's running (path, command, char counts) instead of a
-  // generic "waiting" — file writes especially feel hung otherwise.
-  const [activeTool, setActiveTool] = useState(null); // { id, toolName, args }
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [streaming, setStreaming] = useState<StreamingState | null>(null);
+  const [activeTool, setActiveTool] = useState<ActiveToolState | null>(null);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
-  const [error, setError] = useState(null);
-  const [bootError, setBootError] = useState(null);
-  const [statusLine, setStatusLine] = useState(null);
-  // Mirror of the active TUI modal: { kind, ...payload } | null. Set
-  // by `modal-up` SSE events, cleared by `modal-down`. Web uses POST
-  // /api/modal/resolve to drive resolution; either surface clears the
-  // other's modal via the resulting modal-down event.
-  const [modal, setModal] = useState(null);
-  // Current edit gate (review / auto / yolo). null when not in code
-  // mode. Refreshed via /api/overview poll because the mode also
-  // flips from TUI Shift+Tab and we want the segmented control to
-  // stay in sync without a dedicated event.
-  const [editMode, setEditModeLocal] = useState(null);
-  // Persisted preset + reasoning_effort, surfaced here so the user
-  // can flip them mid-chat without leaving the tab. /api/overview
-  // includes both since 0.14.x; the same poll covers all three.
-  const [preset, setPresetLocal] = useState(null);
-  const [effort, setEffortLocal] = useState(null);
-  // Live session stats — cache hit, costs, tokens, balance — from the
-  // same /api/overview poll. Renders into a compact status bar below
-  // the input area.
-  const [stats, setStats] = useState(null);
-  const [overviewModel, setOverviewModel] = useState(null);
-  // Whether the project has a built semantic index. Null = unknown
-  // (poll hasn't landed) or non-attached. False = no index → show the
-  // dismissible banner. True = index built → hide it.
-  const [semanticIndex, setSemanticIndex] = useState(null);
-  const [semanticBannerDismissed, setSemanticBannerDismissed] = useState(() => {
+  const [error, setError] = useState<string | null>(null);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [statusLine, setStatusLine] = useState<string | null>(null);
+  const [modal, setModal] = useState<ModalState | null>(null);
+  const [editMode, setEditModeLocal] = useState<string | null>(null);
+  const [preset, setPresetLocal] = useState<string | null>(null);
+  const [effort, setEffortLocal] = useState<string | null>(null);
+  const [stats, setStats] = useState<ChatStats | null>(null);
+  const [overviewModel, setOverviewModel] = useState<string | null>(null);
+  const [semanticIndex, setSemanticIndex] = useState<boolean | null>(null);
+  const [semanticBannerDismissed, setSemanticBannerDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem("rx.semanticBannerDismissed") === "1";
     } catch {
@@ -67,12 +102,7 @@ export function ChatPanel() {
       /* ignore */
     }
   }, [semanticBannerDismissed]);
-  // Wall-clock timestamp the current turn started at — populated when
-  // busy flips true, cleared when it flips false. Drives the "elapsed
-  // Ns" readout in the in-flight indicator. Refreshed once per second
-  // by `nowTick` so the seconds counter ticks visibly even between
-  // SSE deltas.
-  const [turnStartedAt, setTurnStartedAt] = useState(null);
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [nowTick, setNowTick] = useState(0);
   useEffect(() => {
     if (!busy) return;
@@ -86,32 +116,22 @@ export function ChatPanel() {
       setTurnStartedAt(null);
     }
   }, [busy, turnStartedAt]);
-  // Sticks to bottom only while the user is already near the bottom.
-  // Once they scroll up to read older content the streaming deltas no
-  // longer yank the view back. Re-armed when they scroll back to the
-  // bottom on their own. 80px threshold absorbs sub-pixel rounding.
   const shouldAutoScroll = useRef(true);
-  // Ref to the scrollable feed container so we don't have to rely on
-  // a global querySelector (which would race the conditional render
-  // — `.chat-feed` only mounts when at least one message is present).
-  // The feed is now always rendered, so `feedRef.current` is set on
-  // first paint and the scroll listener attaches once.
-  const feedRef = useRef(null);
+  const feedRef = useRef<HTMLDivElement | null>(null);
 
-  // Initial snapshot — messages + busy + any modal already up.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await api("/messages");
+        const data = await api<MessagesResponse>("/messages");
         if (cancelled) return;
         setMessages(data.messages ?? []);
         setBusy(Boolean(data.busy));
       } catch (err) {
-        if (!cancelled) setBootError(err.message);
+        if (!cancelled) setBootError((err as Error).message);
       }
       try {
-        const m = await api("/modal");
+        const m = await api<ModalEnvelope>("/modal");
         if (!cancelled && m.modal) setModal(m.modal);
       } catch {
         /* skip — modal endpoint optional in standalone */
@@ -122,7 +142,6 @@ export function ChatPanel() {
     };
   }, []);
 
-  // Live event stream.
   useEffect(() => {
     const es = new EventSource(`/api/events?token=${TOKEN}`);
     es.onmessage = (ev) => {
@@ -163,11 +182,6 @@ export function ChatPanel() {
         return;
       }
       if (dash.kind === "tool_start") {
-        // Surface the dispatched tool + its args in the in-flight row.
-        // No info-row placeholder: the InFlightRow now renders the
-        // detail (path / command / char count) and the result card
-        // appears when the `tool` event lands. Two rows for one tool
-        // call was redundant noise.
         setActiveTool({ id: dash.id, toolName: dash.toolName, args: dash.args });
         return;
       }
@@ -221,14 +235,17 @@ export function ChatPanel() {
     if (!text || busy) return;
     setError(null);
     try {
-      const res = await api("/submit", { method: "POST", body: { prompt: text } });
+      const res = await api<{ accepted: boolean; reason?: string }>("/submit", {
+        method: "POST",
+        body: { prompt: text },
+      });
       if (!res.accepted) {
         setError(res.reason ?? "rejected");
         return;
       }
       setInput("");
     } catch (err) {
-      setError(err.message);
+      setError((err as Error).message);
     }
   }, [input, busy]);
 
@@ -236,15 +253,10 @@ export function ChatPanel() {
     try {
       await api("/abort", { method: "POST" });
     } catch (err) {
-      setError(err.message);
+      setError((err as Error).message);
     }
   }, []);
 
-  // /new wipes context + scrollback (server-side); /clear keeps the
-  // log but blanks the visible scroll. Both route through /api/submit
-  // because handleSubmit on the TUI side already parses slashes — keeps
-  // one source of truth, no special endpoint needed. Local messages
-  // state is reset optimistically; an /api/messages refetch reconciles.
   const newConversation = useCallback(async () => {
     if (busy) {
       if (!confirm("A turn is in flight. Abort and start a new conversation?")) return;
@@ -257,17 +269,16 @@ export function ChatPanel() {
       setStreaming(null);
       setActiveTool(null);
       showToast("new conversation", "info");
-      // Refetch to reconcile in case the slash queued an info row.
       setTimeout(async () => {
         try {
-          const r = await api("/messages");
+          const r = await api<MessagesResponse>("/messages");
           setMessages(r.messages ?? []);
         } catch {
           /* swallow */
         }
       }, 200);
     } catch (err) {
-      setError(`/new failed: ${err.message}`);
+      setError(`/new failed: ${(err as Error).message}`);
     }
   }, [busy, messages.length]);
 
@@ -280,20 +291,19 @@ export function ChatPanel() {
       showToast("scrollback cleared", "info");
       setTimeout(async () => {
         try {
-          const r = await api("/messages");
+          const r = await api<MessagesResponse>("/messages");
           setMessages(r.messages ?? []);
         } catch {
           /* swallow */
         }
       }, 200);
     } catch (err) {
-      setError(`/clear failed: ${err.message}`);
+      setError(`/clear failed: ${(err as Error).message}`);
     }
   }, []);
 
   const onKeyDown = useCallback(
-    (e) => {
-      // Enter sends, Shift+Enter inserts newline.
+    (e: KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         send();
@@ -306,21 +316,7 @@ export function ChatPanel() {
     return html`<div class="notice err">chat unavailable: ${bootError}</div>`;
   }
 
-  // Track whether the user is parked at the bottom. Update on every
-  // scroll event so a single wheel-up flips the auto-scroll guard
-  // immediately. The threshold is generous enough that overshoot
-  // (smooth-scroll rebound, sub-pixel rounding) doesn't accidentally
-  // re-arm tracking when the user is barely above bottom.
-  //
-  // We also distinguish *user* scroll events from auto-scroll's own
-  // programmatic `scrollTop = scrollHeight` writes. Without that gate
-  // the auto-scroll effect would briefly snap to bottom, fire its
-  // own scroll event, re-set shouldAutoScroll = true, then wonder
-  // why the user complained that they couldn't scroll up — because
-  // every wheel-up was racing against the next delta's auto-snap.
-  // We mark the ref as `auto-scrolling` for one tick around the
-  // programmatic write; the listener ignores events it sees during
-  // that window.
+  /** Suppresses scroll listener during programmatic auto-snap so it doesn't re-arm shouldAutoScroll. */
   const autoScrollInFlight = useRef(false);
   useEffect(() => {
     const el = feedRef.current;
@@ -334,17 +330,12 @@ export function ChatPanel() {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Auto-scroll only when the user hasn't scrolled away. Streaming
-  // deltas no longer yank the view back; manual wheel/drag wins.
   useEffect(() => {
     if (!shouldAutoScroll.current) return;
     const el = feedRef.current;
     if (!el) return;
     autoScrollInFlight.current = true;
     el.scrollTop = el.scrollHeight;
-    // Clear the gate after the browser has had a chance to fire the
-    // resulting scroll event (microtask-ish — rAF is overkill, a 0ms
-    // setTimeout is enough to land after the synchronous handler).
     setTimeout(() => {
       autoScrollInFlight.current = false;
     }, 0);
@@ -362,37 +353,29 @@ export function ChatPanel() {
       ]
     : messages;
 
-  // Resolve the active modal via POST /api/modal/resolve. The server
-  // hands the choice straight to App.tsx's resolveXxx callback, which
-  // calls the same handler the TUI button would. The local `modal`
-  // state clears the moment the SSE channel echoes `modal-down`.
-  const resolveModal = useCallback(async (kind, choice, text) => {
+  const resolveModal = useCallback<OnResolve>(async (kind, choice, text) => {
     try {
       await api("/modal/resolve", {
         method: "POST",
         body: text !== undefined ? { kind, choice, text } : { kind, choice },
       });
     } catch (err) {
-      setError(`modal resolve failed: ${err.message}`);
+      setError(`modal resolve failed: ${(err as Error).message}`);
     }
   }, []);
 
-  // Poll /api/overview for current edit mode. Polling (not SSE) is
-  // fine — the gate flips from /mode, Shift+Tab, AND the web button;
-  // a 4s poll is good enough to keep the segmented control visually
-  // honest without piping yet another event kind.
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
       try {
-        const o = await api("/overview");
+        const o = await api<OverviewLite & { semanticIndexExists?: boolean }>("/overview");
         if (cancelled) return;
         setEditModeLocal(o.editMode ?? null);
         setPresetLocal(o.preset ?? null);
         setEffortLocal(o.reasoningEffort ?? null);
         setStats(o.stats ?? null);
         setOverviewModel(o.model ?? null);
-        setSemanticIndex(o.semanticIndexExists);
+        setSemanticIndex(o.semanticIndexExists ?? null);
       } catch {
         /* swallow */
       }
@@ -405,14 +388,14 @@ export function ChatPanel() {
     };
   }, []);
 
-  const setEditMode = useCallback(async (next) => {
-    setEditModeLocal(next); // optimistic
+  const setEditMode = useCallback(async (next: string) => {
+    setEditModeLocal(next);
     try {
       await api("/edit-mode", { method: "POST", body: { mode: next } });
     } catch (err) {
-      setError(`mode switch failed: ${err.message}`);
+      setError(`mode switch failed: ${(err as Error).message}`);
       try {
-        const o = await api("/overview");
+        const o = await api<OverviewLite>("/overview");
         setEditModeLocal(o.editMode ?? null);
       } catch {
         /* swallow */
@@ -420,19 +403,15 @@ export function ChatPanel() {
     }
   }, []);
 
-  // Generic settings flipper for preset + effort. Both go through
-  // /api/settings (which writes to ~/.reasonix/config.json). preset
-  // applies next session, effort applies next turn — the buttons'
-  // tooltips remind the user.
-  const setSetting = useCallback(async (key, value) => {
+  const setSetting = useCallback(async (key: keyof SettingsPatch, value: string) => {
     if (key === "preset") setPresetLocal(value);
     if (key === "reasoningEffort") setEffortLocal(value);
     try {
       await api("/settings", { method: "POST", body: { [key]: value } });
     } catch (err) {
-      setError(`${key} switch failed: ${err.message}`);
+      setError(`${key} switch failed: ${(err as Error).message}`);
       try {
-        const o = await api("/overview");
+        const o = await api<OverviewLite>("/overview");
         setPresetLocal(o.preset ?? null);
         setEffortLocal(o.reasoningEffort ?? null);
       } catch {
@@ -596,7 +575,7 @@ export function ChatPanel() {
         <textarea
           placeholder=${busy ? "wait for the current turn to finish…" : "Type a prompt — Enter sends, Shift+Enter for a newline"}
           value=${input}
-          onInput=${(e) => setInput(e.target.value)}
+          onInput=${(e: Event) => setInput((e.target as HTMLTextAreaElement).value)}
           onKeyDown=${onKeyDown}
           disabled=${busy}
           rows="2"
@@ -631,15 +610,18 @@ export function ChatPanel() {
   `;
 }
 
-// Summarize the dispatched tool in one line — what the user wants to
-// know is "is this hung or really doing X". Per-tool projection so a
-// write_file says "→ /path/foo (12,345 ch)" instead of just "tool is
-// running". Returns null for tools we don't have a custom shape for;
-// the row falls back to the bare tool name.
-function summarizeActiveTool(activeTool) {
+function summarizeActiveTool(activeTool: ActiveToolState | null): string | null {
   if (!activeTool) return null;
   const name = activeTool.toolName ?? "tool";
-  const args = parseToolArgs(activeTool.args);
+  const args = parseToolArgs(activeTool.args) as
+    | {
+        path?: string;
+        file_path?: string;
+        filename?: string;
+        content?: unknown;
+        command?: unknown;
+      }
+    | null;
   const path = args?.path ?? args?.file_path ?? args?.filename;
   if (name === "write_file" && path) {
     const len = typeof args?.content === "string" ? args.content.length : null;
@@ -659,19 +641,21 @@ function summarizeActiveTool(activeTool) {
   return name;
 }
 
-// Live "what's the model doing right now" strip. Lives just above the
-// ChatStatusBar so the user's eyes don't have to leave the input area
-// to see whether the turn is alive — ticks every 500ms via the parent's
-// nowTick so the seconds counter shows visible motion even when the
-// SSE stream is silent (model thinking, waiting on a tool, etc).
-function InFlightRow({ streaming, activeTool, startedAt, statusLine, onAbort, tick: _tick }) {
+interface InFlightRowProps {
+  streaming: StreamingState | null;
+  activeTool: ActiveToolState | null;
+  startedAt: number | null;
+  statusLine: string | null;
+  onAbort: () => void;
+  tick: number;
+}
+
+function InFlightRow({ streaming, activeTool, startedAt, statusLine, onAbort, tick: _tick }: InFlightRowProps) {
   const elapsedMs = startedAt ? Date.now() - startedAt : 0;
   const elapsed = (elapsedMs / 1000).toFixed(1);
   const reasoningLen = streaming?.reasoning?.length ?? 0;
   const textLen = streaming?.text?.length ?? 0;
-  // Tool-running phase wins over text/reasoning since the model is
-  // blocked on the tool — even if assistant_delta has fired we want
-  // to show the active dispatch.
+  /** Tool dispatch wins over text/reasoning — model is blocked on the tool, show that. */
   const toolSummary = summarizeActiveTool(activeTool);
   const phase = toolSummary
     ? "running"
@@ -719,14 +703,12 @@ function InFlightRow({ streaming, activeTool, startedAt, statusLine, onAbort, ti
   `;
 }
 
-// ---------- Chat status bar ----------
-//
-// Mirrors the TUI's StatsPanel — turn / session cost, cache hit %,
-// ctx token gauge, balance. Sits beneath the input area as a compact
-// monospace strip. Renders as a placeholder ("· · ·") while stats
-// haven't arrived yet so the layout doesn't shift on first paint.
+interface ChatStatusBarProps {
+  stats: ChatStats | null;
+  model: string | null;
+}
 
-function ChatStatusBar({ stats, model }) {
+function ChatStatusBar({ stats, model }: ChatStatusBarProps) {
   if (!stats) {
     return html`
       <div class="chat-statusbar">
