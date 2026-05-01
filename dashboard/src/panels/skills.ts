@@ -41,6 +41,10 @@ export function SkillsPanel() {
 
   const openSkill = useCallback(async (scope: Scope, name: string) => {
     setOpen({ scope, name });
+    if (scope === "builtin") {
+      setBody("");
+      return;
+    }
     setBusy(true);
     try {
       const r = await api<{ body: string }>(`/skills/${scope}/${encodeURIComponent(name)}`);
@@ -166,8 +170,7 @@ export function SkillsPanel() {
             return html`
               <div
                 class=${`ssl-row ${sel ? "sel" : ""}`}
-                style=${s.scope === "builtin" ? "cursor:default" : ""}
-                onClick=${() => s.scope !== "builtin" && openSkill(s.scope, s.name)}
+                onClick=${() => openSkill(s.scope, s.name)}
               >
                 <span class="name">
                   ${s.name}
@@ -194,7 +197,26 @@ export function SkillsPanel() {
             ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
                 Pick a skill on the left, or create a new one above.
               </div>`
-            : html`
+            : open.scope === "builtin"
+              ? (() => {
+                  const builtin = data.builtin.find((b) => b.name === open.name);
+                  return html`
+                    <div class="sessions-detail-h">
+                      <span class="name">${open.scope}/${open.name}</span>
+                      <span class="ws"><span class="pill">read-only · builtin</span></span>
+                      <span class="actions">
+                        <button class="btn ghost" onClick=${() => setOpen(null)}>← back</button>
+                      </span>
+                    </div>
+                    <div style="color:var(--fg-2);font-size:13px;line-height:1.6">
+                      ${builtin?.description ?? "(no description)"}
+                    </div>
+                    <div style="margin-top:14px;color:var(--fg-3);font-size:11.5px">
+                      Built-in skills ship with Reasonix; the model picks them up automatically. To customize, create a project- or global-scoped skill with the same name.
+                    </div>
+                  `;
+                })()
+              : html`
                 <div class="sessions-detail-h">
                   <span class="name">${open.scope}/${open.name}</span>
                   <span class="ws">${body.length.toLocaleString()} chars</span>
