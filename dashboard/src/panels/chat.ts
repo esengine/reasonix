@@ -443,12 +443,11 @@ export function ChatPanel() {
 
   return html`
     <div class="chat-shell">
-      <div class="panel-header" style="margin-bottom: 12px;">
-        <h2 class="panel-title">Chat</h2>
-        <span class="panel-subtitle">
-          mirrors the live ${MODE === "attached" ? "TUI" : "session"} — type here or in the terminal, both surfaces stay in sync
-        </span>
-        <div class="header-pickers" style="margin-left: auto;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div class="chips" style="padding:0">
+          <span class="chip-f active">${MODE === "attached" ? "TUI mirror" : "session view"}</span>
+        </div>
+        <div class="header-pickers" style="margin-left:auto">
           ${
             effort
               ? html`

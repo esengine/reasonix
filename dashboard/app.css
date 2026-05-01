@@ -1085,3 +1085,1171 @@ table td { color: var(--fg-1); }
 table tbody tr:hover { background: var(--bg-hover); }
 table td.numeric { color: var(--fg-0); }
 .kv-key { display: inline-block; min-width: 70px; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; margin-right: 8px; }
+
+/* ── Chat-panel legacy CSS — restored from pre-foundation app.css.
+ *    These selectors back the Chat panel's interior (chat-shell /
+ *    chat-feed / chat-msg / mode-picker / composer / modals / toasts /
+ *    tool-card / markdown blocks). The design mockup §4 covers the
+ *    chat surface conceptually but doesn't enumerate every selector;
+ *    rather than rewrite all of these by hand against design tokens,
+ *    we restore the working set and let panel migration tweak as
+ *    needed. Tokens inside these rules use the new design palette
+ *    (--c-brand, --fg-0, --bg-elev, etc.) so the visual still aligns.
+ */
+/* ---------- Markdown rendering (matches TUI markdown.tsx palette) ----------
+ *
+ * Mapping comes from src/cli/ui/markdown.tsx:
+ *   H1 → bg #67e8f9 (cyan)   text black, bold     — pill
+ *   H2 → bg #c4b5fd (violet) text black, bold     — pill
+ *   H3 → bg #f0abfc (fuchsia) text black, bold    — pill
+ *   inline code → amber text on bg-2
+ *   code block  → bg-1, monospace, soft border
+ *   blockquote  → teal-300 left bar (brand)
+ *   strong / em → bold / italic
+ *   tables      → bordered, monospace
+ *   strike      → red strikethrough
+ *   link        → cyan underline
+ *   diff +/-    → green / red lines (handled by code-block class)
+ */
+
+.md {
+  color: var(--fg-0);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.md > *:first-child {
+  margin-top: 0;
+}
+.md > *:last-child {
+  margin-bottom: 0;
+}
+
+.md p {
+  margin: 0.5em 0;
+}
+
+.md h1,
+.md h2,
+.md h3 {
+  display: inline-block;
+  padding: 2px 10px;
+  margin: 0.8em 0 0.5em;
+  border-radius: var(--r);
+  color: #0a0e14;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.md h1 {
+  background: var(--c-brand);
+  font-size: 18px;
+}
+.md h2 {
+  background: var(--c-accent);
+  font-size: 16px;
+}
+.md h3 {
+  background: var(--grad-8);
+  font-size: 14px;
+}
+
+.md h4,
+.md h5,
+.md h6 {
+  font-weight: 600;
+  color: var(--c-accent);
+  font-size: 14px;
+  margin: 0.6em 0 0.3em;
+}
+
+.md strong {
+  color: var(--fg-0);
+  font-weight: 700;
+}
+.md em {
+  color: var(--fg-0);
+  font-style: italic;
+}
+.md del {
+  color: var(--c-err);
+  text-decoration: line-through;
+}
+
+.md a {
+  color: var(--c-brand);
+  text-decoration: none;
+}
+.md a:hover {
+  text-decoration: underline;
+}
+
+.md code {
+  font-family: var(--font-mono);
+  background: var(--bg-elev-2);
+  color: var(--c-warn); /* amber matches TUI inline-code */
+  padding: 1px 6px;
+  border-radius: var(--r);
+  font-size: 12px;
+}
+
+.md pre {
+  background: var(--bg-elev);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0.6em 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--c-warn);
+  white-space: pre;
+}
+.md pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Diff blocks — rendered by the custom renderer in app.js for
+ * SEARCH/REPLACE markers and ``` diff fences. Mirror TUI's
+ * markdown.tsx red/green palette so the experience reads as the same
+ * tool whether you're in the terminal or the browser. */
+.md .diff-block,
+.diff-block {
+  background: var(--bg-elev);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  margin: 0.6em 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--fg-1);
+}
+.diff-line {
+  display: block;
+  padding: 0 4px;
+}
+.diff-line.ins {
+  background: rgba(74, 222, 128, 0.1);
+  color: #86efac;
+}
+.diff-line.del {
+  background: rgba(248, 113, 113, 0.1);
+  color: #fda4af;
+}
+.diff-line.hunk {
+  color: var(--c-accent);
+  font-weight: 500;
+}
+.diff-line.meta {
+  color: var(--fg-3);
+}
+
+/* highlight.js github-dark loads from CDN; we tweak surface colors
+ * to merge with our card backgrounds. The theme provides token colors
+ * (keyword, string, number, comment etc.) we keep as-is — they read
+ * well against bg-1. */
+.md .hljs,
+.hljs {
+  background: var(--bg-elev) !important;
+  color: var(--fg-0);
+  padding: 0;
+}
+.md pre code.hljs {
+  background: transparent !important;
+}
+
+.md ul,
+.md ol {
+  margin: 0.4em 0;
+  padding-left: 24px;
+}
+.md li {
+  margin: 0.15em 0;
+}
+.md ul > li::marker {
+  color: var(--c-brand);
+}
+.md ol > li::marker {
+  color: var(--c-accent);
+  font-weight: 600;
+}
+
+.md blockquote {
+  border-left: 3px solid var(--c-brand);
+  padding: 4px 12px;
+  margin: 0.6em 0;
+  color: var(--fg-1);
+  background: var(--bg-elev);
+  border-radius: 0 var(--r) var(--r) 0;
+}
+
+.md table {
+  width: auto;
+  margin: 0.6em 0;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.md thead {
+  background: var(--bg-elev-2);
+}
+.md th,
+.md td {
+  border: 1px solid var(--bd);
+  padding: 6px 10px;
+  text-align: left;
+}
+.md th {
+  color: var(--c-brand);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.md td {
+  color: var(--fg-1);
+}
+
+.md hr {
+  border: none;
+  height: 2px;
+  background: var(--gradient-rule);
+  margin: 1.2em 0;
+  opacity: 0.6;
+}
+
+.md img {
+  max-width: 100%;
+  border-radius: var(--r);
+}
+
+/* ---------- Chat panel ---------- */
+
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px);
+}
+
+.chat-feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-msg {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  line-height: 1.6;
+}
+
+.chat-msg .glyph {
+  width: 22px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  text-align: center;
+  font-size: 14px;
+  padding-top: 2px;
+}
+
+.chat-msg .body {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-msg.user .glyph {
+  color: var(--c-brand);
+}
+.chat-msg.assistant .glyph {
+  color: var(--c-ok);
+}
+.chat-msg.tool .glyph {
+  color: var(--c-warn);
+}
+.chat-msg.info .glyph {
+  color: var(--fg-3);
+}
+.chat-msg.warning .glyph {
+  color: var(--c-warn);
+}
+.chat-msg.error .glyph {
+  color: var(--c-err);
+}
+
+.chat-msg.user .body {
+  color: var(--fg-0);
+}
+.chat-msg.assistant .body {
+  color: var(--fg-0);
+}
+/* Tool-card replaces the simple .body box for role="tool" rows. The
+ * card carries a left accent bar (amber for success), a header with
+ * tool name + path/lang pills, then the kind-specific body (diff for
+ * edit_file, code block for read/write_file, terminal for run_command,
+ * etc). Keeps the visual weight consistent across kinds. */
+.tool-card {
+  flex: 1;
+  background: var(--bg-elev);
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--c-warn);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  min-width: 0;
+}
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.tool-card-icon {
+  color: var(--c-warn);
+  font-size: 14px;
+  font-weight: 600;
+}
+.tool-card-name {
+  color: var(--c-accent);
+  font-weight: 500;
+}
+.tool-card-path {
+  color: var(--c-brand);
+  background: var(--bg-elev-2);
+  padding: 1px 8px;
+  border-radius: var(--r);
+  font-size: 11px;
+}
+.tool-card pre,
+.tool-card .md {
+  margin: 0;
+}
+.tool-card .md > pre,
+.tool-card-cmd,
+.tool-card-output {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  max-height: 320px;
+  overflow: auto;
+}
+.tool-card .md > pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+.tool-card .diff-block {
+  margin: 0;
+  max-height: 320px;
+}
+.tool-card-cmd {
+  background: var(--bg);
+  white-space: pre;
+  margin: 0 0 6px 0;
+}
+.tool-card-prompt {
+  color: var(--fg-3);
+  margin-right: 6px;
+}
+.tool-card-output {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg-1);
+  margin: 0;
+}
+.tool-card-result {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+}
+.tool-card-args {
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.tool-card-args summary {
+  cursor: pointer;
+  color: var(--fg-2);
+}
+.tool-card-args summary:hover {
+  color: var(--c-brand);
+}
+.tool-card-args pre {
+  margin-top: 6px;
+  white-space: pre;
+}
+
+.chat-msg .reasoning {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--bg-elev);
+  border-left: 2px solid var(--c-accent);
+  color: var(--fg-2);
+  font-size: 12px;
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: var(--r);
+}
+
+.chat-msg .tool-name {
+  color: var(--c-accent);
+  font-weight: 500;
+}
+
+.chat-streaming-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--c-brand);
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.chat-input-area {
+  display: flex;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bd);
+  flex-shrink: 0;
+}
+
+.chat-input-area textarea {
+  flex: 1;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--bd);
+  color: var(--fg-0);
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  resize: vertical;
+  min-height: 44px;
+  max-height: 200px;
+}
+
+.chat-input-area textarea:focus {
+  border-color: var(--c-brand);
+  outline: none;
+}
+
+.chat-input-area textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 40px 20px;
+}
+
+.chat-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* Onboarding banner that nudges new users to the Semantic panel.
+ * Only shown when the project has no built index AND the user hasn't
+ * explicitly dismissed it (state in localStorage). The "Build it →"
+ * action navigates the sidebar via the appBus so the rest of the
+ * panel state isn't disturbed. */
+.chat-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--c-accent);
+  border-radius: var(--r-md);
+  font-size: 13px;
+}
+.chat-banner-icon {
+  font-family: var(--font-mono);
+  color: var(--c-accent);
+  font-size: 18px;
+}
+.chat-banner-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.chat-banner-text strong {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.chat-banner-text .muted {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.chat-banner-close {
+  background: transparent;
+  border: none;
+  color: var(--fg-3);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+  border-radius: var(--r);
+}
+.chat-banner-close:hover {
+  background: var(--bg-input);
+  color: var(--fg-0);
+}
+
+/* In-flight row sits just above ChatStatusBar — the user's eyes are
+ * already at the input; this puts the spinner + elapsed + token
+ * stream in the same visual neighborhood instead of pushing them up
+ * to the top of the panel. Border on the bottom only so it shares the
+ * statusbar's top divider. */
+.chat-inflight {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  margin-top: 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-1);
+  flex-shrink: 0;
+}
+.chat-inflight-phase {
+  color: var(--c-accent);
+  font-weight: 600;
+}
+.chat-inflight-sep {
+  color: var(--fg-3);
+}
+.chat-inflight-tool {
+  color: var(--fg-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 480px;
+}
+.chat-inflight-abort {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--bd);
+  color: var(--fg-2);
+  padding: 3px 10px;
+  border-radius: var(--r);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.chat-inflight-abort:hover {
+  border-color: var(--c-err);
+  color: var(--c-err);
+}
+
+/* ---------- Chat status bar ----------
+ *
+ * Compact metric strip below the input area. Mirrors the TUI's
+ * StatsPanel (model · ctx · cache · turn $ · session $ · balance) so
+ * the user has the same one-glance read-out without leaving Chat.
+ */
+.chat-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 8px 4px 0;
+  margin-top: 8px;
+  border-top: 1px solid var(--bd);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  flex-shrink: 0;
+}
+.status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-label {
+  color: var(--fg-3);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.status-bar-mini {
+  display: inline-block;
+  width: 60px;
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.status-bar-mini-fill {
+  display: block;
+  height: 100%;
+  background: var(--gradient-rule);
+}
+.status-ok {
+  color: var(--c-ok);
+}
+.status-warn {
+  color: var(--c-warn);
+}
+.status-err {
+  color: var(--c-err);
+}
+
+/* ---------- Header pickers (effort / preset / edit-mode) ----------
+ *
+ * Three segmented controls that flow on the chat header right side.
+ * On narrow screens they wrap onto multiple rows. The `accent` variant
+ * paints active segments violet (preset / effort) instead of cyan
+ * (edit-mode), so the three picker groups remain visually distinct.
+ */
+.header-pickers {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.mode-picker {
+  display: inline-flex;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--bg-elev);
+}
+.mode-btn {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 4px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.mode-btn + .mode-btn {
+  border-left: 1px solid var(--bd);
+}
+.mode-btn:hover {
+  background: var(--bg-elev-2);
+  color: var(--fg-0);
+}
+.mode-btn.active {
+  background: var(--c-brand);
+  color: var(--bg);
+  font-weight: 600;
+}
+.mode-btn.active.accent {
+  background: var(--c-accent);
+  color: var(--bg);
+}
+.mode-btn.active.yolo {
+  background: var(--c-err);
+  color: var(--bg);
+}
+
+/* ---------- Modal cards (shell / choice / plan / edit-review) ----------
+ *
+ * Mirrors the TUI's ModalCard shape — left-accent border in the modal
+ * kind's color (red shell, magenta choice, cyan plan, green edits)
+ * with an icon, title, optional subtitle, then content + actions. The
+ * card sits above the chat input area, full-width within the chat
+ * column. Styled minimal so it doesn't compete with conversation
+ * content for attention.
+ */
+
+.modal-card {
+  margin: 12px 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--c-accent);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.modal-card-icon {
+  font-size: 18px;
+  font-family: var(--font-mono);
+  line-height: 1.4;
+}
+
+.modal-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-0);
+}
+
+.modal-card-subtitle {
+  font-size: 12px;
+  color: var(--fg-2);
+  margin-top: 2px;
+}
+
+.modal-cmd {
+  background: var(--bg-elev-2);
+  border-radius: var(--r);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-x: auto;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.modal-cmd-prompt {
+  color: var(--fg-3);
+  margin-right: 6px;
+}
+.modal-cmd code {
+  color: var(--c-brand);
+  background: transparent;
+  padding: 0;
+  word-break: break-all;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modal-choice-row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  grid-template-rows: auto auto;
+  gap: 2px 12px;
+  background: transparent;
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  padding: 8px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.modal-choice-row:hover {
+  border-color: var(--c-accent);
+  background: rgba(196, 181, 253, 0.06);
+}
+.modal-choice-row.modal-choice-cancel {
+  margin-top: 4px;
+  border-style: dashed;
+}
+.modal-choice-id {
+  grid-row: 1 / 3;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--c-accent);
+  font-weight: 600;
+  text-align: center;
+}
+.modal-choice-title {
+  color: var(--fg-0);
+  font-size: 13px;
+  font-weight: 500;
+}
+.modal-choice-summary {
+  color: var(--fg-2);
+  font-size: 12px;
+  grid-column: 2;
+}
+
+.modal-custom textarea {
+  width: 100%;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--bd);
+  color: var(--fg-0);
+  padding: 8px 12px;
+  border-radius: var(--r);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  resize: vertical;
+  min-height: 56px;
+}
+
+.modal-plan-body {
+  background: var(--bg-elev-2);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* Plan-revision modal — list of remaining steps with risk dots. */
+.modal-revise-reason {
+  background: var(--bg-elev-2);
+  border-left: 3px solid #c4b5fd;
+  border-radius: 0 var(--r) var(--r) 0;
+  padding: 8px 12px;
+  color: var(--fg-1);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.modal-revise-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.modal-revise-steps li {
+  display: grid;
+  grid-template-columns: 12px 64px 1fr;
+  grid-template-rows: auto auto;
+  gap: 2px 10px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  padding: 8px 12px;
+  align-items: center;
+}
+.modal-revise-dot {
+  grid-row: 1 / 3;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+}
+.modal-revise-id {
+  grid-row: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.modal-revise-title {
+  grid-row: 1;
+  color: var(--fg-0);
+  font-size: 13px;
+  font-weight: 500;
+}
+.modal-revise-action {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  color: var(--fg-2);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.modal-edit-preview {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-1);
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 200px;
+}
+
+/* Side-by-side diff for the edit-review modal — left is "before" (red
+ * tint), right is "after" (green tint), context rows render unchanged.
+ * Lines hljs-highlight per the file's language. */
+.edit-diff-wrap {
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  background: var(--bg-elev-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow: hidden;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+.edit-diff-head {
+  display: flex;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--bd);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+  flex-shrink: 0;
+}
+.edit-diff-side {
+  flex: 1;
+  padding: 6px 12px;
+}
+.edit-diff-side + .edit-diff-side {
+  border-left: 1px solid var(--bd);
+}
+.edit-diff-side-old .edit-diff-marker {
+  color: #f87171;
+  font-weight: 700;
+  margin-right: 4px;
+}
+.edit-diff-side-new .edit-diff-marker {
+  color: #86efac;
+  font-weight: 700;
+  margin-right: 4px;
+}
+.edit-diff-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+.edit-diff-row {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+  min-height: 19px;
+}
+.edit-diff-cell {
+  flex: 1;
+  padding: 1px 12px;
+  white-space: pre;
+  overflow-x: auto;
+  border-right: 1px solid var(--bd);
+  color: var(--fg-1);
+  line-height: 1.55;
+}
+.edit-diff-cell:last-child {
+  border-right: none;
+}
+.edit-diff-row-context .edit-diff-cell {
+  background: transparent;
+  color: var(--fg-2);
+}
+.edit-diff-row-del .edit-diff-cell-old,
+.edit-diff-row-change .edit-diff-cell-old {
+  background: rgba(248, 113, 113, 0.12);
+  border-left: 2px solid #f87171;
+  padding-left: 10px;
+}
+.edit-diff-row-ins .edit-diff-cell-new,
+.edit-diff-row-change .edit-diff-cell-new {
+  background: rgba(134, 239, 172, 0.12);
+  border-left: 2px solid #86efac;
+  padding-left: 10px;
+}
+.edit-diff-cell-old .edit-diff-empty,
+.edit-diff-cell-new .edit-diff-empty {
+  display: inline-block;
+  width: 1px;
+}
+.edit-diff-row-del .edit-diff-cell-new,
+.edit-diff-row-ins .edit-diff-cell-old {
+  background: var(--bg-input);
+  opacity: 0.5;
+}
+.edit-diff-line {
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 800px) {
+  .edit-diff-row {
+    flex-direction: column;
+  }
+  .edit-diff-cell {
+    border-right: none;
+    border-bottom: 1px solid var(--bd);
+  }
+  .edit-diff-head {
+    flex-direction: column;
+  }
+  .edit-diff-side + .edit-diff-side {
+    border-left: none;
+    border-top: 1px solid var(--bd);
+  }
+}
+
+.muted {
+  color: var(--fg-3);
+}
+
+/* ---------- Toast ----------
+ * Ephemeral notifications stacked bottom-right of the viewport. Fired
+ * by save / network success paths instead of inline banners that push
+ * the form around. Auto-dismiss after 3 seconds. */
+.toast-stack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 50;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--c-ok);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--fg-0);
+  font-family: var(--font-sans);
+  min-width: 200px;
+  max-width: 360px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  animation: toast-slide-in 0.18s ease-out;
+}
+.toast.warn {
+  border-left-color: var(--c-warn);
+}
+.toast.err {
+  border-left-color: var(--c-err);
+}
+.toast.info {
+  border-left-color: var(--c-accent);
+}
+
+/* ---------- Error overlay ----------
+ *
+ * Full-screen modal triggered by uncaught exceptions / promise
+ * rejections / Preact render errors. The TUI is unaffected — this
+ * only blocks the browser tab. Includes "Copy details" + a GitHub
+ * issue link prefilled with redacted environment info.
+ */
+.error-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 20, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  z-index: 100;
+  animation: fade-in 0.18s ease-out;
+}
+.error-overlay-card {
+  max-width: 720px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--c-err);
+  border-left: 4px solid var(--c-err);
+  border-radius: var(--r-md);
+  padding: 22px 26px;
+  box-shadow: 0 12px 60px rgba(248, 113, 113, 0.18);
+}
+.error-overlay-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.error-overlay-icon {
+  color: var(--c-err);
+  font-size: 22px;
+  font-weight: 700;
+}
+.error-overlay-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.error-overlay-subtitle {
+  font-size: 13px;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  margin-top: 4px;
+  word-break: break-word;
+}
+.error-overlay-trace {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fg-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0 0 12px;
+}
+.error-overlay-info {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--fg-2);
+  margin-bottom: 12px;
+}
+.error-overlay-help {
+  font-size: 13px;
+  color: var(--fg-1);
+  margin-bottom: 18px;
+  line-height: 1.55;
+}
+.error-overlay-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.error-overlay-actions a.button {
+  display: inline-block;
+  text-decoration: none;
+  background: var(--bg-elev-2);
+  color: var(--fg-1);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  padding: 6px 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.error-overlay-actions a.button:hover {
+  border-color: var(--c-brand);
+  color: var(--c-brand);
+}
+
