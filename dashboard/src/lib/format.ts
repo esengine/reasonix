@@ -22,6 +22,20 @@ export function fmtBytes(n: number | null | undefined): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+export function fmtCompactNum(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  if (Math.abs(n) < 1000) return String(n);
+  if (Math.abs(n) < 1_000_000) {
+    const v = n / 1000;
+    return `${v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}K`;
+  }
+  if (Math.abs(n) < 1_000_000_000) {
+    const v = n / 1_000_000;
+    return `${v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}M`;
+  }
+  return `${(n / 1_000_000_000).toFixed(1)}B`;
+}
+
 export function fmtRelativeTime(iso: string | number | null | undefined): string {
   if (!iso) return "—";
   const ms = typeof iso === "number" ? iso : Date.parse(iso);

@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { fmtBytes, fmtNum, fmtPct, fmtRelativeTime, fmtUsd } from "../dashboard/src/lib/format.js";
+import {
+  fmtBytes,
+  fmtCompactNum,
+  fmtNum,
+  fmtPct,
+  fmtRelativeTime,
+  fmtUsd,
+} from "../dashboard/src/lib/format.js";
 
 describe("fmtUsd", () => {
   it("returns em-dash for null/undefined", () => {
@@ -72,6 +79,39 @@ describe("fmtBytes", () => {
   it("uses GB for 1 GiB and above", () => {
     expect(fmtBytes(1024 ** 3)).toBe("1.00 GB");
     expect(fmtBytes(1024 ** 3 * 2.5)).toBe("2.50 GB");
+  });
+});
+
+describe("fmtCompactNum", () => {
+  it("returns em-dash for null/undefined", () => {
+    expect(fmtCompactNum(null)).toBe("—");
+    expect(fmtCompactNum(undefined)).toBe("—");
+  });
+
+  it("renders sub-1K integers verbatim", () => {
+    expect(fmtCompactNum(0)).toBe("0");
+    expect(fmtCompactNum(42)).toBe("42");
+    expect(fmtCompactNum(999)).toBe("999");
+  });
+
+  it("compacts thousands with K, dropping the decimal when whole", () => {
+    expect(fmtCompactNum(1_000)).toBe("1K");
+    expect(fmtCompactNum(1_500)).toBe("1.5K");
+    expect(fmtCompactNum(994_000)).toBe("994K");
+  });
+
+  it("compacts millions with M, dropping the decimal when whole", () => {
+    expect(fmtCompactNum(1_000_000)).toBe("1M");
+    expect(fmtCompactNum(1_500_000)).toBe("1.5M");
+    expect(fmtCompactNum(42_700_000)).toBe("42.7M");
+  });
+
+  it("compacts billions with B", () => {
+    expect(fmtCompactNum(1_500_000_000)).toBe("1.5B");
+  });
+
+  it("preserves the negative sign", () => {
+    expect(fmtCompactNum(-1_500)).toBe("-1.5K");
   });
 });
 
