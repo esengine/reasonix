@@ -1335,7 +1335,10 @@ export function App({
     // the plan was. Pure-markdown plans don't persist (nothing to
     // restore), so users see this banner only when there's real
     // structured state to pick back up.
-    if (session) {
+    // Guard: skip restoration when the session has zero prior messages
+    // (truly fresh). A stale plan file from a prior wipe that wasn't
+    // cleaned up is not a real plan to resume — it's a sidecar orphan.
+    if (session && loop.resumedMessageCount > 0) {
       const restoredPlan = loadPlanState(session);
       if (restoredPlan && restoredPlan.steps.length > 0) {
         planStepsRef.current = restoredPlan.steps;

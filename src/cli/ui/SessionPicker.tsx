@@ -3,7 +3,7 @@ import React from "react";
 import { SingleSelect } from "./Select.js";
 import { COLOR, GLYPH } from "./theme.js";
 
-export type SessionChoice = "resume" | "new" | "delete";
+export type SessionChoice = "resume" | "new";
 
 export interface SessionPickerProps {
   sessionName: string;
@@ -14,9 +14,9 @@ export interface SessionPickerProps {
 }
 
 /**
- * Resume / new / delete picker shown at launch when a prior session
- * file exists. Three lines of header (brand mark · session summary)
- * then the selector, then a footer with key bindings.
+ * Resume / new picker shown at launch when a prior session file exists.
+ * "New" creates a fresh timestamped session — the old session is
+ * preserved on disk. "Resume" continues the existing conversation.
  *
  * Visual grammar matches the design's session-resume modal: brand
  * glyph in primary color, session name highlighted, the rest dim.
@@ -53,11 +53,6 @@ export function SessionPicker({
             value: "resume",
             label: "Resume",
             hint: `Continue where you left off (${messageCount} messages in context).`,
-          },
-          {
-            value: "delete",
-            label: "Delete and start new",
-            hint: "Wipes the session file irreversibly. Other sessions untouched.",
           },
         ]}
         onSubmit={(v) => onChoose(v as SessionChoice)}
