@@ -173,7 +173,7 @@ export function ToolCard({ msg }: ToolCardProps) {
           <span class="tool-card-icon">+</span>
           <span class="tool-card-name">write_file</span>
           ${path ? html`<code class="tool-card-path">${path}</code>` : null}
-          ${lang ? html`<span class="pill pill-dim">${lang}</span>` : null}
+          ${lang ? html`<span class="pill">${lang}</span>` : null}
         </div>
         <div dangerouslySetInnerHTML=${{ __html: renderHighlightedBlock(args.content as string, lang) }}></div>
         ${msg.text ? html`<div class="tool-card-result">${msg.text}</div>` : null}
@@ -190,7 +190,7 @@ export function ToolCard({ msg }: ToolCardProps) {
           <span class="tool-card-icon">▤</span>
           <span class="tool-card-name">read_file</span>
           ${path ? html`<code class="tool-card-path">${path}</code>` : null}
-          ${lang ? html`<span class="pill pill-dim">${lang}</span>` : null}
+          ${lang ? html`<span class="pill">${lang}</span>` : null}
         </div>
         <div dangerouslySetInnerHTML=${{ __html: renderHighlightedBlock(msg.text ?? "", lang) }}></div>
       </div>
