@@ -33,7 +33,6 @@ let cachedIndex: string | null = null;
 let cachedApp: string | null = null;
 let cachedAppMap: string | null = null;
 let cachedCss: string | null = null;
-let cachedCm: string | null = null;
 
 function loadIndexTemplate(): string {
   if (cachedIndex) return cachedIndex;
@@ -63,12 +62,6 @@ function loadCss(): string {
   return cachedCss;
 }
 
-function loadCm(): string {
-  if (cachedCm) return cachedCm;
-  cachedCm = readFileSync(join(ASSET_DIR, "codemirror.js"), "utf8");
-  return cachedCm;
-}
-
 /** Token HTML-attribute-escaped in case a future mint produces non-hex bytes. */
 export function renderIndexHtml(token: string, mode: "standalone" | "attached"): string {
   const tpl = loadIndexTemplate();
@@ -92,9 +85,6 @@ export function serveAsset(name: string): { body: string; contentType: string } 
   }
   if (name === "app.css") {
     return { body: loadCss(), contentType: "text/css; charset=utf-8" };
-  }
-  if (name === "codemirror.js") {
-    return { body: loadCm(), contentType: "application/javascript; charset=utf-8" };
   }
   return null;
 }

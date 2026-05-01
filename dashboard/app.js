@@ -683,7 +683,7 @@ function ToolCard({ msg }) {
         <div class="tool-card-head">
           <span class="tool-card-icon">✎</span>
           <span class="tool-card-name">edit_file</span>
-          ${path ? html`<code class="tool-card-path tool-card-path-link" onClick=${() => openFileInEditor(path)} title="open in editor">${path}</code>` : null}
+          ${path ? html`<code class="tool-card-path">${path}</code>` : null}
         </div>
         <div dangerouslySetInnerHTML=${{ __html: diffHtml }}></div>
         ${msg.text ? html`<div class="tool-card-result">${msg.text}</div>` : null}
@@ -703,7 +703,7 @@ function ToolCard({ msg }) {
         <div class="tool-card-head">
           <span class="tool-card-icon">+</span>
           <span class="tool-card-name">write_file</span>
-          ${path ? html`<code class="tool-card-path tool-card-path-link" onClick=${() => openFileInEditor(path)} title="open in editor">${path}</code>` : null}
+          ${path ? html`<code class="tool-card-path">${path}</code>` : null}
           ${lang ? html`<span class="pill pill-dim">${lang}</span>` : null}
         </div>
         <div dangerouslySetInnerHTML=${{ __html: renderHighlightedBlock(args.content, lang) }}></div>
@@ -720,7 +720,7 @@ function ToolCard({ msg }) {
         <div class="tool-card-head">
           <span class="tool-card-icon">▤</span>
           <span class="tool-card-name">read_file</span>
-          ${path ? html`<code class="tool-card-path tool-card-path-link" onClick=${() => openFileInEditor(path)} title="open in editor">${path}</code>` : null}
+          ${path ? html`<code class="tool-card-path">${path}</code>` : null}
           ${lang ? html`<span class="pill pill-dim">${lang}</span>` : null}
         </div>
         <div dangerouslySetInnerHTML=${{ __html: renderHighlightedBlock(msg.text, lang) }}></div>
@@ -761,7 +761,7 @@ function ToolCard({ msg }) {
         <div class="tool-card-head">
           <span class="tool-card-icon">▣</span>
           <span class="tool-card-name">${name}</span>
-          ${path ? html`<code class="tool-card-path tool-card-path-link" onClick=${() => openFileInEditor(path)} title="open in editor">${path}</code>` : null}
+          ${path ? html`<code class="tool-card-path">${path}</code>` : null}
         </div>
         <pre class="tool-card-output">${msg.text}</pre>
       </div>
@@ -3693,545 +3693,6 @@ function McpPanel() {
   `;
 }
 
-// ---------- Editor (CodeMirror 6, multi-tab) ----------
-
-// Lazy-loaded CodeMirror modules — kept off the initial bundle so users
-// who never open Editor never pay the ~200KB cost. Cached after first
-// resolve so tab switches don't re-fetch.
-//
-// CodeMirror loads from a locally bundled file (`/assets/codemirror.js`,
-// produced by `scripts/bundle-codemirror.mjs`). One bundle = one copy
-// of every package = no Tag identity mismatch between oneDark and the
-// language parsers, no esm.sh round-trips on every cold load. The
-// previous esm.sh + ?deps= setup hit silent failure modes whenever the
-// CDN resolved a transitive @lezer/* to a different version than the
-// bundled cache thought it would.
-let cmModulesPromise = null;
-async function loadCodeMirror() {
-  if (cmModulesPromise) return cmModulesPromise;
-  cmModulesPromise = import(`/assets/codemirror.js?token=${TOKEN}`);
-  return cmModulesPromise;
-}
-
-// Map file path → CodeMirror language extension factory.
-function langExtensionFor(path, langs) {
-  const lang = langFromPath(path);
-  if (!lang) return null;
-  // CodeMirror's javascript pack handles ts/tsx/jsx via options.
-  if (lang === "typescript") return langs.typescript ? langs.typescript() : null;
-  if (lang === "javascript") return langs.javascript ? langs.javascript({ jsx: true }) : null;
-  const fn = langs[lang];
-  return fn ? fn() : null;
-}
-
-// Build a nested folder tree from a flat list of repo paths. Nodes use
-// Maps so insertion order is stable; sorting happens at render time.
-function buildFileTree(paths) {
-  const root = { name: "", path: "", children: new Map(), isFile: false };
-  for (const p of paths) {
-    const parts = p.split("/").filter(Boolean);
-    let node = root;
-    for (let i = 0; i < parts.length; i++) {
-      const isLast = i === parts.length - 1;
-      const name = parts[i];
-      const childPath = parts.slice(0, i + 1).join("/");
-      let child = node.children.get(name);
-      if (!child) {
-        child = { name, path: childPath, children: new Map(), isFile: isLast };
-        node.children.set(name, child);
-      } else if (isLast && child.children.size === 0) {
-        child.isFile = true;
-      }
-      node = child;
-    }
-  }
-  return root;
-}
-
-// Walk the tree honoring the expanded set; produce a flat row list the
-// renderer can map straight to JSX. Folders precede files; both sorted
-// case-insensitively.
-function flattenTree(node, expanded, depth, out) {
-  const children = [...node.children.values()].sort((a, b) => {
-    if (a.isFile !== b.isFile) return a.isFile ? 1 : -1;
-    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-  });
-  for (const child of children) {
-    out.push({ name: child.name, path: child.path, depth, isFile: child.isFile });
-    if (!child.isFile && expanded.has(child.path)) {
-      flattenTree(child, expanded, depth + 1, out);
-    }
-  }
-  return out;
-}
-
-function EditorPanel({ onClose } = {}) {
-  // tabs: { path, content, original, dirty, savedAt }
-  const [tabs, setTabs] = useState([]);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [files, setFiles] = useState([]);
-  const [filesError, setFilesError] = useState(null);
-  const [openInput, setOpenInput] = useState("");
-  const [filter, setFilter] = useState("");
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [cmReady, setCmReady] = useState(false);
-  const [sideCollapsed, setSideCollapsed] = useState(false);
-  const [expanded, setExpanded] = useState(() => new Set());
-  // View mode for markdown tabs: "edit" (source only), "split" (source +
-  // preview side-by-side), "preview" (rendered only). Non-md tabs always
-  // render in edit mode regardless of this state.
-  const [viewMode, setViewMode] = useState("edit");
-  const editorContainerRef = useRef(null);
-  const viewRef = useRef(null);
-  const cmRef = useRef(null);
-  const tabsRef = useRef(tabs);
-  const activeIdxRef = useRef(activeIdx);
-  useEffect(() => {
-    tabsRef.current = tabs;
-  }, [tabs]);
-  useEffect(() => {
-    activeIdxRef.current = activeIdx;
-  }, [activeIdx]);
-
-  // Load file list (gitignore-aware) for the picker.
-  const loadFiles = useCallback(async () => {
-    try {
-      const r = await api("/files");
-      setFiles(r.files ?? []);
-    } catch (err) {
-      setFilesError(err.message);
-    }
-  }, []);
-  useEffect(() => {
-    loadFiles();
-  }, [loadFiles]);
-
-  // Open a file → fetch + push tab + activate. If already open, just
-  // switch to the existing tab so we don't lose unsaved edits.
-  const openPath = useCallback(async (path) => {
-    if (!path) return;
-    const existing = tabsRef.current.findIndex((t) => t.path === path);
-    if (existing >= 0) {
-      setActiveIdx(existing);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api(`/file/${path.split("/").map(encodeURIComponent).join("/")}`);
-      setTabs((prev) => [
-        ...prev,
-        { path, content: r.content, original: r.content, dirty: false, savedAt: r.mtime },
-      ]);
-      setActiveIdx(tabsRef.current.length);
-    } catch (err) {
-      setError(`open ${path}: ${err.message}`);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  // Subscribe to "open-file" events fired from elsewhere (Chat panel
-  // tool cards, file-mention links).
-  useEffect(() => {
-    const onOpen = (ev) => openPath(ev.detail.path);
-    appBus.addEventListener("open-file", onOpen);
-    return () => appBus.removeEventListener("open-file", onOpen);
-  }, [openPath]);
-
-  // Mount CodeMirror lazily on first render.
-  useEffect(() => {
-    let cancelled = false;
-    loadCodeMirror().then((cm) => {
-      if (!cancelled) {
-        cmRef.current = cm;
-        setCmReady(true);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Re-mount the editor view when active tab changes. Each tab's
-  // content is held in React state — the view is just a presentation
-  // layer over the current tab's string.
-  useEffect(() => {
-    if (!cmReady || !editorContainerRef.current) return;
-    const cm = cmRef.current;
-    if (!cm) return;
-    const tab = tabs[activeIdx];
-    if (!tab) {
-      if (viewRef.current) {
-        viewRef.current.destroy();
-        viewRef.current = null;
-      }
-      return;
-    }
-
-    if (viewRef.current) {
-      viewRef.current.destroy();
-      viewRef.current = null;
-    }
-
-    const langExt = langExtensionFor(tab.path, cm.langs);
-    const updateListener = cm.EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
-        const text = update.state.doc.toString();
-        // Mutate the tab's content + dirty flag without forcing a
-        // full re-render of the editor (which would lose the cursor).
-        // We DO setTabs so the tab bar's dirty dot updates.
-        const idx = activeIdxRef.current;
-        const live = tabsRef.current;
-        if (live[idx]) {
-          const next = [...live];
-          next[idx] = { ...next[idx], content: text, dirty: text !== next[idx].original };
-          tabsRef.current = next;
-          setTabs(next);
-        }
-      }
-    });
-
-    const extensions = [
-      cm.lineNumbers(),
-      cm.highlightActiveLineGutter ? cm.highlightActiveLineGutter() : [],
-      cm.foldGutter ? cm.foldGutter() : [],
-      cm.highlightActiveLine(),
-      cm.drawSelection(),
-      cm.history(),
-      cm.bracketMatching(),
-      cm.indentOnInput(),
-      cm.closeBrackets ? cm.closeBrackets() : [],
-      cm.autocompletion
-        ? cm.autocompletion({
-            activateOnTyping: true,
-            closeOnBlur: true,
-            maxRenderedOptions: 30,
-          })
-        : [],
-      cm.highlightSelectionMatches ? cm.highlightSelectionMatches() : [],
-      cm.keymap.of([
-        ...cm.defaultKeymap,
-        ...cm.historyKeymap,
-        ...(cm.closeBracketsKeymap ?? []),
-        ...(cm.searchKeymap ?? []),
-        ...(cm.completionKeymap ?? []),
-        ...(cm.foldKeymap ?? []),
-        cm.indentWithTab,
-      ]),
-      // oneDark is an array of [theme, syntaxHighlighting(oneDarkHighlightStyle)] —
-      // including it gives both the dark UI and the highlight tags. Keep
-      // defaultHighlightStyle as a fallback only for languages oneDark omits.
-      cm.oneDark,
-      cm.syntaxHighlighting(cm.defaultHighlightStyle, { fallback: true }),
-      cm.EditorView.lineWrapping,
-      updateListener,
-    ];
-    if (langExt) extensions.push(langExt);
-
-    const state = cm.EditorState.create({ doc: tab.content, extensions });
-    viewRef.current = new cm.EditorView({ state, parent: editorContainerRef.current });
-
-    return () => {
-      if (viewRef.current) {
-        viewRef.current.destroy();
-        viewRef.current = null;
-      }
-    };
-  }, [cmReady, activeIdx, tabs[activeIdx]?.path]);
-
-  // Becoming visible after display:none — CM6 measures lazily, force it.
-  useEffect(() => {
-    if (viewMode === "preview") return;
-    viewRef.current?.requestMeasure?.();
-  }, [viewMode]);
-
-  const closeTab = useCallback((idx) => {
-    const tab = tabsRef.current[idx];
-    if (tab?.dirty && !confirm(`${tab.path} has unsaved changes. Discard?`)) return;
-    setTabs((prev) => prev.filter((_, i) => i !== idx));
-    if (activeIdxRef.current >= idx) {
-      setActiveIdx(Math.max(0, activeIdxRef.current - 1));
-    }
-  }, []);
-
-  const saveTab = useCallback(async (idx) => {
-    const tab = tabsRef.current[idx];
-    if (!tab) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api(`/file/${tab.path.split("/").map(encodeURIComponent).join("/")}`, {
-        method: "POST",
-        body: { content: tab.content },
-      });
-      setTabs((prev) => {
-        const next = [...prev];
-        if (next[idx]) {
-          next[idx] = { ...next[idx], original: tab.content, dirty: false, savedAt: r.mtime };
-        }
-        return next;
-      });
-      showToast(`saved ${tab.path}`, "info");
-    } catch (err) {
-      setError(`save ${tab.path}: ${err.message}`);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  // Cmd/Ctrl+S — save active tab.
-  useEffect(() => {
-    const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        if (tabsRef.current[activeIdxRef.current]) {
-          saveTab(activeIdxRef.current);
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [saveTab]);
-
-  const tab = tabs[activeIdx];
-
-  const tree = useMemo(() => buildFileTree(files), [files]);
-  const treeRows = useMemo(() => flattenTree(tree, expanded, 0, []), [tree, expanded]);
-
-  const toggleFolder = useCallback((path) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }, []);
-
-  const filtering = filter.trim().length > 0;
-  const filteredFiles = filtering
-    ? files.filter((f) => f.toLowerCase().includes(filter.toLowerCase())).slice(0, 80)
-    : null;
-
-  const openPaths = tabs.map((t) => t.path);
-
-  return html`
-    <div class="editor-shell">
-      ${
-        onClose
-          ? html`
-          <div class="editor-drawer-head">
-            <span class="editor-drawer-title">Editor</span>
-            <button class="editor-drawer-close" onClick=${onClose} title="close editor (Esc)">×</button>
-          </div>
-        `
-          : null
-      }
-      <div class="editor-tabs">
-        ${
-          tabs.length === 0
-            ? html`<div class="editor-no-tabs">No files open. Pick from the list, paste a path above, or click a path in chat.</div>`
-            : tabs.map(
-                (t, i) => html`
-            <div
-              key=${t.path}
-              class="editor-tab ${i === activeIdx ? "active" : ""}"
-              onClick=${() => setActiveIdx(i)}
-            >
-              <span class="editor-tab-name" title=${t.path}>${t.path.split("/").pop()}</span>
-              ${t.dirty ? html`<span class="editor-tab-dirty">●</span>` : null}
-              <span class="editor-tab-close" onClick=${(e) => {
-                e.stopPropagation();
-                closeTab(i);
-              }}>×</span>
-            </div>
-          `,
-              )
-        }
-      </div>
-      <div class="editor-body">
-      ${
-        sideCollapsed
-          ? html`
-          <div class="editor-side collapsed">
-            <button
-              class="editor-side-toggle"
-              onClick=${() => setSideCollapsed(false)}
-              title="show files"
-            >▶</button>
-          </div>
-        `
-          : html`
-          <div class="editor-side">
-            <div class="editor-side-head">
-              <span class="editor-side-label">FILES</span>
-              <button
-                class="editor-side-toggle"
-                onClick=${() => setSideCollapsed(true)}
-                title="hide files"
-              >◀</button>
-            </div>
-            <div class="row" style="margin-bottom: 8px;">
-              <input
-                type="text"
-                placeholder="open by path…"
-                value=${openInput}
-                onInput=${(e) => setOpenInput(e.target.value)}
-                onKeyDown=${(e) => {
-                  if (e.key === "Enter" && openInput.trim()) {
-                    openPath(openInput.trim());
-                    setOpenInput("");
-                  }
-                }}
-              />
-            </div>
-            <input
-              type="search"
-              placeholder=${`filter ${files.length} files…`}
-              value=${filter}
-              onInput=${(e) => setFilter(e.target.value)}
-              style="margin-bottom: 8px;"
-            />
-            ${
-              filesError
-                ? html`<div class="notice err">${filesError}</div>`
-                : filtering
-                  ? html`
-                  <div class="editor-files">
-                    ${filteredFiles.map(
-                      (f) => html`
-                      <div
-                        key=${f}
-                        class="editor-file ${openPaths.includes(f) ? "open" : ""}"
-                        onClick=${() => openPath(f)}
-                        title=${f}
-                      >${f}</div>
-                    `,
-                    )}
-                    ${files.length > 80 ? html`<div class="muted" style="padding: 8px; font-size: 11px;">narrow filter to see more</div>` : null}
-                  </div>
-                `
-                  : html`
-                  <div class="editor-files">
-                    ${treeRows.map((row) =>
-                      row.isFile
-                        ? html`
-                        <div
-                          key=${row.path}
-                          class="editor-tree-file ${openPaths.includes(row.path) ? "open" : ""}"
-                          style=${`padding-left: ${row.depth * 12 + 22}px`}
-                          onClick=${() => openPath(row.path)}
-                          title=${row.path}
-                        >${row.name}</div>
-                      `
-                        : html`
-                        <div
-                          key=${row.path}
-                          class="editor-tree-folder"
-                          style=${`padding-left: ${row.depth * 12 + 4}px`}
-                          onClick=${() => toggleFolder(row.path)}
-                        >
-                          <span class="editor-tree-caret">${expanded.has(row.path) ? "▼" : "▶"}</span>
-                          <span class="editor-tree-name">${row.name}</span>
-                        </div>
-                      `,
-                    )}
-                    ${files.length === 0 ? html`<div class="muted" style="padding: 8px; font-size: 11px;">no files</div>` : null}
-                  </div>
-                `
-            }
-          </div>
-        `
-      }
-
-      <div class="editor-main">
-        ${
-          tab
-            ? html`
-            <div class="editor-bar">
-              <code style="font-size: 12px;">${tab.path}</code>
-              <span class="muted" style="font-size: 12px;">${langFromPath(tab.path) ?? "plaintext"}</span>
-              ${
-                langFromPath(tab.path) === "markdown"
-                  ? html`
-                  <div class="view-mode-group" style="margin-left: auto;">
-                    <button
-                      class=${`view-mode ${viewMode === "edit" ? "active" : ""}`}
-                      onClick=${() => setViewMode("edit")}
-                      title="source only"
-                    >Edit</button>
-                    <button
-                      class=${`view-mode ${viewMode === "split" ? "active" : ""}`}
-                      onClick=${() => setViewMode("split")}
-                      title="source + preview side-by-side"
-                    >Split</button>
-                    <button
-                      class=${`view-mode ${viewMode === "preview" ? "active" : ""}`}
-                      onClick=${() => setViewMode("preview")}
-                      title="rendered only"
-                    >Preview</button>
-                  </div>
-                `
-                  : null
-              }
-              <button
-                class="primary"
-                style=${langFromPath(tab.path) === "markdown" ? "" : "margin-left: auto;"}
-                onClick=${() => saveTab(activeIdx)}
-                disabled=${busy || !tab.dirty}
-              >${tab.dirty ? "Save (⌘S)" : "Saved"}</button>
-            </div>
-            ${error ? html`<div class="notice err">${error}</div>` : null}
-            ${(() => {
-              const isMd = langFromPath(tab.path) === "markdown";
-              const mode = isMd ? viewMode : "edit";
-              // Stable DOM across mode toggles — CM-managed children + Preact reconciliation don't mix when the host moves.
-              return html`
-                <div class="editor-stage" data-mode=${mode}>
-                  <div ref=${editorContainerRef} class="editor-host"></div>
-                  ${
-                    isMd
-                      ? html`<div
-                          class="editor-md-preview md"
-                          dangerouslySetInnerHTML=${{
-                            __html: previewMarked.parse(tab.content ?? ""),
-                          }}
-                        ></div>`
-                      : null
-                  }
-                </div>
-              `;
-            })()}
-          `
-            : html`
-            <div class="editor-empty">
-              ${
-                cmReady
-                  ? html`<div>Open a file to start editing.</div>`
-                  : html`<div>Loading editor (~200KB CodeMirror)…</div>`
-              }
-            </div>
-          `
-        }
-      </div>
-      </div>
-    </div>
-  `;
-}
-
-function ComingSoonPanel({ name, milestone }) {
-  return html`
-    <div>
-      <div class="panel-header">
-        <h2 class="panel-title">${name}</h2>
-        <span class="panel-subtitle">coming in ${milestone}</span>
-      </div>
-      <div class="empty">This panel lands in ${milestone} (see CHANGELOG).</div>
-    </div>
-  `;
-}
-
 // ---------- shell ----------
 
 const TABS = [
@@ -4240,14 +3701,6 @@ const TABS = [
     name: "Chat",
     glyph: "◆",
     panel: () => html`<${ChatPanel} />`,
-    ready: true,
-    badge: null,
-  },
-  {
-    id: "editor",
-    name: "Editor",
-    glyph: "✎",
-    panel: () => html`<${EditorPanel} />`,
     ready: true,
     badge: null,
   },
@@ -4371,24 +3824,11 @@ function showToast(text, kind = "info", ttl = 3000) {
 
 // ---------- App-wide event bus ----------
 //
-// Three events:
-//   - "open-file"     { path }              Editor panel opens the path in a tab
+// Two events:
 //   - "navigate-tab"  { tabId }             App switches active sidebar tab
 //   - "error"         { error, source }     global ErrorOverlay shows it full-screen
-//
-// Used by Chat tool cards / file-mention links to deep-link into the
-// Editor without prop-drilling, and by global error handlers to surface
-// crashes in a full-screen modal with a "Report on GitHub" button.
 
 const appBus = new EventTarget();
-function openFileInEditor(path) {
-  if (!path) return;
-  // Just signal "open this file" — the App-level editor drawer subscribes
-  // and pops itself open. We don't navigate the sidebar; the drawer
-  // sits over the current panel so the user can keep their place in
-  // chat / overview / wherever they were.
-  appBus.dispatchEvent(new CustomEvent("open-file", { detail: { path } }));
-}
 
 // ---------- Global error capture ----------
 //
@@ -4625,12 +4065,6 @@ function App() {
       /* private mode / disabled storage — ignore */
     }
   }, [sidebarCollapsed]);
-  // Editor drawer — opens whenever any panel fires "open-file" via
-  // appBus. Lives at the App level so the editor's tab state persists
-  // across sidebar-tab switches; you can open a file from Chat, switch
-  // to Usage to glance at numbers, come back, and the editor's still
-  // there. × on the drawer or Esc closes it.
-  const [editorOpen, setEditorOpen] = useState(false);
   const active = TABS.find((t) => t.id === activeId) ?? TABS[0];
 
   // Esc anywhere closes the mobile drawer (modals already handle their
@@ -4643,9 +4077,7 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Cross-component navigation — sidebar-tab switching when something
-  // fires `navigate-tab` (kept in case other features want it; the
-  // editor drawer no longer uses it).
+  // Cross-component navigation — sidebar-tab switching on `navigate-tab`.
   useEffect(() => {
     const onNav = (ev) => {
       const id = ev.detail?.tabId;
@@ -4654,26 +4086,6 @@ function App() {
     appBus.addEventListener("navigate-tab", onNav);
     return () => appBus.removeEventListener("navigate-tab", onNav);
   }, []);
-
-  // Open the editor drawer whenever any panel signals a file-open.
-  // The drawer's <EditorPanel> is permanently mounted (with display:
-  // none when closed) so its tab state survives toggling — opening
-  // the same file twice from chat doesn't lose unsaved changes.
-  useEffect(() => {
-    const onOpenFile = () => setEditorOpen(true);
-    appBus.addEventListener("open-file", onOpenFile);
-    return () => appBus.removeEventListener("open-file", onOpenFile);
-  }, []);
-
-  // Esc also closes the editor (in addition to the mobile drawer).
-  useEffect(() => {
-    if (!editorOpen) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") setEditorOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [editorOpen]);
 
   const pickTab = useCallback((id) => {
     setActiveId(id);
@@ -4712,13 +4124,8 @@ function App() {
     </div>
     <div class="sidebar-backdrop" onClick=${() => setSidebarOpen(false)}></div>
     <button class="menu-toggle" onClick=${() => setSidebarOpen((s) => !s)} aria-label="Toggle sidebar">≡</button>
-    <div class=${`main ${active.id === "editor" ? "main-editor" : ""}`}>
+    <div class="main">
       <${ErrorBoundary}>${active.panel()}<//>
-    </div>
-    <div class=${`editor-drawer-host ${editorOpen ? "open" : ""}`}>
-      <${ErrorBoundary}>
-        <${EditorPanel} onClose=${() => setEditorOpen(false)} />
-      <//>
     </div>
     <${ToastStack} />
     <${ErrorOverlay} />

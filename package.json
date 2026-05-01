@@ -20,14 +20,12 @@
     "data/deepseek-tokenizer.json.gz",
     "dashboard/index.html",
     "dashboard/app.css",
-    "dashboard/codemirror.js",
     "dashboard/dist",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsup",
-    "build:cm": "node scripts/bundle-codemirror.mjs",
     "dev": "tsx src/cli/index.ts",
     "chat": "tsx src/cli/index.ts chat",
     "test": "vitest run",

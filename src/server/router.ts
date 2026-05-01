@@ -1,6 +1,5 @@
 import { handleAbort } from "./api/abort.js";
 import { handleEditMode } from "./api/edit-mode.js";
-import { handleFile, handleFiles } from "./api/file.js";
 import { handleHealth } from "./api/health.js";
 import { handleHooks } from "./api/hooks.js";
 import { handleIndexConfig } from "./api/index-config.js";
@@ -71,10 +70,6 @@ export async function handleApi(
         return await handleSkills(method, rest, body, ctx);
       case "mcp":
         return await handleMcp(method, rest, body, ctx);
-      case "files":
-        return await handleFiles(method, rest, body, ctx);
-      case "file":
-        return await handleFile(method, rest, body, ctx);
       case "semantic":
         return await handleSemantic(method, rest, body, ctx);
       case "index-config":
