@@ -1,4 +1,4 @@
-import { useCallback, useState } from "https://esm.sh/preact@10.22.0/hooks";
+import { useCallback, useState } from "preact/hooks";
 import { ChatMessage } from "../components/chat-internals.js";
 import { api } from "../lib/api.js";
 import { fmtBytes, fmtNum, fmtRelativeTime } from "../lib/format.js";

@@ -1,8 +1,8 @@
 // Reasonix dashboard SPA — Preact 10 + HTM, bundled by tsup. CDN imports stay external.
 
-import htm from "https://esm.sh/htm@3.1.1";
-import { h, render } from "https://esm.sh/preact@10.22.0";
-import { useCallback, useEffect, useState } from "https://esm.sh/preact@10.22.0/hooks";
+import htm from "htm";
+import { h, render } from "preact";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { MODE } from "./src/lib/api";
 import { ToastStack, appBus } from "./src/lib/bus";
 import { ErrorBoundary, ErrorOverlay } from "./src/lib/error-boundary";

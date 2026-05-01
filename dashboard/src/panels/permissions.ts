@@ -1,4 +1,4 @@
-import { useCallback, useState } from "https://esm.sh/preact@10.22.0/hooks";
+import { useCallback, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { html } from "../lib/html.js";
 import { usePoll } from "../lib/use-poll.js";

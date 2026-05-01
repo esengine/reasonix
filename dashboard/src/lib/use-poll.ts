@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "https://esm.sh/preact@10.22.0/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { type ApiError, api } from "./api.js";
 
 export interface PollResult<T> {
