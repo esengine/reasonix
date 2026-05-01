@@ -159,86 +159,109 @@ export function UsagePanel() {
     };
   }, []);
 
-  if (loading && !summary) return html`<div class="boot">loading usage…</div>`;
-  if (error) return html`<div class="notice err">usage failed: ${error.message}</div>`;
+  if (loading && !summary)
+    return html`<div class="card" style="color:var(--fg-3)">loading usage…</div>`;
+  if (error) return html`<div class="card accent-err">usage failed: ${error.message}</div>`;
   if (!summary) return null;
   const u = summary;
 
+  const sectionH3 = (text: string) => html`
+    <h3 style="margin:18px 0 8px;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">${text}</h3>
+  `;
+
   return html`
-    <div>
-      <div class="panel-header">
-        <h2 class="panel-title">Usage</h2>
-        <span class="panel-subtitle">${u.recordCount.toLocaleString()} records · ${u.logSize}</span>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div class="chips">
+        <span class="chip-f active">${u.recordCount.toLocaleString()} records</span>
+        <span class="chip-f">${u.logSize}</span>
       </div>
 
       ${
         series && series.length > 0
           ? html`
-          <div class="card" style="padding: 18px;">
-            <div class="card-title" style="margin-bottom: 12px;">Daily usage (cost · cache saved · turns)</div>
-            <${UsageChart} days=${series} />
-          </div>
-        `
+            <div class="card" style="padding:18px">
+              <div class="card-h">
+                <span class="title">Daily usage</span>
+                <span class="meta">cost · cache saved · turns</span>
+              </div>
+              <${UsageChart} days=${series} />
+            </div>
+          `
           : null
       }
 
       ${
         u.recordCount === 0
-          ? html`<div class="empty" style="margin-top: 16px;">No usage data yet — run a turn in <code>reasonix chat</code> / <code>code</code> / <code>run</code> and refresh.</div>`
+          ? html`<div class="card" style="color:var(--fg-3);margin-top:8px">
+              No usage data yet — run a turn in <code class="mono">reasonix chat</code> /
+              <code class="mono">code</code> / <code class="mono">run</code> and refresh.
+            </div>`
           : html`
-          <div class="section-title">Rolling windows</div>
-          <table>
-            <thead>
-              <tr>
-                <th></th>
-                <th class="numeric">turns</th>
-                <th class="numeric">cache hit</th>
-                <th class="numeric">cost (USD)</th>
-                <th class="numeric">cache saved</th>
-                <th class="numeric">vs Claude</th>
-                <th class="numeric">saved</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${u.buckets.map((b) => {
-                const hitRatio =
-                  b.cacheHitTokens + b.cacheMissTokens > 0
-                    ? b.cacheHitTokens / (b.cacheHitTokens + b.cacheMissTokens)
-                    : 0;
-                const claudeSavings =
-                  b.claudeEquivUsd > 0 ? 1 - b.costUsd / b.claudeEquivUsd : 0;
-                return html`
-                  <tr>
-                    <td>${b.label}</td>
-                    <td class="numeric">${fmtNum(b.turns)}</td>
-                    <td class="numeric">${b.turns > 0 ? fmtPct(hitRatio) : "—"}</td>
-                    <td class="numeric">${b.turns > 0 ? fmtUsd(b.costUsd) : "—"}</td>
-                    <td class="numeric">${b.turns > 0 && b.cacheSavingsUsd > 0 ? fmtUsd(b.cacheSavingsUsd) : "—"}</td>
-                    <td class="numeric">${b.turns > 0 ? fmtUsd(b.claudeEquivUsd) : "—"}</td>
-                    <td class="numeric">${b.turns > 0 && claudeSavings > 0 ? fmtPct(claudeSavings) : "—"}</td>
-                  </tr>
-                `;
-              })}
-            </tbody>
-          </table>
-        `
+              ${sectionH3("Rolling windows")}
+              <div class="card" style="padding:0;overflow:hidden">
+                <table class="tbl">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>turns</th>
+                      <th>cache hit</th>
+                      <th>cost (USD)</th>
+                      <th>cache saved</th>
+                      <th>vs Claude</th>
+                      <th>saved</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${u.buckets.map((b) => {
+                      const hitRatio =
+                        b.cacheHitTokens + b.cacheMissTokens > 0
+                          ? b.cacheHitTokens / (b.cacheHitTokens + b.cacheMissTokens)
+                          : 0;
+                      const claudeSavings =
+                        b.claudeEquivUsd > 0 ? 1 - b.costUsd / b.claudeEquivUsd : 0;
+                      return html`
+                        <tr>
+                          <td class="dim">${b.label}</td>
+                          <td class="num">${fmtNum(b.turns)}</td>
+                          <td class="num">${b.turns > 0 ? fmtPct(hitRatio) : "—"}</td>
+                          <td class="num">${b.turns > 0 ? fmtUsd(b.costUsd) : "—"}</td>
+                          <td class="num">${b.turns > 0 && b.cacheSavingsUsd > 0 ? fmtUsd(b.cacheSavingsUsd) : "—"}</td>
+                          <td class="num">${b.turns > 0 ? fmtUsd(b.claudeEquivUsd) : "—"}</td>
+                          <td class="num">${b.turns > 0 && claudeSavings > 0 ? fmtPct(claudeSavings) : "—"}</td>
+                        </tr>
+                      `;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            `
       }
 
       ${
         u.byModel.length > 0
           ? html`
-          <div class="section-title">Most used models</div>
-          <table>
-            <thead><tr><th>model</th><th class="numeric">turns</th></tr></thead>
-            <tbody>
-              ${u.byModel.slice(0, 5).map(
-                (m) => html`
-                <tr><td><code>${m.model}</code></td><td class="numeric">${fmtNum(m.turns)}</td></tr>
-              `,
-              )}
-            </tbody>
-          </table>
-        `
+              ${sectionH3("Most used models")}
+              <div class="card" style="padding:0;overflow:hidden">
+                <table class="tbl">
+                  <thead>
+                    <tr>
+                      <th>model</th>
+                      <th>turns</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${u.byModel.slice(0, 5).map(
+                      (m) => html`
+                        <tr>
+                          <td><code class="mono">${m.model}</code></td>
+                          <td class="num">${fmtNum(m.turns)}</td>
+                        </tr>
+                      `,
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            `
           : null
       }
     </div>
