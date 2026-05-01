@@ -143,7 +143,7 @@ Each has background, code pointers, acceptance criteria, hints. Browse all [`goo
 - [#21 · Dashboard design](https://github.com/esengine/reasonix/discussions/21) — react against the [proposed mockup](./design/agent-dashboard.html)
 - [#22 · Future feature wishlist](https://github.com/esengine/reasonix/discussions/22) — what would you build into Reasonix next?
 
-**Before your first PR**: read [`CLAUDE.md`](./CLAUDE.md). Short, strict project rules; `tests/comment-policy.test.ts` enforces them and `npm run verify` is the pre-push gate.
+**Before your first PR**: read [`CONTRIBUTING.md`](./CONTRIBUTING.md). Short, strict project rules (comments, errors, libraries-over-hand-rolled); `tests/comment-policy.test.ts` enforces the comment ones and `npm run verify` is the pre-push gate.
 
 ```bash
 git clone https://github.com/esengine/reasonix.git
