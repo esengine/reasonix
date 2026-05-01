@@ -1,0 +1,176 @@
+{
+  "summary": {
+    "cold": {
+      "median": 1900,
+      "p95": 4731,
+      "max": 4815
+    },
+    "warm": {
+      "median": 1888,
+      "p95": 4972,
+      "max": 5075
+    }
+  },
+  "runs": [
+    {
+      "phase": "cold",
+      "file": "tests/checkpoints.test.ts",
+      "name": "snapshots existing files with their content",
+      "ms": 1705,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/checkpoints.test.ts",
+      "name": "matches by exact id",
+      "ms": 1584,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/compact-tokens.test.ts",
+      "name": "leaves small tool messages alone",
+      "ms": 2130,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/compact-tokens.test.ts",
+      "name": "shrinks tool messages that exceed the token budget",
+      "ms": 2362,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/diff.test.ts",
+      "name": "returns 1 for identical strings",
+      "ms": 1900,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/edit-blocks.test.ts",
+      "name": "parses a single block",
+      "ms": 4731,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/event-replay.test.ts",
+      "name": "synthetic LoopEvents → eventize → sink → file → source → reducers → ConversationView matches",
+      "ms": 1668,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/event-sink-jsonl.test.ts",
+      "name": "appends one JSON object per line, parseable round-trip",
+      "ms": 2574,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/at-mentions.test.ts",
+      "name": "matches @path at start of string",
+      "ms": 1897,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "cold",
+      "file": "tests/bang.test.ts",
+      "name": "returns the command body for a `!`-prefixed input",
+      "ms": 4815,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/checkpoints.test.ts",
+      "name": "snapshots existing files with their content",
+      "ms": 1626,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/checkpoints.test.ts",
+      "name": "matches by exact id",
+      "ms": 1585,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/compact-tokens.test.ts",
+      "name": "leaves small tool messages alone",
+      "ms": 2027,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/compact-tokens.test.ts",
+      "name": "shrinks tool messages that exceed the token budget",
+      "ms": 2301,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/diff.test.ts",
+      "name": "returns 1 for identical strings",
+      "ms": 1888,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/edit-blocks.test.ts",
+      "name": "parses a single block",
+      "ms": 4972,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/event-replay.test.ts",
+      "name": "synthetic LoopEvents → eventize → sink → file → source → reducers → ConversationView matches",
+      "ms": 1767,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/event-sink-jsonl.test.ts",
+      "name": "appends one JSON object per line, parseable round-trip",
+      "ms": 2523,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/at-mentions.test.ts",
+      "name": "matches @path at start of string",
+      "ms": 1883,
+      "ok": true,
+      "stderr": ""
+    },
+    {
+      "phase": "warm",
+      "file": "tests/bang.test.ts",
+      "name": "returns the command body for a `!`-prefixed input",
+      "ms": 5075,
+      "ok": true,
+      "stderr": ""
+    }
+  ]
+}

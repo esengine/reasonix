@@ -1,0 +1,106 @@
+{
+  "summary": {
+    "A_baseline": {
+      "warm": 0,
+      "hot": 0.8347826086956521,
+      "hot2": 0.8347826086956521
+    },
+    "B_augmented": {
+      "warm": 0.6969147005444646,
+      "hot": 0.9360146252285192,
+      "hot2": 0.9360146252285192
+    },
+    "delta_hot": 0.10123201653286706,
+    "delta_hot2": 0.10123201653286706,
+    "pass_A_hot": false,
+    "pass_B_hot": true
+  },
+  "A": {
+    "warm": {
+      "ms": 835,
+      "usage": {
+        "prompt_tokens": 464,
+        "completion_tokens": 1,
+        "total_tokens": 465,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 464
+      },
+      "ratio": 0
+    },
+    "hot": {
+      "ms": 1901,
+      "usage": {
+        "prompt_tokens": 460,
+        "completion_tokens": 120,
+        "total_tokens": 580,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 76
+      },
+      "ratio": 0.8347826086956521
+    },
+    "hot2": {
+      "ms": 2792,
+      "usage": {
+        "prompt_tokens": 460,
+        "completion_tokens": 200,
+        "total_tokens": 660,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 76
+      },
+      "ratio": 0.8347826086956521
+    }
+  },
+  "B": {
+    "warm": {
+      "ms": 575,
+      "usage": {
+        "prompt_tokens": 551,
+        "completion_tokens": 2,
+        "total_tokens": 553,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 167
+      },
+      "ratio": 0.6969147005444646
+    },
+    "hot": {
+      "ms": 2065,
+      "usage": {
+        "prompt_tokens": 547,
+        "completion_tokens": 120,
+        "total_tokens": 667,
+        "prompt_tokens_details": {
+          "cached_tokens": 512
+        },
+        "prompt_cache_hit_tokens": 512,
+        "prompt_cache_miss_tokens": 35
+      },
+      "ratio": 0.9360146252285192
+    },
+    "hot2": {
+      "ms": 1959,
+      "usage": {
+        "prompt_tokens": 547,
+        "completion_tokens": 120,
+        "total_tokens": 667,
+        "prompt_tokens_details": {
+          "cached_tokens": 512
+        },
+        "prompt_cache_hit_tokens": 512,
+        "prompt_cache_miss_tokens": 35
+      },
+      "ratio": 0.9360146252285192
+    }
+  }
+}

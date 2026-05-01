@@ -1,0 +1,387 @@
+{
+  "passed": 8,
+  "total": 10,
+  "totalUsage": {
+    "prompt_tokens": 2246,
+    "completion_tokens": 5732
+  },
+  "runs": [
+    {
+      "id": "e1",
+      "level": "easy",
+      "task": "A pure function `slugify(s: string): string` in src/util/slugify.ts that lowercases, replaces non-alphanumerics with '-', and collapses repeated dashes.",
+      "ms": 9299,
+      "usage": {
+        "prompt_tokens": 207,
+        "completion_tokens": 707,
+        "total_tokens": 914,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 454
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 207
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": false,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": false,
+        "target": "src/util/slugify",
+        "symbol": "slugify",
+        "itNames": [
+          "should lowercase the input",
+          "should replace non-alphanumeric characters with hyphens",
+          "should collapse consecutive hyphens into one",
+          "should trim leading and trailing hyphens",
+          "should handle an empty string",
+          "should handle a string with only non-alphanumeric characters",
+          "should preserve alphanumeric characters and hyphens from original"
+        ],
+        "code": "import { describe, it, expect } from 'vitest';\nimport { slugify } from '../slugify';\n\ndescribe('slugify', () => {\n  it('should lowercase the input', () => {\n    expect(slugify('HELLO')).toBe('hello');\n  });\n\n  it('should replace non-alphanumeric characters with hyphens', () => {\n    expect(slugify('hello world!')).toBe('hello-world');\n  });\n\n  it('should collapse consecutive hyphens into one', () => {\n    expect(slugify('hello---world')).toBe('hello-world');\n  });\n\n  it('should trim leading and trailing hyphens', () => {\n    expect(slugify('--hello world--')).toBe('hello-world');\n  });\n\n  it('should handle an empty string', () => {\n    expect(slugify('')).toBe('');\n  });\n\n  it('should handle a string with only non-alphanumeric characters', () => {\n    expect(slugify('!!@#$%^&*()')).toBe('');\n  });\n\n  it('should preserve alphanumeric characters and hyphens from original', () => {\n    expect(slugify('a-B_c')).toBe('a-b_c');\n  });\n});"
+      }
+    },
+    {
+      "id": "e2",
+      "level": "easy",
+      "task": "A pure function `clamp(n: number, lo: number, hi: number): number` in src/util/clamp.ts that clamps n into [lo, hi].",
+      "ms": 4321,
+      "usage": {
+        "prompt_tokens": 205,
+        "completion_tokens": 309,
+        "total_tokens": 514,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 109
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 77
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": true,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": true,
+        "target": "src/util/clamp",
+        "symbol": "clamp",
+        "itNames": [
+          "should return the lower bound when n is below the range",
+          "should return the upper bound when n is above the range",
+          "should return the original number when n is within the range",
+          "should handle floating point numbers correctly",
+          "should work when lo equals hi"
+        ],
+        "code": "import { clamp } from '../src/util/clamp';\n\ndescribe('clamp', () => {\n  it('should return the lower bound when n is below the range', () => {\n    expect(clamp(-5, 0, 10)).toBe(0);\n  });\n\n  it('should return the upper bound when n is above the range', () => {\n    expect(clamp(15, 0, 10)).toBe(10);\n  });\n\n  it('should return the original number when n is within the range', () => {\n    expect(clamp(5, 0, 10)).toBe(5);\n  });\n\n  it('should handle floating point numbers correctly', () => {\n    expect(clamp(3.14, 0, 5)).toBe(3.14);\n  });\n\n  it('should work when lo equals hi', () => {\n    expect(clamp(100, 5, 5)).toBe(5);\n  });\n});"
+      }
+    },
+    {
+      "id": "e3",
+      "level": "easy",
+      "task": "A pure function `hexToRgb(hex: string): {r:number,g:number,b:number} | null` in src/util/color.ts. Accepts '#abc', '#aabbcc', and 'aabbcc'. Returns null on invalid.",
+      "ms": 8012,
+      "usage": {
+        "prompt_tokens": 224,
+        "completion_tokens": 629,
+        "total_tokens": 853,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 326
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 96
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": true,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": true,
+        "target": "src/util/color",
+        "symbol": "hexToRgb",
+        "itNames": [
+          "should convert shorthand hex ",
+          "should convert full hex ",
+          "should convert hex without hash ",
+          "should return null for an invalid hex string"
+        ],
+        "code": "import { hexToRgb } from '../src/util/color'\nimport { describe, it, expect } from 'vitest'\n\ndescribe('hexToRgb', () => {\n  it('should convert shorthand hex \"#abc\" to { r: 170, g: 187, b: 204 }', () => {\n    expect(hexToRgb('#abc')).toEqual({ r: 170, g: 187, b: 204 })\n  })\n\n  it('should convert full hex \"#aabbcc\" to { r: 170, g: 187, b: 204 }', () => {\n    expect(hexToRgb('#aabbcc')).toEqual({ r: 170, g: 187, b: 204 })\n  })\n\n  it('should convert hex without hash \"aabbcc\" to { r: 170, g: 187, b: 204 }', () => {\n    expect(hexToRgb('aabbcc')).toEqual({ r: 170, g: 187, b: 204 })\n  })\n\n  it('should return null for an invalid hex string', () => {\n    expect(hexToRgb('xyz')).toBeNull()\n    expect(hexToRgb('#ggg')).toBeNull()\n    expect(hexToRgb('#12345')).toBeNull()\n    expect(hexToRgb('')).toBeNull()\n  })\n})"
+      }
+    },
+    {
+      "id": "e4",
+      "level": "easy",
+      "task": "A pure function `uniqueBy<T,K>(arr: T[], key: (t: T) => K): T[]` in src/util/uniq.ts preserving first occurrence.",
+      "ms": 9055,
+      "usage": {
+        "prompt_tokens": 206,
+        "completion_tokens": 687,
+        "total_tokens": 893,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 328
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 78
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": true,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": true,
+        "target": "src/util/uniq",
+        "symbol": "uniqueBy",
+        "itNames": [
+          "should return array with unique elements based on key function, preserving first occurrence",
+          "should handle empty array",
+          "should work with primitive keys and preserve order",
+          "should handle objects with different key types"
+        ],
+        "code": "import { describe, it, expect } from 'vitest';\nimport { uniqueBy } from '../src/util/uniq';\n\ndescribe('uniqueBy', () => {\n  it('should return array with unique elements based on key function, preserving first occurrence', () => {\n    const input = [{ id: 1, name: 'a' }, { id: 2, name: 'b' }, { id: 1, name: 'c' }];\n    const result = uniqueBy(input, (item) => item.id);\n    expect(result).toEqual([{ id: 1, name: 'a' }, { id: 2, name: 'b' }]);\n  });\n\n  it('should handle empty array', () => {\n    expect(uniqueBy([], (x: unknown) => x)).toEqual([]);\n  });\n\n  it('should work with primitive keys and preserve order', () => {\n    const arr = [3, 1, 2, 3, 4, 1, 5];\n    const result = uniqueBy(arr, (x) => x);\n    expect(result).toEqual([3, 1, 2, 4, 5]);\n  });\n\n  it('should handle objects with different key types', () => {\n    const items = [\n      { val: 'x', group: 1 },\n      { val: 'y', group: 2 },\n      { val: 'z', group: 1 },\n    ];\n    const result = uniqueBy(items, (item) => item.group);\n    expect(result).toEqual([\n      { val: 'x', group: 1 },\n      { val: 'y', group: 2 },\n    ]);\n  });\n});"
+      }
+    },
+    {
+      "id": "e5",
+      "level": "easy",
+      "task": "A pure function `parseDuration(s: string): number` in src/util/duration.ts. '1500ms' → 1500, '2s' → 2000, '1m' → 60000. Returns NaN on invalid.",
+      "ms": 3168,
+      "usage": {
+        "prompt_tokens": 221,
+        "completion_tokens": 234,
+        "total_tokens": 455,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 67
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 93
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": true,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": true,
+        "target": "src/util/duration",
+        "symbol": "parseDuration",
+        "itNames": [
+          "should return 1500 for ",
+          "should return 2000 for ",
+          "should return 60000 for ",
+          "should return NaN for invalid input"
+        ],
+        "code": "import { describe, it, expect } from 'vitest';\nimport { parseDuration } from '../src/util/duration';\n\ndescribe('parseDuration', () => {\n  it('should return 1500 for \"1500ms\"', () => {\n    expect(parseDuration('1500ms')).toBe(1500);\n  });\n\n  it('should return 2000 for \"2s\"', () => {\n    expect(parseDuration('2s')).toBe(2000);\n  });\n\n  it('should return 60000 for \"1m\"', () => {\n    expect(parseDuration('1m')).toBe(60000);\n  });\n\n  it('should return NaN for invalid input', () => {\n    expect(parseDuration('invalid')).toBeNaN();\n  });\n});"
+      }
+    },
+    {
+      "id": "m1",
+      "level": "medium",
+      "task": "A class `RingBuffer<T>` in src/util/ring.ts with capacity, push(x) (drops oldest when full), toArray() returning oldest-first, and size getter.",
+      "ms": 3326,
+      "usage": {
+        "prompt_tokens": 207,
+        "completion_tokens": 237,
+        "total_tokens": 444,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 112
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 79
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": true,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": true,
+        "target": "src/util/ring",
+        "symbol": "RingBuffer",
+        "itNames": [
+          "should drop oldest element when full and maintain capacity"
+        ],
+        "code": "import { describe, it, expect } from 'vitest';\nimport { RingBuffer } from '../src/util/ring';\n\ndescribe('RingBuffer', () => {\n  it('should drop oldest element when full and maintain capacity', () => {\n    const buffer = new RingBuffer<number>(3);\n    buffer.push(1);\n    buffer.push(2);\n    buffer.push(3);\n    buffer.push(4); // should drop 1\n    expect(buffer.size).toBe(3);\n    expect(buffer.toArray()).toEqual([2, 3, 4]);\n  });\n});"
+      }
+    },
+    {
+      "id": "m2",
+      "level": "medium",
+      "task": "A function `mergeRanges(ranges: Array<[number,number]>): Array<[number,number]>` in src/util/ranges.ts. Coalesces overlapping/adjacent ranges, returns sorted.",
+      "ms": 5573,
+      "usage": {
+        "prompt_tokens": 213,
+        "completion_tokens": 422,
+        "total_tokens": 635,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 162
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 85
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": true,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": true,
+        "target": "src/util/ranges",
+        "symbol": "mergeRanges",
+        "itNames": [
+          "should merge overlapping ranges",
+          "should merge adjacent ranges",
+          "should return empty array for empty input",
+          "should handle single range"
+        ],
+        "code": "import { describe, it, expect } from 'vitest';\nimport { mergeRanges } from '../src/util/ranges';\n\ndescribe('mergeRanges', () => {\n  it('should merge overlapping ranges', () => {\n    const input: Array<[number, number]> = [[1, 3], [2, 6], [8, 10], [15, 18]];\n    const expected: Array<[number, number]> = [[1, 6], [8, 10], [15, 18]];\n    expect(mergeRanges(input)).toEqual(expected);\n  });\n\n  it('should merge adjacent ranges', () => {\n    const input: Array<[number, number]> = [[1, 2], [2, 3], [3, 4]];\n    const expected: Array<[number, number]> = [[1, 4]];\n    expect(mergeRanges(input)).toEqual(expected);\n  });\n\n  it('should return empty array for empty input', () => {\n    expect(mergeRanges([])).toEqual([]);\n  });\n\n  it('should handle single range', () => {\n    expect(mergeRanges([[5, 10]])).toEqual([[5, 10]]);\n  });\n});"
+      }
+    },
+    {
+      "id": "m3",
+      "level": "medium",
+      "task": "A function `debounceAsync<T extends any[], R>(fn: (...args: T) => Promise<R>, ms: number): (...args: T) => Promise<R>` in src/util/debounce.ts. Resolves only the latest call's promise; earlier callers reject with an AbortError-like.",
+      "ms": 7104,
+      "usage": {
+        "prompt_tokens": 233,
+        "completion_tokens": 516,
+        "total_tokens": 749,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 267
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 105
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": true,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": true,
+        "target": "src/util/debounce",
+        "symbol": "debounceAsync",
+        "itNames": [
+          "should resolve the latest call and reject previous calls",
+          "should only call the underlying function once per burst"
+        ],
+        "code": "import { describe, it, expect, vi } from 'vitest';\nimport { debounceAsync } from '../src/util/debounce';\n\ndescribe('debounceAsync', () => {\n  it('should resolve the latest call and reject previous calls', async () => {\n    const fn = vi.fn().mockImplementation(async (x: number) => x * 2);\n    const debounced = debounceAsync(fn, 50);\n\n    const promise1 = debounced(1);\n    const promise2 = debounced(2);\n    const promise3 = debounced(3);\n\n    await expect(promise1).rejects.toThrow();\n    await expect(promise2).rejects.toThrow();\n    await expect(promise3).resolves.toBe(6);\n  });\n\n  it('should only call the underlying function once per burst', async () => {\n    const fn = vi.fn().mockResolvedValue('resolved');\n    const debounced = debounceAsync(fn, 50);\n\n    debounced('a');\n    debounced('b');\n    await debounced('c');\n\n    expect(fn).toHaveBeenCalledTimes(1);\n  });\n});"
+      }
+    },
+    {
+      "id": "h1",
+      "level": "hard",
+      "task": "A function `extractTestId(file: string, fullName: string, source: string): { id: string, source: 'native' | 'annotation' }` in src/repair/test-id.ts. If `source` contains a '// @reasonix-test-id: <slug>' comment within 3 lines above an it()/test() whose name matches `fullName`, return that slug with source='annotation'. Otherwise return `${file}::${fullName}` with source='native'.",
+      "ms": 14142,
+      "usage": {
+        "prompt_tokens": 273,
+        "completion_tokens": 1129,
+        "total_tokens": 1402,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 327
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 145
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": false,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": false,
+        "target": "src/repair/test-id",
+        "symbol": "extractTestId",
+        "itNames": [
+          "returns native id when no annotation comment exists",
+          "should do something",
+          "returns annotation id when matching comment is within 3 lines above",
+          "works",
+          "respects the 3-line limit: exactly 3 lines above matches",
+          "three lines",
+          "does not match comment more than 3 lines above (4 lines)",
+          "too far",
+          "does not match comment for a different test name",
+          "different test",
+          "picks correct comment when multiple exist",
+          "first test",
+          "second test",
+          "does not misidentify a non-comment line with @reasonix-test-id",
+          "no comment"
+        ],
+        "code": "import { describe, it, expect } from 'vitest';\nimport { extractTestId } from './src/repair/test-id';\n\ndescribe('extractTestId', () => {\n  it('returns native id when no annotation comment exists', () => {\n    const file = 'a.test.ts';\n    const fullName = 'should do something';\n    const source = `\n      it('should do something', () => {});\n    `;\n    const result = extractTestId(file, fullName, source);\n    expect(result).toEqual({ id: 'a.test.ts::should do something', source: 'native' });\n  });\n\n  it('returns annotation id when matching comment is within 3 lines above', () => {\n    const file = 'b.test.ts';\n    const fullName = 'works';\n    const source = `\n      // @reasonix-test-id: my-slug\n      it('works', () => {});\n    `;\n    const result = extractTestId(file, fullName, source);\n    expect(result).toEqual({ id: 'my-slug', source: 'annotation' });\n  });\n\n  it('respects the 3-line limit: exactly 3 lines above matches', () => {\n    const file = 'c.test.ts';\n    const fullName = 'three lines';\n    const source = `\n      // @reasonix-test-id: three-slug\n      // line1\n      // line2\n      it('three lines', () => {});\n    `;\n    const result = extractTestId(file, fullName, source);\n    expect(result).toEqual({ id: 'three-slug', source: 'annotation' });\n  });\n\n  it('does not match comment more than 3 lines above (4 lines)', () => {\n    const file = 'd.test.ts';\n    const fullName = 'too far';\n    const source = `\n      // @reasonix-test-id: wrong\n      // line1\n      // line2\n      // line3\n      it('too far', () => {});\n    `;\n    const result = extractTestId(file, fullName, source);\n    expect(result).toEqual({ id: 'd.test.ts::too far', source: 'native' });\n  });\n\n  it('does not match comment for a different test name', () => {\n    const file = 'e.test.ts';\n    const fullName = 'other test';\n    const source = `\n      // @reasonix-test-id: not-for-you\n      it('different test', () => {});\n    `;\n    const result = extractTestId(file, fullName, source);\n    expect(result).toEqual({ id: 'e.test.ts::other test', source: 'native' });\n  });\n\n  it('picks correct comment when multiple exist', () => {\n    const file = 'f.test.ts';\n    const fullName = 'second test';\n    const source = `\n      // @reasonix-test-id: first-slug\n      it('first test', () => {});\n      // @reasonix-test-id: second-slug\n      it('second test', () => {});\n    `;\n    const result = extractTestId(file, fullName, source);\n    expect(result).toEqual({ id: 'second-slug', source: 'annotation' });\n  });\n\n  it('does not misidentify a non-comment line with @reasonix-test-id', () => {\n    const file = 'g.test.ts';\n    const fullName = 'no comment';\n    const source = `\n      const x = '// @reasonix-test-id: ignored';\n      it('no comment', () => {});\n    `;\n    const result = extractTestId(file, fullName, source);\n    expect(result).toEqual({ id: 'g.test.ts::no comment', source: 'native' });\n  });\n});"
+      }
+    },
+    {
+      "id": "h2",
+      "level": "hard",
+      "task": "A function `pairRedGreen(events: Array<{type:string, test_id?:string, status?:string, ts:number}>): Array<{ test_id: string, red_ts: number, green_ts: number }>` in src/events/pair.ts. For each test_id, find the most recent fail→pass transition and return one entry per test_id. Ignore test_ids that never went green.",
+      "ms": 11174,
+      "usage": {
+        "prompt_tokens": 257,
+        "completion_tokens": 862,
+        "total_tokens": 1119,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 480
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 129
+      },
+      "score": {
+        "compiles_shape": true,
+        "importsTarget": true,
+        "implLeak": false,
+        "stableNames": true,
+        "tsOk": true,
+        "tsErr": "",
+        "passAll": true,
+        "target": "src/events/pair",
+        "symbol": "pairRedGreen",
+        "itNames": [
+          "should return the most recent fail→pass transition per test_id, ignoring test_ids that never passed"
+        ],
+        "code": "import { describe, it, expect } from 'vitest';\nimport { pairRedGreen } from '../../src/events/pair';\n\ndescribe('pairRedGreen', () => {\n  it('should return the most recent fail→pass transition per test_id, ignoring test_ids that never passed', () => {\n    const events = [\n      { type: 'test', test_id: 't1', status: 'fail', ts: 1 },\n      { type: 'test', test_id: 't1', status: 'fail', ts: 2 },\n      { type: 'test', test_id: 't1', status: 'pass', ts: 3 },\n      { type: 'test', test_id: 't1', status: 'fail', ts: 4 },\n      { type: 'test', test_id: 't1', status: 'pass', ts: 5 },\n      { type: 'test', test_id: 't2', status: 'fail', ts: 10 },\n      { type: 'test', test_id: 't2', status: 'fail', ts: 11 },\n      { type: 'test', test_id: 't3', status: 'pass', ts: 20 },\n      { type: 'test', test_id: 't3', status: 'fail', ts: 21 },\n      { type: 'test', test_id: 't3', status: 'pass', ts: 22 },\n    ];\n\n    const result = pairRedGreen(events);\n\n    expect(result).toEqual([\n      { test_id: 't1', red_ts: 4, green_ts: 5 },\n      { test_id: 't3', red_ts: 21, green_ts: 22 },\n    ]);\n  });\n});"
+      }
+    }
+  ]
+}
