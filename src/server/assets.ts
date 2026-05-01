@@ -31,6 +31,7 @@ const ASSET_DIR = resolveAssetDir();
 
 let cachedIndex: string | null = null;
 let cachedApp: string | null = null;
+let cachedAppMap: string | null = null;
 let cachedCss: string | null = null;
 let cachedCm: string | null = null;
 
@@ -42,8 +43,18 @@ function loadIndexTemplate(): string {
 
 function loadApp(): string {
   if (cachedApp) return cachedApp;
-  cachedApp = readFileSync(join(ASSET_DIR, "app.js"), "utf8");
+  cachedApp = readFileSync(join(ASSET_DIR, "dist", "app.js"), "utf8");
   return cachedApp;
+}
+
+function loadAppMap(): string | null {
+  if (cachedAppMap) return cachedAppMap;
+  try {
+    cachedAppMap = readFileSync(join(ASSET_DIR, "dist", "app.js.map"), "utf8");
+    return cachedAppMap;
+  } catch {
+    return null;
+  }
 }
 
 function loadCss(): string {
@@ -74,6 +85,10 @@ export function renderIndexHtml(token: string, mode: "standalone" | "attached"):
 export function serveAsset(name: string): { body: string; contentType: string } | null {
   if (name === "app.js") {
     return { body: loadApp(), contentType: "application/javascript; charset=utf-8" };
+  }
+  if (name === "app.js.map") {
+    const body = loadAppMap();
+    return body == null ? null : { body, contentType: "application/json; charset=utf-8" };
   }
   if (name === "app.css") {
     return { body: loadCss(), contentType: "text/css; charset=utf-8" };
