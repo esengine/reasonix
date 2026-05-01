@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from "https://esm.sh/preact@10.22.0/hooks";
+import { MODE, TOKEN, api } from "./src/lib/api";
 import { fmtBytes, fmtNum, fmtPct, fmtRelativeTime, fmtUsd } from "./src/lib/format";
 
 const html = htm.bind(h);
@@ -158,42 +159,6 @@ previewMarked.use({
     },
   },
 });
-
-// ---------- bootstrapping ----------
-
-const TOKEN = document.querySelector('meta[name="reasonix-token"]')?.getAttribute("content") ?? "";
-const MODE =
-  document.querySelector('meta[name="reasonix-mode"]')?.getAttribute("content") ?? "standalone";
-
-// Helper: every fetch tacks the token onto the URL (reads) and the
-// header (mutations). Server logic in src/server/index.ts requires
-// the header form for any non-GET.
-async function api(path, opts = {}) {
-  const method = opts.method ?? "GET";
-  const url = `/api${path}${path.includes("?") ? "&" : "?"}token=${TOKEN}`;
-  const headers = { ...(opts.headers ?? {}) };
-  headers["X-Reasonix-Token"] = TOKEN;
-  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
-  const text = await res.text();
-  let parsed = null;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = { error: text };
-  }
-  if (!res.ok) {
-    const err = new Error(parsed?.error ?? `${res.status} ${res.statusText}`);
-    err.status = res.status;
-    err.body = parsed;
-    throw err;
-  }
-  return parsed;
-}
 
 // usePoll: re-fetch a GET endpoint every `intervalMs`, returning
 // `{ data, error, loading, refresh }`. v0.13 swaps this for SSE.
