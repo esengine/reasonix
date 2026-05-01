@@ -179,7 +179,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
     "side  top"
     "side  body"
     "side  status";
-  height: 640px;
+  height: 100vh;
   background: var(--bg);
   font-size: 13px;
 }
@@ -1315,14 +1315,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--c-brand); }
 
 /* ---------- Chat panel ---------- */
 
+/* Subtracts .app-top (44) + .app-status (26) + .app-body padding (24×2). */
 .chat-shell {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 56px);
+  height: calc(100vh - 44px - 26px - 48px);
 }
 
 .chat-feed {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 4px 4px 16px;
   display: flex;
