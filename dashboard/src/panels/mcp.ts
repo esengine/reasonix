@@ -19,6 +19,8 @@ interface McpData {
   servers: McpServer[];
 }
 
+type McpFilter = "all" | "live" | "unbridged";
+
 export function McpPanel() {
   const [data, setData] = useState<McpData | null>(null);
   const [specs, setSpecs] = useState<string[] | null>(null);
@@ -27,6 +29,7 @@ export function McpPanel() {
   const [newSpec, setNewSpec] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<McpServer | null>(null);
+  const [filter, setFilter] = useState<McpFilter>("all");
 
   const load = useCallback(async () => {
     try {
@@ -83,11 +86,24 @@ export function McpPanel() {
   if (error && !data) return html`<div class="card accent-err">${error}</div>`;
   if (!data) return null;
 
+  const liveCount = data.servers.length;
+  const unbridgedSpecs = (specs ?? []).filter((spec) => !data.servers.some((s) => s.spec === spec));
+  const unbridgedCount = unbridgedSpecs.length;
+  const showLive = filter !== "unbridged";
+  const showUnbridged = filter !== "live";
+
   return html`
     <div class="sessions-grid">
       <div class="sessions-list">
         <div class="ssl-h" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
-          MCP servers · ${data.servers.length} bridged
+          MCP servers · ${liveCount} bridged
+        </div>
+        <div style="padding:8px 12px 4px">
+          <div class="chips">
+            <span class=${`chip-f ${filter === "all" ? "active" : ""}`} onClick=${() => setFilter("all")}>all <span class="ct">${liveCount + unbridgedCount}</span></span>
+            <span class=${`chip-f ${filter === "live" ? "active" : ""}`} onClick=${() => setFilter("live")}>live <span class="ct">${liveCount}</span></span>
+            <span class=${`chip-f ${filter === "unbridged" ? "active" : ""}`} onClick=${() => setFilter("unbridged")}>unbridged <span class="ct">${unbridgedCount}</span></span>
+          </div>
         </div>
         <div style="padding:8px 12px;display:flex;gap:6px">
           <input
@@ -103,39 +119,46 @@ export function McpPanel() {
         ${error ? html`<div class="card accent-err" style="margin:0 12px 8px">${error}</div>` : null}
 
         <div class="ssl-rows">
-          ${data.servers.length === 0
+          ${liveCount === 0 && unbridgedCount === 0
             ? html`<div style="color:var(--fg-3);padding:14px;font-size:12px">
                 No MCP servers in this session.
               </div>`
-            : data.servers.map((s) => html`
-              <div
-                class=${`ssl-row ${open?.label === s.label ? "sel" : ""}`}
-                onClick=${() => setOpen(s)}
-              >
-                <span class="name">${s.label} <span class="pill ok">live</span></span>
-                <span class="preview">${s.spec}</span>
-                <span class="meta"><span><span class="v">${fmtNum(s.toolCount)}</span> tools</span></span>
-              </div>
-            `)}
-          ${(specs ?? [])
-            .filter((spec) => !data.servers.some((s) => s.spec === spec))
-            .map((spec) => html`
-              <div class="ssl-row" style="cursor:default">
-                <span class="name">(unbridged) <span class="pill">config</span></span>
-                <span class="preview">${spec}</span>
-                <span class="meta">
-                  <button
-                    class="btn ghost"
-                    style="font-size:10.5px;padding:2px 6px;color:var(--c-err);border-color:var(--c-err)"
-                    disabled=${busy}
-                    onClick=${(e: Event) => {
-                      e.stopPropagation();
-                      removeSpec(spec);
-                    }}
-                  >remove</button>
-                </span>
-              </div>
-            `)}
+            : null}
+          ${
+            showLive
+              ? data.servers.map((s) => html`
+                  <div
+                    class=${`ssl-row ${open?.label === s.label ? "sel" : ""}`}
+                    onClick=${() => setOpen(s)}
+                  >
+                    <span class="name">${s.label} <span class="pill ok">live</span></span>
+                    <span class="preview">${s.spec}</span>
+                    <span class="meta"><span><span class="v">${fmtNum(s.toolCount)}</span> tools</span></span>
+                  </div>
+                `)
+              : null
+          }
+          ${
+            showUnbridged
+              ? unbridgedSpecs.map((spec) => html`
+                  <div class="ssl-row" style="cursor:default">
+                    <span class="name">(unbridged) <span class="pill">config</span></span>
+                    <span class="preview">${spec}</span>
+                    <span class="meta">
+                      <button
+                        class="btn ghost"
+                        style="font-size:10.5px;padding:2px 6px;color:var(--c-err);border-color:var(--c-err)"
+                        disabled=${busy}
+                        onClick=${(e: Event) => {
+                          e.stopPropagation();
+                          removeSpec(spec);
+                        }}
+                      >remove</button>
+                    </span>
+                  </div>
+                `)
+              : null
+          }
         </div>
       </div>
 
