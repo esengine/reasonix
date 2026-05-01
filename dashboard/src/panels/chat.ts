@@ -1,4 +1,4 @@
-// @ts-nocheck — bulk JS-style migration; tighten types in a follow-up.
+// @ts-nocheck — bulk JS-style migration. ChatPanel is 700+ LoC of interleaved useState / SSE handlers / refs; type-tightening tracked as a follow-up in #28.
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import {
   ChatMessage,
