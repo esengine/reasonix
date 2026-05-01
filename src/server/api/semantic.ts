@@ -1,7 +1,14 @@
 /** Job state in a module-scoped Map keyed by project root so multi-root dashboards don't collide; CLI `reasonix index` runs independently. */
 
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { loadIndexConfig } from "../../config.js";
-import { buildIndex, indexExists, querySemantic } from "../../index/semantic/builder.js";
+import {
+  INDEX_DIR_NAME,
+  buildIndex,
+  indexExists,
+  querySemantic,
+} from "../../index/semantic/builder.js";
 import type { BuildProgress, BuildResult } from "../../index/semantic/builder.js";
 import {
   checkOllamaStatus,
@@ -157,11 +164,62 @@ async function getStatus(ctx: DashboardContext): Promise<ApiResult> {
     body: {
       attached: true,
       root,
-      index: { exists: hasIndex },
+      index: hasIndex ? readIndexMeta(root) : { exists: false },
       ollama,
       job: job ? snapshotJob(job) : null,
       pull: pull ? snapshotPull(pull) : null,
     },
+  };
+}
+
+interface IndexMetaResponse {
+  exists: true;
+  chunks: number;
+  files: number;
+  dim: number;
+  sizeBytes: number;
+  lastBuiltMs: number;
+  model: string;
+}
+
+function readIndexMeta(root: string): IndexMetaResponse | { exists: false } {
+  const dir = join(root, INDEX_DIR_NAME);
+  const metaPath = join(dir, "index.meta.json");
+  const dataPath = join(dir, "index.jsonl");
+  if (!existsSync(metaPath) || !existsSync(dataPath)) return { exists: false };
+  let meta: { dim?: number; model?: string; updatedAt?: string };
+  try {
+    meta = JSON.parse(readFileSync(metaPath, "utf8"));
+  } catch {
+    return { exists: false };
+  }
+  let chunks = 0;
+  const files = new Set<string>();
+  let sizeBytes = 0;
+  try {
+    sizeBytes = statSync(dataPath).size;
+    const raw = readFileSync(dataPath, "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      chunks++;
+      try {
+        const rec = JSON.parse(line) as { path?: string };
+        if (typeof rec.path === "string") files.add(rec.path);
+      } catch {
+        /* skip malformed */
+      }
+    }
+  } catch {
+    /* fall through with partial counts */
+  }
+  return {
+    exists: true,
+    chunks,
+    files: files.size,
+    dim: meta.dim ?? 0,
+    sizeBytes,
+    lastBuiltMs: meta.updatedAt ? Date.parse(meta.updatedAt) || 0 : 0,
+    model: meta.model ?? "",
   };
 }
 

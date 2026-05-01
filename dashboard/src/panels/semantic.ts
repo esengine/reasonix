@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
+import { fmtBytes, fmtNum, fmtRelativeTime } from "../lib/format.js";
 import { html } from "../lib/html.js";
 
 interface SemanticData {
   attached?: boolean;
   reason?: string;
   root?: string;
-  index?: { exists: boolean };
+  index?: IndexInfo;
   job?: SemanticJob | null;
   pull?: { status: string; startedAt: number; lastLine?: string } | null;
   ollama?: {
@@ -17,6 +18,16 @@ interface SemanticData {
     installedModels?: string[];
     error?: string;
   };
+}
+
+interface IndexInfo {
+  exists: boolean;
+  chunks?: number;
+  files?: number;
+  dim?: number;
+  sizeBytes?: number;
+  lastBuiltMs?: number;
+  model?: string;
 }
 
 interface SemanticJob {
@@ -161,138 +172,154 @@ export function SemanticPanel() {
     <h3 style="margin:18px 0 8px;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">${text}</h3>
   `;
 
+  const idx = data.index;
   return html`
-    <div style="display:flex;flex-direction:column;gap:6px">
-      ${data.index?.exists ? html`<${SemanticSearchSection} />` : null}
-      <div class="chips">
-        <span class=${`chip-f ${data.index?.exists ? "active" : ""}`}>
-          ${data.index?.exists ? "index built" : "no index yet"}
-        </span>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+        <div class="chips">
+          <span class=${`chip-f ${idx?.exists ? "active" : ""}`}>
+            ${idx?.exists ? "index built" : "no index yet"}
+          </span>
+          ${
+            ready
+              ? html`<span class="chip-f" style="border-color:var(--c-ok);color:var(--c-ok)">ready</span>`
+              : html`<span class="chip-f" style="border-color:var(--c-warn);color:var(--c-warn)">setup needed</span>`
+          }
+        </div>
+        ${info ? html`<div><span class="pill info">${info}</span></div>` : null}
+        ${error ? html`<div class="card accent-err">${error}</div>` : null}
+
+        ${idx?.exists ? html`<${SemanticSearchSection} />` : null}
+
         ${
-          ready
-            ? html`<span class="chip-f" style="border-color:var(--c-ok);color:var(--c-ok)">ready</span>`
-            : html`<span class="chip-f" style="border-color:var(--c-warn);color:var(--c-warn)">setup needed</span>`
+          !binaryFound
+            ? html`
+              <div class="card">
+                <div class="card-h"><span class="title">Install Ollama</span></div>
+                <div class="card-b" style="font-size:13px">
+                  Reasonix doesn't run package managers for you. Install Ollama first, then come back:
+                  <ul style="margin:10px 0 4px 18px;padding:0">
+                    <li><strong>macOS / Windows:</strong> download from <a href="https://ollama.com/download" target="_blank" rel="noreferrer">ollama.com/download</a></li>
+                    <li><strong>Linux:</strong> <code class="mono">curl -fsSL https://ollama.com/install.sh | sh</code></li>
+                  </ul>
+                  <div style="color:var(--fg-3);margin-top:8px">Refresh after install — this panel will offer to start the daemon and pull <code class="mono">${modelName}</code>.</div>
+                </div>
+              </div>
+            `
+            : null
+        }
+        ${
+          binaryFound && !daemonRunning
+            ? html`
+              <div class="card">
+                <div class="card-h"><span class="title">Daemon</span></div>
+                <div class="card-b" style="font-size:13px">
+                  <code class="mono">ollama</code> is on your PATH but the HTTP daemon isn't reachable.
+                  <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+                    <button class="primary" disabled=${busy} onClick=${startDaemon}>Start daemon</button>
+                    <span style="color:var(--fg-3);font-size:12px">runs <code class="mono">ollama serve</code> detached</span>
+                  </div>
+                </div>
+              </div>
+            `
+            : null
+        }
+        ${
+          daemonRunning && !modelPulled
+            ? html`
+              <div class="card">
+                <div class="card-h"><span class="title">Model</span></div>
+                <div class="card-b" style="font-size:13px">
+                  <code class="mono">${modelName}</code> isn't installed yet.${pulling ? "" : " ~270 MB on first pull."}
+                  <div style="display:flex;gap:8px;margin-top:10px">
+                    <button class="primary" disabled=${busy || pulling} onClick=${() => pullModel(modelName)}>
+                      ${pulling ? "pulling…" : `Pull ${modelName}`}
+                    </button>
+                  </div>
+                  ${
+                    pull
+                      ? html`
+                        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;font-size:11.5px">
+                          <span class=${`pill ${pull.status === "done" ? "ok" : pull.status === "error" ? "err" : ""}`}>${pull.status}</span>
+                          <span style="color:var(--fg-3)">${((Date.now() - pull.startedAt) / 1000).toFixed(1)}s</span>
+                          ${pull.lastLine ? html`<code class="mono" style="color:var(--fg-3)">${pull.lastLine}</code>` : null}
+                        </div>
+                      `
+                      : null
+                  }
+                </div>
+              </div>
+            `
+            : null
+        }
+
+        ${
+          job
+            ? html`
+              ${sectionH3("Job")}
+              <${SemanticJobView} job=${job} running=${running} />
+            `
+            : null
         }
       </div>
-      ${info ? html`<div><span class="pill info">${info}</span></div>` : null}
-      ${error ? html`<div class="card accent-err">${error}</div>` : null}
 
-      ${sectionH3("Status")}
-      <div class="kv">
-        <div><span class="kv-key">project</span><code>${data.root}</code></div>
-        <div>
-          <span class="kv-key">ollama</span>
-          ${
-            binaryFound
-              ? daemonRunning
-                ? html`<span class="pill ok">reachable</span><span style="color:var(--fg-3);margin-left:8px">${installedModels.length} model(s)${
-                    installedModels.length > 0
-                      ? ` · ${installedModels.slice(0, 3).join(", ")}${installedModels.length > 3 ? "…" : ""}`
-                      : ""
-                  }</span>`
-                : html`<span class="pill warn">daemon down</span><span style="color:var(--fg-3);margin-left:8px">binary on PATH but not serving</span>`
-              : html`<span class="pill err">not installed</span><span style="color:var(--fg-3);margin-left:8px">${o.error ?? "ollama binary not on PATH"}</span>`
-          }
-        </div>
-        <div>
-          <span class="kv-key">model</span>
-          <code>${modelName}</code>
-          ${
-            modelPulled
-              ? html`<span class="pill ok" style="margin-left: 8px;">pulled</span>`
-              : daemonRunning
-                ? html`<span class="pill warn" style="margin-left: 8px;">not pulled</span>`
-                : html`<span class="pill" style="margin-left: 8px;">unknown (daemon down)</span>`
-          }
-        </div>
-        <div>
-          <span class="kv-key">index</span>
-          ${
-            data.index?.exists
-              ? html`<span style="color:var(--fg-3)">present at <code>.reasonix/semantic/</code></span>`
-              : html`<span style="color:var(--fg-3)">none — run an index to enable <code>semantic_search</code></span>`
-          }
-        </div>
-      </div>
-
-      ${
-        !binaryFound
-          ? html`
-            ${sectionH3("Install Ollama")}
-            <div class="card" style="font-size: 13px;">
-              Reasonix doesn't run package managers for you. Install Ollama
-              first, then come back to this panel:
-              <ul style="margin: 10px 0 4px 18px; padding: 0;">
-                <li><strong>macOS / Windows:</strong> download from <a href="https://ollama.com/download" target="_blank" rel="noreferrer">ollama.com/download</a></li>
-                <li><strong>Linux:</strong> <code>curl -fsSL https://ollama.com/install.sh | sh</code></li>
-              </ul>
-              <div style="color:var(--fg-3);margin-top:8px">After install, this panel will offer to start the daemon and pull <code>${modelName}</code> for you. Refresh after installing.</div>
-            </div>
-          `
-          : null
-      }
-
-      ${
-        binaryFound && !daemonRunning
-          ? html`
-            ${sectionH3("Daemon")}
-            <div class="card" style="font-size: 13px;">
-              <code>ollama</code> is on your PATH but the HTTP daemon isn't reachable.
-              <div class="row" style="margin-top: 10px;">
-                <button class="primary" disabled=${busy} onClick=${startDaemon}>Start daemon</button>
-                <span style="color:var(--fg-3);font-size:12px;align-self:center">runs <code>ollama serve</code> detached — survives Reasonix exit</span>
-              </div>
-            </div>
-          `
-          : null
-      }
-
-      ${
-        daemonRunning && !modelPulled
-          ? html`
-            ${sectionH3("Model")}
-            <div class="card" style="font-size: 13px;">
-              <code>${modelName}</code> isn't installed yet. ${pulling ? "" : "~270 MB download on first pull."}
-              <div class="row" style="margin-top: 10px;">
-                <button
-                  class="primary"
-                  disabled=${busy || pulling}
-                  onClick=${() => pullModel(modelName)}
-                >${pulling ? "pulling…" : `Pull ${modelName}`}</button>
-              </div>
+      <aside style="display:flex;flex-direction:column;gap:10px">
+        <div class="card">
+          <div class="card-h">
+            <span class="title">index status</span>
+            <span class="meta">
               ${
-                pull
-                  ? html`
-                    <div class="kv" style="margin-top: 10px;">
-                      <div>
-                        <span class="kv-key">status</span>
-                        <span class=${`pill ${pull.status === "done" ? "pill-ok" : pull.status === "error" ? "pill-err" : "pill-active"}`}>${pull.status}</span>
-                        <span style="color:var(--fg-3);margin-left:8px">${((Date.now() - pull.startedAt) / 1000).toFixed(1)}s</span>
-                      </div>
-                      ${
-                        pull.lastLine
-                          ? html`<div><span class="kv-key">last</span><code style="font-size: 11.5px;">${pull.lastLine}</code></div>`
-                          : null
-                      }
-                    </div>
-                  `
-                  : null
+                idx?.exists
+                  ? html`<span class="pill ok">● built</span>`
+                  : html`<span class="pill">none</span>`
               }
-            </div>
-          `
-          : null
-      }
+            </span>
+          </div>
+          ${
+            idx?.exists
+              ? html`
+                <div class="rail-kv"><span class="k">chunks</span><span class="v">${fmtNum(idx.chunks)}</span></div>
+                <div class="rail-kv"><span class="k">files</span><span class="v">${fmtNum(idx.files)}</span></div>
+                <div class="rail-kv"><span class="k">model</span><span class="v" style="font-size:11px">${idx.model ?? modelName}</span></div>
+                <div class="rail-kv"><span class="k">dim</span><span class="v">${fmtNum(idx.dim)}</span></div>
+                <div class="rail-kv"><span class="k">size</span><span class="v">${fmtBytes(idx.sizeBytes)}</span></div>
+                <div class="rail-kv"><span class="k">last build</span><span class="v">${fmtRelativeTime(idx.lastBuiltMs ?? null)}</span></div>
+              `
+              : html`
+                <div style="color:var(--fg-3);font-size:12.5px;padding:6px 0">
+                  Run an index to enable <code class="mono">semantic_search</code>.
+                </div>
+              `
+          }
+          <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+            <button class="primary" disabled=${busy || running || !ready} onClick=${() => start(false)}>${idx?.exists ? "Re-index" : "Build"}</button>
+            ${
+              idx?.exists
+                ? html`<button disabled=${busy || running || !ready} onClick=${() => start(true)}>Rebuild</button>`
+                : null
+            }
+            ${running ? html`<button onClick=${stop} style="border-color:var(--c-err);color:var(--c-err)">Stop</button>` : null}
+          </div>
+        </div>
 
-      ${sectionH3("Job")}
-      ${job ? html`<${SemanticJobView} job=${job} running=${running} />` : html`<div style="color:var(--fg-3)">No job has run in this dashboard yet.</div>`}
+        <div class="card">
+          <div class="card-h"><span class="title">ollama</span></div>
+          <div class="rail-kv">
+            <span class="k">binary</span>
+            <span class="v">${binaryFound ? html`<span class="pill ok">found</span>` : html`<span class="pill err">missing</span>`}</span>
+          </div>
+          <div class="rail-kv">
+            <span class="k">daemon</span>
+            <span class="v">${daemonRunning ? html`<span class="pill ok">up</span>` : html`<span class="pill warn">down</span>`}</span>
+          </div>
+          <div class="rail-kv">
+            <span class="k">model</span>
+            <span class="v">${modelPulled ? html`<span class="pill ok">pulled</span>` : html`<span class="pill warn">missing</span>`}</span>
+          </div>
+        </div>
 
-      <div class="row" style="margin-top: 14px;">
-        <button class="primary" disabled=${busy || running || !ready} onClick=${() => start(false)}>Index (incremental)</button>
-        <button disabled=${busy || running || !ready} onClick=${() => start(true)}>Rebuild (wipe + full)</button>
-        <button disabled=${busy || !running} onClick=${stop}>Stop</button>
-      </div>
-
-      <${SemanticExcludesCard} />
+        <${SemanticExcludesCard} />
+      </aside>
     </div>
   `;
 }
