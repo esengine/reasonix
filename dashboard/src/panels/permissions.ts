@@ -94,74 +94,131 @@ export function PermissionsPanel() {
     }
   }, [refresh]);
 
-  if (loading && !data) return html`<div class="boot">loading permissions…</div>`;
-  if (error) return html`<div class="notice err">permissions failed: ${error.message}</div>`;
+  if (loading && !data)
+    return html`<div class="card" style="color:var(--fg-3)">loading permissions…</div>`;
+  if (error) return html`<div class="card accent-err">permissions failed: ${error.message}</div>`;
   if (!data) return null;
   const p = data;
 
-  const banner =
-    p.editMode === "yolo"
-      ? html`<div class="notice warn">YOLO mode — every shell command auto-runs, allowlist bypassed. <code>/mode review</code> in TUI re-enables.</div>`
-      : null;
+  const feedbackPill = feedback
+    ? html`<span
+        class=${`pill ${feedback.kind === "err" ? "err" : feedback.kind === "ok" ? "ok" : "warn"}`}
+      >${feedback.text}</span>`
+    : null;
 
   return html`
-    <div>
-      <div class="panel-header">
-        <h2 class="panel-title">Permissions</h2>
-        <span class="panel-subtitle">${p.currentCwd ? `project: ${p.currentCwd}` : "no active project"}</span>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      ${
+        p.editMode === "yolo"
+          ? html`<div class="card accent-warn">
+              <div class="card-h"><span class="title" style="color:var(--c-warn)">YOLO mode</span></div>
+              <div class="card-b">
+                Every shell command auto-runs, allowlist bypassed.
+                Switch back with <code class="mono">/mode review</code> in the TUI.
+              </div>
+            </div>`
+          : null
+      }
+
+      <div class="chips">
+        <span class="chip-f active">project <span class="ct">${p.project.length}</span></span>
+        <span class="chip-f">builtin <span class="ct">${p.builtin.length}</span></span>
       </div>
-      ${banner}
 
       ${
         p.currentCwd
           ? html`
-          <div class="row">
-            <input
-              type="text"
-              placeholder='add a prefix, e.g. "npm run build" or "deploy.sh"'
-              value=${draft}
-              onInput=${(e: Event) => setDraft((e.target as HTMLInputElement).value)}
-              onKeyDown=${(e: KeyboardEvent) => {
-                if (e.key === "Enter") add();
-              }}
-              disabled=${busy}
-            />
-            <button class="primary" onClick=${add} disabled=${busy || !draft.trim()}>Add</button>
-            <button class="danger" onClick=${clearAll} disabled=${busy || p.project.length === 0}>Clear all</button>
-          </div>
-          ${feedback ? html`<div class="notice ${feedback.kind === "err" ? "err" : feedback.kind === "ok" ? "" : "warn"}">${feedback.text}</div>` : null}
-        `
-          : html`<div class="notice">Mutations require <code>/dashboard</code> from inside an active <code>reasonix code</code> session — standalone <code>reasonix dashboard</code> can't tell which project's allowlist to edit.</div>`
+            <div class="card">
+              <div class="card-h">
+                <span class="title">add a prefix</span>
+                <span class="meta">${p.currentCwd}</span>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input
+                  type="text"
+                  placeholder='e.g. "npm run build" or "deploy.sh"'
+                  value=${draft}
+                  onInput=${(e: Event) => setDraft((e.target as HTMLInputElement).value)}
+                  onKeyDown=${(e: KeyboardEvent) => {
+                    if (e.key === "Enter") add();
+                  }}
+                  disabled=${busy}
+                  style="flex:1"
+                />
+                <button class="primary" onClick=${add} disabled=${busy || !draft.trim()}>Add</button>
+                <button
+                  class="danger"
+                  onClick=${clearAll}
+                  disabled=${busy || p.project.length === 0}
+                >Clear all</button>
+              </div>
+              ${feedbackPill ? html`<div style="margin-top:8px">${feedbackPill}</div>` : null}
+            </div>
+          `
+          : html`
+            <div class="card accent-warn">
+              <div class="card-b">
+                Mutations require <code class="mono">/dashboard</code> from inside an active
+                <code class="mono">reasonix code</code> session — standalone
+                <code class="mono">reasonix dashboard</code> can't tell which project's allowlist to edit.
+              </div>
+            </div>
+          `
       }
 
-      <div class="section-title">Project allowlist (${p.project.length})</div>
+      <h3 style="margin:6px 0 0;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
+        Project allowlist · ${p.project.length}
+      </h3>
       ${
         p.project.length === 0
-          ? html`<div class="empty">Nothing stored yet for this project.</div>`
+          ? html`<div class="card" style="color:var(--fg-3)">Nothing stored yet for this project.</div>`
           : html`
-          <table>
-            <thead><tr><th>#</th><th>prefix</th><th></th></tr></thead>
-            <tbody>
-              ${p.project.map(
-                (prefix, i) => html`
-                <tr>
-                  <td class="muted">${i + 1}</td>
-                  <td><code>${prefix}</code></td>
-                  <td class="numeric">${p.currentCwd ? html`<button class="danger" onClick=${() => remove(prefix)} disabled=${busy}>remove</button>` : null}</td>
-                </tr>
-              `,
-              )}
-            </tbody>
-          </table>
-        `
+            <div class="card" style="padding:0;overflow:hidden">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th style="width:48px">#</th>
+                    <th>prefix</th>
+                    <th style="width:120px"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${p.project.map(
+                    (prefix, i) => html`
+                      <tr>
+                        <td class="dim">${i + 1}</td>
+                        <td><code class="mono">${prefix}</code></td>
+                        <td>
+                          ${
+                            p.currentCwd
+                              ? html`<button
+                                  class="danger"
+                                  onClick=${() => remove(prefix)}
+                                  disabled=${busy}
+                                >remove</button>`
+                              : null
+                          }
+                        </td>
+                      </tr>
+                    `,
+                  )}
+                </tbody>
+              </table>
+            </div>
+          `
       }
 
-      <div class="section-title">Builtin allowlist (${p.builtin.length}) — read-only, baked in</div>
-      <div class="card mono" style="font-size: 12px; line-height: 1.7;">
+      <h3 style="margin:6px 0 0;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
+        Builtin · ${p.builtin.length} · read-only
+      </h3>
+      <div class="card" style="font-family:var(--font-mono);font-size:11.5px;line-height:1.8">
         ${groupByVerb(p.builtin).map(
           ([verb, list]) => html`
-          <div><span class="pill pill-dim">${verb}</span> ${list.join(" · ")}</div>
-        `,
+            <div style="margin-bottom:4px">
+              <span class="pill" style="margin-right:6px">${verb}</span>
+              <span style="color:var(--fg-2)">${list.join(" · ")}</span>
+            </div>
+          `,
         )}
       </div>
     </div>
