@@ -10,6 +10,8 @@ export interface DashboardContext {
   /** Caller resolves via `defaultConfigPath()`; module deliberately avoids `homedir()` so tests can redirect. */
   configPath: string;
   usageLogPath: string;
+  /** Override the sessions dir (events.jsonl readers); production reads `~/.reasonix/sessions`. */
+  sessionsDir?: string;
   mode: "standalone" | "attached";
 
   loop?: CacheFirstLoop;
