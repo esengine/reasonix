@@ -1,6 +1,6 @@
 // @ts-nocheck — bulk JS-style migration; tighten types in a follow-up.
-import { useState } from "https://esm.sh/preact@10.22.0/hooks";
-import { marked } from "https://esm.sh/marked@12.0.2";
+import { useState } from "preact/hooks";
+import { marked } from "marked";
 import { html } from "../lib/html.js";
 import {
   escapeHtml,

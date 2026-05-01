@@ -1,5 +1,5 @@
 // @ts-nocheck — bulk JS-style migration; tighten types in a follow-up.
-import { useCallback, useEffect, useRef, useState } from "https://esm.sh/preact@10.22.0/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import {
   ChatMessage,
   CheckpointModal,

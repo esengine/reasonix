@@ -29,6 +29,7 @@ export default defineConfig([
     target: "es2022",
     platform: "browser",
     outDir: "dashboard/dist",
-    external: [/^https:\/\//],
+    noExternal: [/.*/],
+    splitting: false,
   },
 ]);

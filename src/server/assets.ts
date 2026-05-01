@@ -75,6 +75,18 @@ export function renderIndexHtml(token: string, mode: "standalone" | "attached"):
   return tpl.replaceAll("__REASONIX_TOKEN__", safeToken).replaceAll("__REASONIX_MODE__", mode);
 }
 
+/** Vendor CSS the bundle pulls from npm and the build script copies into `dashboard/dist/`. */
+const VENDOR_CSS_NAMES = new Set(["vendor-hljs.css", "vendor-uplot.css"]);
+const cachedVendorCss = new Map<string, string>();
+
+function loadVendorCss(name: string): string {
+  const cached = cachedVendorCss.get(name);
+  if (cached !== undefined) return cached;
+  const body = readFileSync(join(ASSET_DIR, "dist", name), "utf8");
+  cachedVendorCss.set(name, body);
+  return body;
+}
+
 export function serveAsset(name: string): { body: string; contentType: string } | null {
   if (name === "app.js") {
     return { body: loadApp(), contentType: "application/javascript; charset=utf-8" };
@@ -85,6 +97,9 @@ export function serveAsset(name: string): { body: string; contentType: string } 
   }
   if (name === "app.css") {
     return { body: loadCss(), contentType: "text/css; charset=utf-8" };
+  }
+  if (VENDOR_CSS_NAMES.has(name)) {
+    return { body: loadVendorCss(name), contentType: "text/css; charset=utf-8" };
   }
   return null;
 }

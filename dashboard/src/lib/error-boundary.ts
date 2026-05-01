@@ -1,6 +1,6 @@
-import htm from "https://esm.sh/htm@3.1.1";
-import { Component, type ComponentChildren, h } from "https://esm.sh/preact@10.22.0";
-import { useEffect, useState } from "https://esm.sh/preact@10.22.0/hooks";
+import htm from "htm";
+import { Component, type ComponentChildren, h } from "preact";
+import { useEffect, useState } from "preact/hooks";
 import { MODE } from "./api.js";
 import { type ErrorReport, appBus, reportAppError } from "./bus.js";
 

@@ -1,4 +1,4 @@
-import { useState } from "https://esm.sh/preact@10.22.0/hooks";
+import { useState } from "preact/hooks";
 import { fmtPct, fmtRelativeTime } from "../lib/format.js";
 import { html } from "../lib/html.js";
 import { usePoll } from "../lib/use-poll.js";

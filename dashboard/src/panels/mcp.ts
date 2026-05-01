@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "https://esm.sh/preact@10.22.0/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { fmtNum } from "../lib/format.js";
 import { html } from "../lib/html.js";

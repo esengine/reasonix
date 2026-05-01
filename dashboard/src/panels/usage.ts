@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "https://esm.sh/preact@10.22.0/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { fmtNum, fmtPct, fmtUsd } from "../lib/format.js";
 import { html } from "../lib/html.js";
@@ -18,7 +18,7 @@ type UPlotConstructor = new (
 let uPlotPromise: Promise<UPlotConstructor> | null = null;
 function loadUPlot(): Promise<UPlotConstructor> {
   if (!uPlotPromise) {
-    uPlotPromise = import("https://esm.sh/uplot@1.6.31").then(
+    uPlotPromise = import("uplot").then(
       (m) => (m.default ?? m) as UPlotConstructor,
     );
   }

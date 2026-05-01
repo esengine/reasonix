@@ -1,5 +1,5 @@
-import hljs from "https://esm.sh/highlight.js@11.10.0/lib/common";
-import { marked } from "https://esm.sh/marked@12.0.2";
+import hljs from "highlight.js/lib/common";
+import { marked } from "marked";
 
 export function escapeHtml(s: unknown): string {
   if (s == null) return "";
