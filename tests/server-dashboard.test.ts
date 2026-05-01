@@ -212,6 +212,10 @@ describe("dashboard server: endpoints", () => {
     expect(r.body.planMode).toBe(false);
     expect(r.body.pendingEdits).toBe(0);
     expect(r.body.toolCount).toBe(0);
+    expect(r.body.cockpit).toBeDefined();
+    expect(r.body.cockpit.balance).toBeNull();
+    expect(r.body.cockpit.tokens7d).toBeNull();
+    expect(r.body.cockpit.currentSession).toBeNull();
   });
 
   it("GET /api/usage returns aggregateUsage + record count", async () => {
