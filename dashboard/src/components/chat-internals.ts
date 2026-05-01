@@ -119,7 +119,7 @@ export function renderMessageBody(text: string | null | undefined) {
   return html`<div class="md" dangerouslySetInnerHTML=${{ __html: renderMarkdownToString(text) }}></div>`;
 }
 
-function parseToolArgs(raw: string | null | undefined): Record<string, unknown> | null {
+export function parseToolArgs(raw: string | null | undefined): Record<string, unknown> | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw);
