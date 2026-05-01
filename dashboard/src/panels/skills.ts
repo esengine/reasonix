@@ -145,11 +145,11 @@ export function SkillsPanel() {
           <span class="chip-f">builtin <span class="ct">${data.builtin.length}</span></span>
         </div>
 
-        <div style="padding:0 12px 8px;display:flex;gap:6px">
+        <div style="padding:0 12px 8px;display:flex;gap:6px;flex-wrap:wrap">
           <select
             value=${newScope}
             onChange=${(e: Event) => setNewScope((e.target as HTMLSelectElement).value as "global" | "project")}
-            style="flex:0 0 auto"
+            style="flex:0 0 auto;font-size:11.5px;padding:5px 6px"
           >
             <option value="global">global</option>
             ${data.paths.project ? html`<option value="project">project</option>` : null}
@@ -159,9 +159,9 @@ export function SkillsPanel() {
             placeholder="new skill"
             value=${newName}
             onInput=${(e: Event) => setNewName((e.target as HTMLInputElement).value)}
-            style="flex:1"
+            style="flex:1;min-width:0"
           />
-          <button class="btn primary" disabled=${busy || !newName.trim()} onClick=${create}>+</button>
+          <button class="btn primary" disabled=${busy || !newName.trim()} onClick=${create} style="flex:0 0 auto">+</button>
         </div>
 
         <div class="ssl-rows">

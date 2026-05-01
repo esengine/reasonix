@@ -107,6 +107,13 @@ export function SessionsPanel() {
                     <button class="btn ghost" onClick=${() => setOpen(null)}>← back</button>
                   </span>
                 </div>
+                <div class="card accent-brand" style="margin-bottom:10px">
+                  <div class="card-h"><span class="title">Resume in TUI</span></div>
+                  <div class="card-b" style="font-size:12.5px;color:var(--fg-2)">
+                    Mid-session swap requires a restart so the message log can rewind cleanly. Quit your current session, then run:
+                    <code class="mono" style="display:block;margin-top:8px;padding:8px 10px;background:var(--bg-input);border-radius:var(--r);color:var(--fg-0);font-size:12px;user-select:all">reasonix chat --session ${open.name}</code>
+                  </div>
+                </div>
                 ${
                   openLoading
                     ? html`<div style="color:var(--fg-3)">loading transcript…</div>`
