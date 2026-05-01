@@ -1,7 +1,7 @@
 /** Job state in a module-scoped Map keyed by project root so multi-root dashboards don't collide; CLI `reasonix index` runs independently. */
 
 import { loadIndexConfig } from "../../config.js";
-import { buildIndex, indexExists } from "../../index/semantic/builder.js";
+import { buildIndex, indexExists, querySemantic } from "../../index/semantic/builder.js";
 import type { BuildProgress, BuildResult } from "../../index/semantic/builder.js";
 import {
   checkOllamaStatus,
@@ -70,7 +70,60 @@ export async function handleSemantic(
     if (action === "start") return await startDaemon();
     if (action === "pull") return await startPull(body);
   }
+  if (sub === "search" && method === "POST") {
+    return await runSearch(body, ctx);
+  }
   return { status: 404, body: { error: "no such semantic endpoint" } };
+}
+
+async function runSearch(rawBody: string, ctx: DashboardContext): Promise<ApiResult> {
+  const root = getRoot(ctx);
+  if (!root) {
+    return { status: 503, body: { error: "search requires an attached code-mode session" } };
+  }
+  let parsed: { query?: unknown; topK?: unknown; minScore?: unknown };
+  try {
+    parsed = JSON.parse(rawBody || "{}");
+  } catch {
+    return { status: 400, body: { error: "body must be JSON" } };
+  }
+  const query = typeof parsed.query === "string" ? parsed.query.trim() : "";
+  if (!query) return { status: 400, body: { error: "query required" } };
+  const topK =
+    typeof parsed.topK === "number" && Number.isFinite(parsed.topK)
+      ? Math.max(1, Math.min(16, Math.floor(parsed.topK)))
+      : 8;
+  const minScore =
+    typeof parsed.minScore === "number" && Number.isFinite(parsed.minScore)
+      ? Math.max(0, Math.min(1, parsed.minScore))
+      : 0.3;
+  const startedAt = Date.now();
+  try {
+    const hits = await querySemantic(root, query, {
+      topK,
+      minScore,
+      model: DEFAULT_EMBED_MODEL,
+    });
+    if (hits === null) {
+      return { status: 404, body: { error: "no semantic index for this project" } };
+    }
+    return {
+      status: 200,
+      body: {
+        hits: hits.map((h) => ({
+          path: h.entry.path,
+          startLine: h.entry.startLine,
+          endLine: h.entry.endLine,
+          score: h.score,
+          snippet: h.entry.text,
+        })),
+        elapsedMs: Date.now() - startedAt,
+        model: DEFAULT_EMBED_MODEL,
+      },
+    };
+  } catch (err) {
+    return { status: 500, body: { error: (err as Error).message } };
+  }
 }
 
 async function getStatus(ctx: DashboardContext): Promise<ApiResult> {

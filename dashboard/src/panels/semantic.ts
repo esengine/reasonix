@@ -163,6 +163,7 @@ export function SemanticPanel() {
 
   return html`
     <div style="display:flex;flex-direction:column;gap:6px">
+      ${data.index?.exists ? html`<${SemanticSearchSection} />` : null}
       <div class="chips">
         <span class=${`chip-f ${data.index?.exists ? "active" : ""}`}>
           ${data.index?.exists ? "index built" : "no index yet"}
@@ -324,6 +325,114 @@ interface PreviewData {
   skipBuckets?: Record<string, number>;
   skipSamples?: Record<string, string[]>;
   sampleIncluded?: string[];
+}
+
+interface SearchHit {
+  path: string;
+  startLine: number;
+  endLine: number;
+  score: number;
+  snippet: string;
+}
+
+interface SearchResponse {
+  hits: SearchHit[];
+  elapsedMs: number;
+  model: string;
+}
+
+function SemanticSearchSection() {
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [meta, setMeta] = useState<{ elapsedMs: number; model: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const runSearch = useCallback(async () => {
+    const q = query.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<SearchResponse>("/semantic/search", {
+        method: "POST",
+        body: { query: q, topK: 8, minScore: 0.3 },
+      });
+      setHits(r.hits);
+      setMeta({ elapsedMs: r.elapsedMs, model: r.model });
+    } catch (err) {
+      setError((err as Error).message);
+      setHits(null);
+    } finally {
+      setBusy(false);
+    }
+  }, [query, busy]);
+
+  return html`
+    <div style="margin-bottom:14px">
+      <div style="position:relative">
+        <div style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--c-brand);font-family:var(--font-mono);font-size:14px;pointer-events:none">≈</div>
+        <input
+          type="text"
+          class="mono"
+          style="width:100%;padding:10px 14px 10px 38px;font-size:13.5px;background:var(--bg-input);border:1px solid var(--bd);border-radius:var(--r);color:var(--fg-0);outline:none"
+          placeholder="describe what to find — 'where do we handle abort signals'"
+          value=${query}
+          disabled=${busy}
+          onInput=${(e: Event) => setQuery((e.target as HTMLInputElement).value)}
+          onKeyDown=${(e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              runSearch();
+            }
+          }}
+        />
+      </div>
+      ${
+        hits || busy || error
+          ? html`
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin:8px 0 6px;display:flex;align-items:center;gap:8px">
+              ${busy
+                ? html`<span>searching…</span>`
+                : error
+                ? html`<span style="color:var(--c-err)">${error}</span>`
+                : hits
+                ? html`<span>${hits.length} result${hits.length === 1 ? "" : "s"} · ${meta?.elapsedMs ?? 0}ms · ${meta?.model ?? ""}</span>`
+                : null}
+            </div>
+            ${
+              hits && hits.length > 0
+                ? html`
+                  <div class="card" style="padding:0;max-height:420px;overflow-y:auto">
+                    ${hits.map(
+                      (h) => html`
+                        <div class="sr-card">
+                          <div class="sr-h">
+                            <span class="sr-path">${h.path}</span>
+                            <span class="sr-loc">L${h.startLine} – L${h.endLine}</span>
+                            <span class="sr-score">${h.score.toFixed(3)}</span>
+                          </div>
+                          <div class="sr-snip">${truncateSnippet(h.snippet)}</div>
+                        </div>
+                      `,
+                    )}
+                  </div>
+                `
+                : hits && hits.length === 0 && !busy
+                ? html`<div class="card" style="color:var(--fg-3);font-size:12px">No matches above the score threshold.</div>`
+                : null
+            }
+          `
+          : null
+      }
+    </div>
+  `;
+}
+
+function truncateSnippet(text: string, maxLines = 8): string {
+  const lines = text.split("\n");
+  if (lines.length <= maxLines) return text;
+  return `${lines.slice(0, maxLines).join("\n")}\n  …(${lines.length - maxLines} more lines)`;
 }
 
 function toDraft(c: IndexConfig): ExcludeDraft {
