@@ -1,6 +1,5 @@
-// @ts-nocheck — bulk JS-style migration; tighten types in a follow-up.
-import { useState } from "preact/hooks";
 import { marked } from "marked";
+import { useState } from "preact/hooks";
 import { html } from "../lib/html.js";
 import {
   escapeHtml,
@@ -11,7 +10,18 @@ import {
   renderSearchReplace,
 } from "../lib/markdown.js";
 
-const ROLE_GLYPH = {
+export type ChatRole = "user" | "assistant" | "tool" | "info" | "warning" | "error";
+
+export interface ChatMsg {
+  id: string;
+  role: ChatRole;
+  text?: string;
+  reasoning?: string;
+  toolName?: string;
+  toolArgs?: string;
+}
+
+const ROLE_GLYPH: Record<ChatRole, string> = {
   user: "◇",
   assistant: "◆",
   tool: "▣",
@@ -20,12 +30,96 @@ const ROLE_GLYPH = {
   error: "✦",
 };
 
-export function renderMessageBody(text) {
+export type OnResolve = (kind: string, ...args: unknown[]) => void;
+
+interface ToolCardProps {
+  msg: ChatMsg;
+}
+
+interface ChatMessageProps {
+  msg: ChatMsg;
+  streaming?: boolean;
+}
+
+interface ModalCardProps {
+  accent: string;
+  icon: string;
+  title: string;
+  subtitle?: string;
+  children?: unknown;
+}
+
+interface ShellModalSpec {
+  command: string;
+  allowPrefix?: string;
+  shellKind?: string;
+}
+
+interface ChoiceOption {
+  id: string;
+  title: string;
+  summary?: string;
+}
+
+interface ChoiceModalSpec {
+  question: string;
+  options: ChoiceOption[];
+  allowCustom?: boolean;
+}
+
+interface PlanModalSpec {
+  body?: string;
+}
+
+interface EditReviewSpec {
+  search?: string;
+  replace?: string;
+  path?: string;
+  remaining: number;
+  total: number;
+}
+
+interface WorkspaceSpec {
+  path: string;
+}
+
+interface CheckpointSpec {
+  stepId: string;
+  title?: string;
+  completed?: number;
+  total?: number;
+}
+
+interface RevisionStep {
+  id: string;
+  title: string;
+  action: string;
+  risk?: "low" | "med" | "high";
+}
+
+interface RevisionSpec {
+  summary?: string;
+  reason: string;
+  remainingSteps: RevisionStep[];
+}
+
+interface DiffEntry {
+  kind: "context" | "ins" | "del";
+  text: string;
+}
+
+interface DiffPair {
+  left: string | null;
+  right: string | null;
+  kind: "context" | "change" | "ins" | "del";
+}
+
+export function renderMessageBody(text: string | null | undefined) {
   if (!text) return null;
   return html`<div class="md" dangerouslySetInnerHTML=${{ __html: renderMarkdownToString(text) }}></div>`;
 }
 
-function parseToolArgs(raw) {
+function parseToolArgs(raw: string | null | undefined): Record<string, unknown> | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw);
@@ -34,12 +128,12 @@ function parseToolArgs(raw) {
   }
 }
 
-export function ToolCard({ msg }) {
+export function ToolCard({ msg }: ToolCardProps) {
   const args = parseToolArgs(msg.toolArgs);
   const name = msg.toolName ?? "tool";
   // Reasonix's filesystem tools emit the path in args.path; MCP-bridged
   // ones may differ but most expose a `path` field too. Normalize.
-  const path = args?.path ?? args?.file_path ?? args?.filename;
+  const path = (args?.path ?? args?.file_path ?? args?.filename) as string | undefined;
 
   // edit_file (Reasonix) — search/replace pair → diff view.
   if (
@@ -48,7 +142,11 @@ export function ToolCard({ msg }) {
     typeof args.search === "string" &&
     typeof args.replace === "string"
   ) {
-    const diffHtml = renderSearchReplace(args.search, args.replace, path ?? "");
+    const diffHtml = renderSearchReplace(
+      args.search as string,
+      args.replace as string,
+      path ?? "",
+    );
     return html`
       <div class="tool-card">
         <div class="tool-card-head">
@@ -77,7 +175,7 @@ export function ToolCard({ msg }) {
           ${path ? html`<code class="tool-card-path">${path}</code>` : null}
           ${lang ? html`<span class="pill pill-dim">${lang}</span>` : null}
         </div>
-        <div dangerouslySetInnerHTML=${{ __html: renderHighlightedBlock(args.content, lang) }}></div>
+        <div dangerouslySetInnerHTML=${{ __html: renderHighlightedBlock(args.content as string, lang) }}></div>
         ${msg.text ? html`<div class="tool-card-result">${msg.text}</div>` : null}
       </div>
     `;
@@ -94,7 +192,7 @@ export function ToolCard({ msg }) {
           ${path ? html`<code class="tool-card-path">${path}</code>` : null}
           ${lang ? html`<span class="pill pill-dim">${lang}</span>` : null}
         </div>
-        <div dangerouslySetInnerHTML=${{ __html: renderHighlightedBlock(msg.text, lang) }}></div>
+        <div dangerouslySetInnerHTML=${{ __html: renderHighlightedBlock(msg.text ?? "", lang) }}></div>
       </div>
     `;
   }
@@ -157,9 +255,9 @@ export function ToolCard({ msg }) {
   `;
 }
 
-export function ChatMessage({ msg, streaming }) {
+export function ChatMessage({ msg, streaming }: ChatMessageProps) {
   const role = msg.role;
-  const glyph = ROLE_GLYPH[role] ?? "·";
+  const glyph = ROLE_GLYPH[role as ChatRole] ?? "·";
   if (role === "tool") {
     return html`
       <div class="chat-msg tool">
@@ -188,7 +286,7 @@ export function ChatMessage({ msg, streaming }) {
 // server; the SSE channel will echo back a modal-down that clears the
 // local state — both surfaces stay in lockstep without polling.
 
-export function ModalCard({ accent, icon, title, subtitle, children }) {
+export function ModalCard({ accent, icon, title, subtitle, children }: ModalCardProps) {
   return html`
     <div class="modal-card" style=${`border-left-color: ${accent};`}>
       <div class="modal-card-head">
@@ -203,7 +301,7 @@ export function ModalCard({ accent, icon, title, subtitle, children }) {
   `;
 }
 
-export function ShellModal({ modal, onResolve }) {
+export function ShellModal({ modal, onResolve }: { modal: ShellModalSpec; onResolve: OnResolve }) {
   const isBg = modal.shellKind === "run_background";
   return html`
     <${ModalCard}
@@ -224,13 +322,13 @@ export function ShellModal({ modal, onResolve }) {
   `;
 }
 
-export function ChoiceModal({ modal, onResolve }) {
+export function ChoiceModal({ modal, onResolve }: { modal: ChoiceModalSpec; onResolve: OnResolve }) {
   const [custom, setCustom] = useState("");
   const [showCustom, setShowCustom] = useState(false);
   return html`
     <${ModalCard} accent="#f0abfc" icon="🔀" title="model wants you to pick" subtitle=${modal.question}>
       ${modal.options.map(
-        (opt) => html`
+        (opt: ChoiceOption) => html`
         <button
           key=${opt.id}
           class="modal-choice-row"
@@ -251,7 +349,7 @@ export function ChoiceModal({ modal, onResolve }) {
                 placeholder="Type a free-form answer…"
                 rows="2"
                 value=${custom}
-                onInput=${(e) => setCustom(e.target.value)}
+                onInput=${(e: Event) => setCustom((e.target as HTMLTextAreaElement).value)}
               ></textarea>
               <div class="modal-actions">
                 <button class="primary" onClick=${() => onResolve("choice", { kind: "custom", text: custom })} disabled=${!custom.trim()}>Send</button>
@@ -280,9 +378,9 @@ export function ChoiceModal({ modal, onResolve }) {
   `;
 }
 
-export function PlanModal({ modal, onResolve }) {
+export function PlanModal({ modal, onResolve }: { modal: PlanModalSpec; onResolve: OnResolve }) {
   const [feedback, setFeedback] = useState("");
-  const [stage, setStage] = useState(null); // null | "approve" | "refine"
+  const [stage, setStage] = useState<"approve" | "refine" | null>(null);
   const send = () => onResolve("plan", stage, feedback);
   return html`
     <${ModalCard} accent="#67e8f9" icon="◆" title="plan submitted" subtitle="model proposed a plan; review then pick">
@@ -298,7 +396,7 @@ export function PlanModal({ modal, onResolve }) {
             }
             rows="3"
             value=${feedback}
-            onInput=${(e) => setFeedback(e.target.value)}
+            onInput=${(e: Event) => setFeedback((e.target as HTMLTextAreaElement).value)}
           ></textarea>
           <div class="modal-actions">
             <button class="primary" onClick=${send}>${stage === "approve" ? "Approve" : "Send refinement"}</button>
@@ -324,29 +422,29 @@ export function PlanModal({ modal, onResolve }) {
 // appear on both sides, "del" only on the left (red), "ins" only on the
 // right (green). Adjacent del/ins are paired into one row downstream so
 // the change reads "old → new" left-to-right like a git side-by-side.
-function lineDiff(aLines, bLines) {
+function lineDiff(aLines: string[], bLines: string[]): DiffEntry[] {
   const m = aLines.length;
   const n = bLines.length;
-  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      if (aLines[i - 1] === bLines[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
-      else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      if (aLines[i - 1] === bLines[j - 1]) dp[i]![j] = dp[i - 1]![j - 1]! + 1;
+      else dp[i]![j] = Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!);
     }
   }
-  const out = [];
+  const out: DiffEntry[] = [];
   let i = m;
   let j = n;
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && aLines[i - 1] === bLines[j - 1]) {
-      out.push({ kind: "context", text: aLines[i - 1] });
+      out.push({ kind: "context", text: aLines[i - 1]! });
       i--;
       j--;
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      out.push({ kind: "ins", text: bLines[j - 1] });
+    } else if (j > 0 && (i === 0 || dp[i]![j - 1]! >= dp[i - 1]![j]!)) {
+      out.push({ kind: "ins", text: bLines[j - 1]! });
       j--;
     } else {
-      out.push({ kind: "del", text: aLines[i - 1] });
+      out.push({ kind: "del", text: aLines[i - 1]! });
       i--;
     }
   }
@@ -357,38 +455,41 @@ function lineDiff(aLines, bLines) {
 // followed by a run of inss collapses into rows of (del[k], ins[k]) so
 // the modified line lines up across the gutter; surplus on either side
 // produces rows with the opposite cell empty.
-function pairDiffRows(diff) {
-  const rows = [];
+function pairDiffRows(diff: DiffEntry[]): DiffPair[] {
+  const rows: DiffPair[] = [];
   let k = 0;
   while (k < diff.length) {
-    if (diff[k].kind === "context") {
-      rows.push({ left: diff[k].text, right: diff[k].text, kind: "context" });
+    const entry = diff[k]!;
+    if (entry.kind === "context") {
+      rows.push({ left: entry.text, right: entry.text, kind: "context" });
       k++;
       continue;
     }
-    const dels = [];
-    const inss = [];
-    while (k < diff.length && diff[k].kind === "del") {
-      dels.push(diff[k].text);
+    const dels: string[] = [];
+    const inss: string[] = [];
+    while (k < diff.length && diff[k]!.kind === "del") {
+      dels.push(diff[k]!.text);
       k++;
     }
-    while (k < diff.length && diff[k].kind === "ins") {
-      inss.push(diff[k].text);
+    while (k < diff.length && diff[k]!.kind === "ins") {
+      inss.push(diff[k]!.text);
       k++;
     }
     const pairs = Math.max(dels.length, inss.length);
     for (let p = 0; p < pairs; p++) {
+      const dp = dels[p];
+      const ip = inss[p];
       rows.push({
-        left: dels[p] ?? null,
-        right: inss[p] ?? null,
-        kind: dels[p] != null && inss[p] != null ? "change" : dels[p] != null ? "del" : "ins",
+        left: dp ?? null,
+        right: ip ?? null,
+        kind: dp != null && ip != null ? "change" : dp != null ? "del" : "ins",
       });
     }
   }
   return rows;
 }
 
-export function EditReviewModal({ modal, onResolve }) {
+export function EditReviewModal({ modal, onResolve }: { modal: EditReviewSpec; onResolve: OnResolve }) {
   const search = modal.search ?? "";
   const replace = modal.replace ?? "";
   const lang = langFromPath(modal.path);
@@ -451,7 +552,7 @@ export function EditReviewModal({ modal, onResolve }) {
   `;
 }
 
-export function WorkspaceModal({ modal, onResolve }) {
+export function WorkspaceModal({ modal, onResolve }: { modal: WorkspaceSpec; onResolve: OnResolve }) {
   return html`
     <${ModalCard}
       accent="#fbbf24"
@@ -468,11 +569,11 @@ export function WorkspaceModal({ modal, onResolve }) {
   `;
 }
 
-export function CheckpointModal({ modal, onResolve }) {
+export function CheckpointModal({ modal, onResolve }: { modal: CheckpointSpec; onResolve: OnResolve }) {
   const [reviseText, setReviseText] = useState("");
   const [staged, setStaged] = useState(false);
   const label = modal.title ? `${modal.stepId} · ${modal.title}` : modal.stepId;
-  const counter = modal.total > 0 ? ` (${modal.completed}/${modal.total})` : "";
+  const counter = (modal.total ?? 0) > 0 ? ` (${modal.completed}/${modal.total})` : "";
   return html`
     <${ModalCard}
       accent="#a5f3fc"
@@ -487,7 +588,7 @@ export function CheckpointModal({ modal, onResolve }) {
             placeholder="What needs to change before the next step? Leave blank to just continue."
             rows="3"
             value=${reviseText}
-            onInput=${(e) => setReviseText(e.target.value)}
+            onInput=${(e: Event) => setReviseText((e.target as HTMLTextAreaElement).value)}
           ></textarea>
           <div class="modal-actions">
             <button class="primary" onClick=${() => onResolve("checkpoint", "revise", reviseText)}>Send revision</button>
@@ -509,8 +610,8 @@ export function CheckpointModal({ modal, onResolve }) {
   `;
 }
 
-export function RevisionModal({ modal, onResolve }) {
-  const riskColor = (r) =>
+export function RevisionModal({ modal, onResolve }: { modal: RevisionSpec; onResolve: OnResolve }) {
+  const riskColor = (r: string | undefined) =>
     r === "high" ? "#f87171" : r === "med" ? "#fbbf24" : r === "low" ? "#86efac" : "#9ca3af";
   return html`
     <${ModalCard}
@@ -522,7 +623,7 @@ export function RevisionModal({ modal, onResolve }) {
       <div class="modal-revise-reason">${modal.reason}</div>
       <ol class="modal-revise-steps">
         ${modal.remainingSteps.map(
-          (s) => html`
+          (s: RevisionStep) => html`
             <li key=${s.id}>
               <span class="modal-revise-dot" style=${`background:${riskColor(s.risk)}`}></span>
               <span class="modal-revise-id">${s.id}</span>
