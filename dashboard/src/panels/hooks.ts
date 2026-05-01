@@ -65,38 +65,53 @@ export function HooksPanel() {
     [drafts, load],
   );
 
-  if (!data && !error) return html`<div class="boot">loading hooks…</div>`;
-  if (error && !data) return html`<div class="notice err">${error}</div>`;
+  if (!data && !error)
+    return html`<div class="card" style="color:var(--fg-3)">loading hooks…</div>`;
+  if (error && !data) return html`<div class="card accent-err">${error}</div>`;
   if (!data) return null;
 
+  const sectionH3 = (text: string, sub?: string) => html`
+    <h3 style="margin:18px 0 8px;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
+      ${text}${sub ? html`<span style="margin-left:10px;color:var(--fg-4);font-weight:400;text-transform:none;letter-spacing:0">${sub}</span>` : null}
+    </h3>
+  `;
+
   return html`
-    <div>
-      <div class="panel-header">
-        <h2 class="panel-title">Hooks</h2>
-        <span class="panel-subtitle">${data.resolved.length} resolved · events: ${data.events.join(", ")}</span>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div class="chips">
+        <span class="chip-f active">resolved <span class="ct">${data.resolved.length}</span></span>
+        ${data.events.map((ev) => html`<span class="chip-f">${ev}</span>`)}
       </div>
-      ${info ? html`<div class="notice">${info}</div>` : null}
-      ${error ? html`<div class="notice err">${error}</div>` : null}
+      ${info ? html`<div><span class="pill ok">${info}</span></div>` : null}
+      ${error ? html`<div class="card accent-err">${error}</div>` : null}
+
       ${(["project", "global"] as const).map((scope) => {
         const meta = data[scope];
         return html`
-          <div class="section-title">${scope} — <code>${meta.path ?? "(no project)"}</code></div>
+          ${sectionH3(scope, meta.path ?? "(no path)")}
           ${
             scope === "project" && !meta.path
-              ? html`<div class="empty">No active project — open <code>/dashboard</code> from <code>reasonix code</code> to edit project hooks.</div>`
+              ? html`<div class="card" style="color:var(--fg-3)">
+                  No active project — open <code class="mono">/dashboard</code> from
+                  <code class="mono">reasonix code</code> to edit project hooks.
+                </div>`
               : html`
-              <textarea
-                style="width: 100%; height: 240px; font-family: var(--mono); font-size: 12.5px; background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px;"
-                value=${drafts[scope] ?? ""}
-                onInput=${(e: Event) =>
-                  setDrafts({ ...drafts, [scope]: (e.target as HTMLTextAreaElement).value })}
-                disabled=${busy}
-              ></textarea>
-              <div class="row" style="margin-top: 8px;">
-                <button class="primary" disabled=${busy} onClick=${() => saveScope(scope)}>Save + Reload</button>
-                <button disabled=${busy} onClick=${load}>Discard changes</button>
-              </div>
-            `
+                <div class="card">
+                  <textarea
+                    style="width:100%;height:240px;background:var(--bg-input);color:var(--fg-0);border:1px solid var(--bd);border-radius:var(--r);padding:10px;font-family:var(--font-mono);font-size:12.5px;line-height:1.55;resize:vertical"
+                    value=${drafts[scope] ?? ""}
+                    onInput=${(e: Event) =>
+                      setDrafts({ ...drafts, [scope]: (e.target as HTMLTextAreaElement).value })}
+                    disabled=${busy}
+                  ></textarea>
+                  <div style="display:flex;gap:6px;margin-top:8px">
+                    <button class="btn primary" disabled=${busy} onClick=${() => saveScope(scope)}>
+                      Save + Reload
+                    </button>
+                    <button class="btn ghost" disabled=${busy} onClick=${load}>Discard changes</button>
+                  </div>
+                </div>
+              `
           }
         `;
       })}
