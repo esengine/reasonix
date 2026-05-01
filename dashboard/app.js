@@ -23,27 +23,42 @@ import { UsagePanel } from "./src/panels/usage";
 
 const html = htm.bind(h);
 
-const TABS = [
-  { id: "chat", name: "Chat", glyph: "◆", panel: () => html`<${ChatPanel} />`, ready: true, badge: null },
-  { id: "overview", name: "Overview", glyph: "◈", panel: () => html`<${OverviewPanel} />`, ready: true, badge: null },
-  { id: "usage", name: "Usage", glyph: "$", panel: () => html`<${UsagePanel} />`, ready: true, badge: null },
-  { id: "sessions", name: "Sessions", glyph: "›", panel: () => html`<${SessionsPanel} />`, ready: true, badge: null },
-  { id: "plans", name: "Plans", glyph: "P", panel: () => html`<${PlansPanel} />`, ready: true, badge: null },
-  { id: "tools", name: "Tools", glyph: "▣", panel: () => html`<${ToolsPanel} />`, ready: true, badge: null },
-  { id: "permissions", name: "Permissions", glyph: "▎", panel: () => html`<${PermissionsPanel} />`, ready: true, badge: null },
-  { id: "health", name: "System", glyph: "+", panel: () => html`<${SystemPanel} />`, ready: true, badge: null },
-  { id: "semantic", name: "Semantic", glyph: "≈", panel: () => html`<${SemanticPanel} />`, ready: true, badge: null },
-  { id: "mcp", name: "MCP", glyph: "M", panel: () => html`<${McpPanel} />`, ready: true, badge: null },
-  { id: "skills", name: "Skills", glyph: "S", panel: () => html`<${SkillsPanel} />`, ready: true, badge: null },
-  { id: "memory", name: "Memory", glyph: "·", panel: () => html`<${MemoryPanel} />`, ready: true, badge: null },
-  { id: "hooks", name: "Hooks", glyph: "H", panel: () => html`<${HooksPanel} />`, ready: true, badge: null },
-  { id: "settings", name: "Settings", glyph: "⌘", panel: () => html`<${SettingsPanel} />`, ready: true, badge: null },
+const TAB_SECTIONS = [
+  {
+    label: "workspace",
+    tabs: [
+      { id: "chat", name: "Chat", glyph: "◆", panel: () => html`<${ChatPanel} />` },
+      { id: "plans", name: "Plans", glyph: "⊞", panel: () => html`<${PlansPanel} />` },
+      { id: "sessions", name: "Sessions", glyph: "›", panel: () => html`<${SessionsPanel} />` },
+    ],
+  },
+  {
+    label: "observe",
+    tabs: [
+      { id: "overview", name: "Overview", glyph: "◈", panel: () => html`<${OverviewPanel} />` },
+      { id: "usage", name: "Usage", glyph: "$", panel: () => html`<${UsagePanel} />` },
+      { id: "health", name: "System", glyph: "+", panel: () => html`<${SystemPanel} />` },
+      { id: "semantic", name: "Semantic", glyph: "≈", panel: () => html`<${SemanticPanel} />` },
+    ],
+  },
+  {
+    label: "configure",
+    tabs: [
+      { id: "tools", name: "Tools", glyph: "▣", panel: () => html`<${ToolsPanel} />` },
+      { id: "permissions", name: "Permissions", glyph: "▎", panel: () => html`<${PermissionsPanel} />` },
+      { id: "mcp", name: "MCP", glyph: "M", panel: () => html`<${McpPanel} />` },
+      { id: "skills", name: "Skills", glyph: "S", panel: () => html`<${SkillsPanel} />` },
+      { id: "memory", name: "Memory", glyph: "·", panel: () => html`<${MemoryPanel} />` },
+      { id: "hooks", name: "Hooks", glyph: "H", panel: () => html`<${HooksPanel} />` },
+      { id: "settings", name: "Settings", glyph: "⌘", panel: () => html`<${SettingsPanel} />` },
+    ],
+  },
 ];
+
+const ALL_TABS = TAB_SECTIONS.flatMap((s) => s.tabs);
 
 function App() {
   const [activeId, setActiveId] = useState("chat");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Desktop "icon only" collapse — persisted so the choice survives reload.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem("rx.sidebarCollapsed") === "1";
@@ -58,15 +73,7 @@ function App() {
       /* private mode / disabled storage — ignore */
     }
   }, [sidebarCollapsed]);
-  const active = TABS.find((t) => t.id === activeId) ?? TABS[0];
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") setSidebarOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  const active = ALL_TABS.find((t) => t.id === activeId) ?? ALL_TABS[0];
 
   useEffect(() => {
     const onNav = (ev) => {
@@ -77,45 +84,59 @@ function App() {
     return () => appBus.removeEventListener("navigate-tab", onNav);
   }, []);
 
-  const pickTab = useCallback((id) => {
-    setActiveId(id);
-    setSidebarOpen(false);
-  }, []);
+  const pickTab = useCallback((id) => setActiveId(id), []);
 
   return html`
-    <div class=${`sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
-      <div class="sidebar-header">
-        <div class="sidebar-brand" title="Reasonix"><span class="glyph">◈</span><span class="sidebar-label"> REASONIX</span></div>
-        <div class="sidebar-version sidebar-label">dashboard</div>
-        <div class="sidebar-mode sidebar-label">${MODE}</div>
+    <div class=${`app ${sidebarCollapsed ? "collapsed" : ""}`}>
+      <aside class="app-side">
+        <div class="brand">
+          <span class="glyph">◈</span>
+          <span class="label">REASONIX</span>
+          <span class="ver">${MODE}</span>
+        </div>
+        <div class="side-tabs">
+          ${TAB_SECTIONS.map(
+            (section) => html`
+              <div class="side-section">${section.label}</div>
+              ${section.tabs.map(
+                (tab) => html`
+                  <div
+                    class=${`side-tab ${tab.id === active.id ? "active" : ""}`}
+                    onClick=${() => pickTab(tab.id)}
+                    title=${tab.name}
+                  >
+                    <span class="g">${tab.glyph}</span>
+                    <span class="label">${tab.name}</span>
+                  </div>
+                `,
+              )}
+            `,
+          )}
+        </div>
+        <div class="side-foot">
+          <span class="label">127.0.0.1</span>
+          <span
+            class="toggle"
+            title=${sidebarCollapsed ? "expand" : "collapse"}
+            onClick=${() => setSidebarCollapsed((c) => !c)}
+          >${sidebarCollapsed ? "»" : "«"}</span>
+        </div>
+      </aside>
+      <header class="app-top">
+        <span class="ws">
+          <span class="path">dashboard</span>
+          <span class="sep">·</span>
+          <span class="branch">${MODE}</span>
+        </span>
+        <span class="grow"></span>
+      </header>
+      <div class="app-body">
+        <${ErrorBoundary}>${active.panel()}<//>
       </div>
-      <div class="gradient-rule"></div>
-      <div class="sidebar-tabs">
-        ${TABS.map(
-          (tab) => html`
-          <div
-            class="tab ${tab.id === active.id ? "active" : ""} ${!tab.ready ? "tab-stub" : ""}"
-            onClick=${() => tab.ready && pickTab(tab.id)}
-            title=${tab.name}
-          >
-            <span class="glyph">${tab.glyph}</span>
-            <span class="sidebar-label">${tab.name}</span>
-            ${tab.badge ? html`<span class="badge sidebar-label">${tab.badge}</span>` : null}
-          </div>
-        `,
-        )}
-      </div>
-      <button
-        class="sidebar-collapse-toggle"
-        onClick=${() => setSidebarCollapsed((c) => !c)}
-        title=${sidebarCollapsed ? "expand sidebar" : "collapse to icons"}
-      >${sidebarCollapsed ? "▶" : "◀"}<span class="sidebar-label">  ${sidebarCollapsed ? "expand" : "collapse"}</span></button>
-      <div class="sidebar-footer sidebar-label">127.0.0.1 only · token-gated</div>
-    </div>
-    <div class="sidebar-backdrop" onClick=${() => setSidebarOpen(false)}></div>
-    <button class="menu-toggle" onClick=${() => setSidebarOpen((s) => !s)} aria-label="Toggle sidebar">≡</button>
-    <div class="main">
-      <${ErrorBoundary}>${active.panel()}<//>
+      <footer class="app-status">
+        <span class="grow"></span>
+        <span class="item">127.0.0.1 only · token-gated</span>
+      </footer>
     </div>
     <${ToastStack} />
     <${ErrorOverlay} />
