@@ -1,5 +1,6 @@
 import { handleAbort } from "./api/abort.js";
 import { handleEditMode } from "./api/edit-mode.js";
+import { handleFiles } from "./api/files.js";
 import { handleHealth } from "./api/health.js";
 import { handleHooks } from "./api/hooks.js";
 import { handleIndexConfig } from "./api/index-config.js";
@@ -14,6 +15,7 @@ import { handleSemantic } from "./api/semantic.js";
 import { handleSessions } from "./api/sessions.js";
 import { handleSettings } from "./api/settings.js";
 import { handleSkills } from "./api/skills.js";
+import { handleSlash } from "./api/slash.js";
 import { handleSubmit } from "./api/submit.js";
 import { handleTools } from "./api/tools.js";
 import { handleUsage } from "./api/usage.js";
@@ -74,6 +76,10 @@ export async function handleApi(
         return await handleSemantic(method, rest, body, ctx);
       case "index-config":
         return await handleIndexConfig(method, rest, body, ctx);
+      case "slash":
+        return await handleSlash(method, rest, body, ctx);
+      case "files":
+        return await handleFiles(method, rest, body, ctx);
       default:
         return { status: 404, body: { error: `no such endpoint: /${head}` } };
     }

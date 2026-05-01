@@ -130,14 +130,17 @@ export function McpPanel() {
         ${error ? html`<div class="card accent-err" style="margin:0 12px 8px">${error}</div>` : null}
 
         <div class="ssl-rows">
-          ${liveCount === 0 && unbridgedCount === 0
-            ? html`<div style="color:var(--fg-3);padding:14px;font-size:12px">
+          ${
+            liveCount === 0 && unbridgedCount === 0
+              ? html`<div style="color:var(--fg-3);padding:14px;font-size:12px">
                 No MCP servers in this session.
               </div>`
-            : null}
+              : null
+          }
           ${
             showLive
-              ? data.servers.map((s) => html`
+              ? data.servers.map(
+                  (s) => html`
                   <div
                     class=${`ssl-row ${open?.label === s.label ? "sel" : ""}`}
                     onClick=${() => {
@@ -149,12 +152,14 @@ export function McpPanel() {
                     <span class="preview">${specCommand(s.spec)}</span>
                     <span class="meta"><span><span class="v">${fmtNum(s.toolCount)}</span> tools</span></span>
                   </div>
-                `)
+                `,
+                )
               : null
           }
           ${
             showUnbridged
-              ? unbridgedSpecs.map((spec) => html`
+              ? unbridgedSpecs.map(
+                  (spec) => html`
                   <div
                     class=${`ssl-row ${openUnbridged === spec ? "sel" : ""}`}
                     onClick=${() => {
@@ -166,7 +171,8 @@ export function McpPanel() {
                     <span class="preview">${specCommand(spec)}</span>
                     <span class="meta"><span class="dim">in config · not loaded</span></span>
                   </div>
-                `)
+                `,
+                )
               : null
           }
         </div>
@@ -202,10 +208,10 @@ export function McpPanel() {
               </div>
             `
             : open == null
-            ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
+              ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
                 Pick an MCP server on the left to inspect tools / resources / prompts.
               </div>`
-            : html`
+              : html`
                 <div class="sessions-detail-h">
                   <span class="name">${open.label}</span>
                   <span class="ws">${open.serverInfo?.name ?? "—"} ${open.serverInfo?.version ? `v${open.serverInfo.version}` : ""} · ${open.protocolVersion ?? "—"}</span>
@@ -235,7 +241,8 @@ export function McpPanel() {
                     <thead><tr><th>name</th><th>description</th></tr></thead>
                     <tbody>
                       ${open.tools.map(
-                        (t) => html`<tr><td><code class="mono">${t.name}</code></td><td class="dim">${t.description ?? ""}</td></tr>`,
+                        (t) =>
+                          html`<tr><td><code class="mono">${t.name}</code></td><td class="dim">${t.description ?? ""}</td></tr>`,
                       )}
                     </tbody>
                   </table>
@@ -252,7 +259,8 @@ export function McpPanel() {
                           <thead><tr><th>name</th><th>uri</th></tr></thead>
                           <tbody>
                             ${open.resources.map(
-                              (r) => html`<tr><td>${r.name}</td><td class="path">${r.uri}</td></tr>`,
+                              (r) =>
+                                html`<tr><td>${r.name}</td><td class="path">${r.uri}</td></tr>`,
                             )}
                           </tbody>
                         </table>
@@ -272,7 +280,8 @@ export function McpPanel() {
                           <thead><tr><th>name</th><th>description</th></tr></thead>
                           <tbody>
                             ${open.prompts.map(
-                              (p) => html`<tr><td><code class="mono">${p.name}</code></td><td class="dim">${p.description ?? ""}</td></tr>`,
+                              (p) =>
+                                html`<tr><td><code class="mono">${p.name}</code></td><td class="dim">${p.description ?? ""}</td></tr>`,
                             )}
                           </tbody>
                         </table>

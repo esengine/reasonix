@@ -6,11 +6,11 @@ import {
   ChoiceModal,
   EditReviewModal,
   type OnResolve,
-  parseToolArgs,
   PlanModal,
   RevisionModal,
   ShellModal,
   WorkspaceModal,
+  parseToolArgs,
 } from "../components/chat-internals.js";
 import { MODE, TOKEN, api } from "../lib/api.js";
 import { appBus, showToast } from "../lib/bus.js";
@@ -51,6 +51,22 @@ interface MessagesResponse {
 
 interface ModalEnvelope {
   modal?: ModalState | null;
+}
+
+interface SlashCommand {
+  cmd: string;
+  summary: string;
+  argsHint?: string;
+  contextual?: "code";
+}
+
+type PopoverKind = "slash" | "mention" | null;
+
+interface PopoverItem {
+  label: string;
+  meta?: string;
+  /** Replacement string inserted in place of the trigger token (without leading / or @). */
+  insert: string;
 }
 
 interface RailPlan {
@@ -101,6 +117,10 @@ export function ChatPanel() {
   const [budgetUsd, setBudgetUsd] = useState<number | null>(null);
   const [activePlan, setActivePlan] = useState<RailPlan | null>(null);
   const [semanticIndex, setSemanticIndex] = useState<boolean | null>(null);
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
+  const [popoverKind, setPopoverKind] = useState<PopoverKind>(null);
+  const [popoverItems, setPopoverItems] = useState<PopoverItem[]>([]);
+  const [popoverSel, setPopoverSel] = useState(0);
   const [semanticBannerDismissed, setSemanticBannerDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem("rx.semanticBannerDismissed") === "1";
@@ -148,6 +168,12 @@ export function ChatPanel() {
         if (!cancelled && m.modal) setModal(m.modal);
       } catch {
         /* skip — modal endpoint optional in standalone */
+      }
+      try {
+        const r = await api<{ commands: SlashCommand[] }>("/slash");
+        if (!cancelled) setSlashCommands(r.commands);
+      } catch {
+        /* skip — popover degrades gracefully */
       }
     })();
     return () => {
@@ -315,14 +341,105 @@ export function ChatPanel() {
     }
   }, []);
 
+  const updatePopover = useCallback(
+    async (text: string) => {
+      const slashMatch = /^\/([A-Za-z0-9_-]*)$/.exec(text);
+      if (slashMatch) {
+        const prefix = slashMatch[1]!.toLowerCase();
+        const items: PopoverItem[] = slashCommands
+          .filter((c) => c.cmd.startsWith(prefix))
+          .slice(0, 12)
+          .map((c) => ({
+            label: `/${c.cmd}`,
+            meta: c.summary,
+            insert: `/${c.cmd}${c.argsHint ? " " : ""}`,
+          }));
+        setPopoverKind("slash");
+        setPopoverItems(items);
+        setPopoverSel(0);
+        return;
+      }
+      const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(text);
+      if (mentionMatch && MODE === "attached") {
+        const prefix = mentionMatch[1] ?? "";
+        try {
+          const r = await api<{ files: string[] }>("/files", {
+            method: "POST",
+            body: { prefix },
+          });
+          const items: PopoverItem[] = r.files.slice(0, 12).map((f) => ({
+            label: f,
+            insert: `@${f} `,
+          }));
+          setPopoverKind("mention");
+          setPopoverItems(items);
+          setPopoverSel(0);
+        } catch {
+          setPopoverKind(null);
+        }
+        return;
+      }
+      setPopoverKind(null);
+    },
+    [slashCommands],
+  );
+
+  const applyPopover = useCallback(() => {
+    const item = popoverItems[popoverSel];
+    if (!item) return false;
+    if (popoverKind === "slash") {
+      setInput(item.insert);
+    } else if (popoverKind === "mention") {
+      const m = /(?:^|\s)@([^\s@]*)$/.exec(input);
+      if (!m) return false;
+      const start = input.length - m[0].length + (m[0].startsWith(" ") ? 1 : 0);
+      setInput(`${input.slice(0, start)}${item.insert}`);
+    }
+    setPopoverKind(null);
+    return true;
+  }, [popoverItems, popoverSel, popoverKind, input]);
+
+  const onInput = useCallback(
+    (e: Event) => {
+      const v = (e.target as HTMLTextAreaElement).value;
+      setInput(v);
+      updatePopover(v);
+    },
+    [updatePopover],
+  );
+
   const onKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      if (popoverKind && popoverItems.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setPopoverSel((i) => (i + 1) % popoverItems.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setPopoverSel((i) => (i - 1 + popoverItems.length) % popoverItems.length);
+          return;
+        }
+        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+          e.preventDefault();
+          if (applyPopover() && e.key === "Enter" && popoverKind === "slash") {
+            send();
+          }
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setPopoverKind(null);
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         send();
       }
     },
-    [send],
+    [send, popoverKind, popoverItems, applyPopover],
   );
 
   if (bootError) {
@@ -589,12 +706,38 @@ export function ChatPanel() {
             }
           </div>
 
-          <div class="chat-input-area">
+          <div class="chat-input-area" style="position:relative">
+            ${
+              popoverKind && popoverItems.length > 0
+                ? html`
+                  <div class="popover" style="position:absolute;bottom:calc(100% + 6px);left:0;width:380px;max-height:280px;overflow-y:auto;z-index:10">
+                    <div class="popover-h">${popoverKind === "slash" ? "slash commands" : "project files"}</div>
+                    ${popoverItems.map(
+                      (it, i) => html`
+                        <div
+                          class=${`popover-row ${i === popoverSel ? "sel" : ""}`}
+                          onMouseDown=${(e: Event) => {
+                            e.preventDefault();
+                            setPopoverSel(i);
+                            applyPopover();
+                          }}
+                        >
+                          <span class="g">${popoverKind === "slash" ? "/" : "@"}</span>
+                          <span class="name">${it.label}</span>
+                          ${it.meta ? html`<span class="meta">${it.meta}</span>` : null}
+                        </div>
+                      `,
+                    )}
+                  </div>
+                `
+                : null
+            }
             <textarea
-              placeholder=${busy ? "wait for the current turn to finish…" : "Type a prompt — Enter sends, Shift+Enter for a newline"}
+              placeholder=${busy ? "wait for the current turn to finish…" : "Type a prompt — Enter sends, Shift+Enter for a newline · / @ for pickers"}
               value=${input}
-              onInput=${(e: Event) => setInput((e.target as HTMLTextAreaElement).value)}
+              onInput=${onInput}
               onKeyDown=${onKeyDown}
+              onBlur=${() => setTimeout(() => setPopoverKind(null), 150)}
               disabled=${busy}
               rows="2"
             ></textarea>
@@ -708,15 +851,13 @@ function ActivePlanCard({ plan }: { plan: RailPlan }) {
 function summarizeActiveTool(activeTool: ActiveToolState | null): string | null {
   if (!activeTool) return null;
   const name = activeTool.toolName ?? "tool";
-  const args = parseToolArgs(activeTool.args) as
-    | {
-        path?: string;
-        file_path?: string;
-        filename?: string;
-        content?: unknown;
-        command?: unknown;
-      }
-    | null;
+  const args = parseToolArgs(activeTool.args) as {
+    path?: string;
+    file_path?: string;
+    filename?: string;
+    content?: unknown;
+    command?: unknown;
+  } | null;
   const path = args?.path ?? args?.file_path ?? args?.filename;
   if (name === "write_file" && path) {
     const len = typeof args?.content === "string" ? args.content.length : null;
@@ -745,7 +886,14 @@ interface InFlightRowProps {
   tick: number;
 }
 
-function InFlightRow({ streaming, activeTool, startedAt, statusLine, onAbort, tick: _tick }: InFlightRowProps) {
+function InFlightRow({
+  streaming,
+  activeTool,
+  startedAt,
+  statusLine,
+  onAbort,
+  tick: _tick,
+}: InFlightRowProps) {
   const elapsedMs = startedAt ? Date.now() - startedAt : 0;
   const elapsed = (elapsedMs / 1000).toFixed(1);
   const reasoningLen = streaming?.reasoning?.length ?? 0;
@@ -857,5 +1005,3 @@ function ChatStatusBar({ stats, model }: ChatStatusBarProps) {
     </div>
   `;
 }
-
-
