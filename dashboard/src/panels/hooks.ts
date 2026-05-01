@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
+import { fmtRelativeTime } from "../lib/format.js";
 import { html } from "../lib/html.js";
 
 interface HookHandler {
   command?: string;
   matcher?: string;
   [k: string]: unknown;
+}
+
+interface HookRunRow {
+  hookName: string;
+  phase: "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop";
+  outcome: "ok" | "blocked" | "modified" | "error";
+  whenMs: number;
 }
 
 interface ScopeMeta {
@@ -49,6 +57,7 @@ interface HooksData {
   events: string[];
   project: ScopeMeta;
   global: ScopeMeta;
+  recentRuns?: ReadonlyArray<HookRunRow> | null;
 }
 
 export function HooksPanel() {
@@ -114,9 +123,10 @@ export function HooksPanel() {
   `;
 
   const matrixRows = buildMatrix(data);
-  const events = data.events.length > 0
-    ? data.events
-    : Array.from(new Set(matrixRows.flatMap((r) => Object.keys(r.cells))));
+  const events =
+    data.events.length > 0
+      ? data.events
+      : Array.from(new Set(matrixRows.flatMap((r) => Object.keys(r.cells))));
   const gridCols = `220px repeat(${Math.max(events.length, 1)}, minmax(0, 1fr))`;
 
   return html`
@@ -195,6 +205,42 @@ export function HooksPanel() {
           }
         `;
       })}
+
+      ${sectionH3("Recent runs", `${data.recentRuns?.length ?? 0}`)}
+      ${
+        !data.recentRuns || data.recentRuns.length === 0
+          ? html`<div class="card" style="color:var(--fg-3)">
+              No hook runs in the recent session log.
+            </div>`
+          : html`
+            <div class="card" style="padding:0;overflow-x:auto">
+              <table class="tbl" style="width:100%;font-family:var(--font-mono);font-size:11.5px">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;padding:8px 12px">when</th>
+                    <th style="text-align:left;padding:8px 12px">phase</th>
+                    <th style="text-align:left;padding:8px 12px">hook</th>
+                    <th style="text-align:left;padding:8px 12px">outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${data.recentRuns.map(
+                    (r) => html`
+                      <tr>
+                        <td style="padding:6px 12px;color:var(--fg-3)">${fmtRelativeTime(r.whenMs)}</td>
+                        <td style="padding:6px 12px;color:var(--fg-1)">${r.phase}</td>
+                        <td style="padding:6px 12px;color:var(--fg-1)">${r.hookName}</td>
+                        <td style="padding:6px 12px">
+                          <span class=${`pill ${r.outcome === "ok" ? "ok" : r.outcome === "error" ? "err" : "warn"}`}>${r.outcome}</span>
+                        </td>
+                      </tr>
+                    `,
+                  )}
+                </tbody>
+              </table>
+            </div>
+          `
+      }
     </div>
   `;
 }

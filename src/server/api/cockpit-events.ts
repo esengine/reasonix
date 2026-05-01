@@ -1,6 +1,5 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { readEventLogFile } from "../../adapters/event-source-jsonl.js";
+import { existsSync } from "node:fs";
+import { readEventLogFile, recentEventFiles } from "../../adapters/event-source-jsonl.js";
 import type { Event } from "../../core/events.js";
 import { sessionsDir as defaultSessionsDir } from "../../memory/session.js";
 
@@ -44,7 +43,7 @@ export function computeEventsCockpit(
   if (!existsSync(dir)) {
     return { toolCalls24h: null, recentPlans: null, toolActivity: null };
   }
-  const files = recentEventFiles(dir, now);
+  const files = recentEventFiles(dir, now, RECENT_FILES_CAP);
   if (files.length === 0) {
     return { toolCalls24h: null, recentPlans: null, toolActivity: null };
   }
@@ -75,31 +74,6 @@ export function computeEventsCockpit(
     recentPlans: allPlans.slice(0, PLAN_FEED_CAP),
     toolActivity: allTools.slice(0, TOOL_FEED_CAP),
   };
-}
-
-function recentEventFiles(dir: string, now: number): string[] {
-  let names: string[];
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  const cutoff = now - 30 * DAY_MS;
-  const candidates: Array<{ path: string; mtime: number }> = [];
-  for (const name of names) {
-    if (!name.endsWith(".events.jsonl")) continue;
-    const path = join(dir, name);
-    let mtime: number;
-    try {
-      mtime = statSync(path).mtimeMs;
-    } catch {
-      continue;
-    }
-    if (mtime < cutoff) continue;
-    candidates.push({ path, mtime });
-  }
-  candidates.sort((a, b) => b.mtime - a.mtime);
-  return candidates.slice(0, RECENT_FILES_CAP).map((c) => c.path);
 }
 
 function countToolCalls(

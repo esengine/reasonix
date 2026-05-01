@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import { HOOK_EVENTS, globalSettingsPath, loadHooks, projectSettingsPath } from "../../hooks.js";
 import type { DashboardContext } from "../context.js";
 import type { ApiResult } from "../router.js";
+import { readRecentHookRuns } from "./hooks-events.js";
 
 interface SaveBody {
   scope?: unknown;
@@ -65,6 +66,7 @@ export async function handleHooks(
         },
         resolved,
         events: HOOK_EVENTS,
+        recentRuns: readRecentHookRuns(undefined, ctx.sessionsDir),
       },
     };
   }
