@@ -1044,3 +1044,43 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
 html, body, #root { height: 100%; }
 #root { display: contents; }
 .app { height: 100vh; }
+
+/* ── Legacy panel utilities — bridge classes used by panels that haven't
+ *    been migrated to the design vocabulary yet. Removed in the final
+ *    cleanup PR once every panel has its own design-aligned markup. ── */
+.panel-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+.panel-title { font-size: 18px; font-weight: 600; color: var(--fg-0); margin: 0; font-family: var(--font-mono); letter-spacing: -.005em; }
+.panel-subtitle { color: var(--fg-3); font-size: 12.5px; }
+.boot { color: var(--fg-3); padding: 24px; text-align: center; font-family: var(--font-mono); font-size: 12px; }
+.empty { color: var(--fg-3); padding: 18px; border: 1px dashed var(--bd); border-radius: var(--r); font-size: 12.5px; }
+.notice { background: var(--bg-elev); border: 1px solid var(--bd); border-left: 2px solid var(--c-brand); border-radius: var(--r); padding: 8px 12px; margin: 8px 0; font-size: 12.5px; color: var(--fg-1); }
+.notice.err { border-left-color: var(--c-err); color: var(--c-err); }
+.notice.warn { border-left-color: var(--c-warn); color: var(--c-warn); }
+.muted { color: var(--fg-3); }
+.section-title { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .1em; margin: 18px 0 6px; }
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.card-title { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+.card-value { color: var(--fg-0); font-family: var(--font-mono); font-size: 18px; font-weight: 600; }
+.card-value.muted { color: var(--fg-4); }
+.card-hint { color: var(--fg-3); font-size: 11.5px; margin-top: 4px; }
+.pill-ok { color: var(--c-ok); background: rgba(126,231,135,.08); }
+.pill-warn { color: var(--c-warn); background: rgba(240,176,125,.10); }
+.pill-err { color: var(--c-err); background: rgba(255,139,129,.10); }
+.pill-accent { color: var(--c-accent); background: rgba(210,168,255,.10); }
+.pill-dim { color: var(--fg-3); background: var(--bg-elev-2); }
+.pill-active { color: var(--c-brand); background: rgba(121,192,255,.10); }
+.numeric { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+button.primary { background: var(--c-brand); color: var(--bg); border: 1px solid var(--c-brand); padding: 5px 12px; border-radius: var(--r); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
+button.primary:hover { background: rgba(121,192,255,.85); }
+button.danger { background: transparent; color: var(--c-err); border: 1px solid var(--c-err); padding: 5px 12px; border-radius: var(--r); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
+button:not(.primary):not(.danger) { background: var(--bg-elev-2); color: var(--fg-1); border: 1px solid var(--bd); padding: 5px 12px; border-radius: var(--r); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
+button:hover:not(.primary):not(.danger) { background: var(--bg-hover); border-color: var(--bd-strong); }
+input[type=text], input[type=number], input[type=password], textarea, select { background: var(--bg-input); color: var(--fg-0); border: 1px solid var(--bd); border-radius: var(--r); padding: 5px 10px; font-family: var(--font-mono); font-size: 12.5px; outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--c-brand); }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table th, table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--bd); }
+table th { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; background: var(--bg-elev); }
+table td { color: var(--fg-1); }
+table tbody tr:hover { background: var(--bg-hover); }
+table td.numeric { color: var(--fg-0); }
