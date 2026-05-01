@@ -346,8 +346,7 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
       session={resolvedSession}
     />,
     // patchConsole:false — winpty/MINTTY redraw-glitch source.
-    // debug:true forces full-frame writes; log-update's diff drops frames on Windows ConPTY.
-    { exitOnCtrlC: true, patchConsole: false, debug: true },
+    { exitOnCtrlC: true, patchConsole: false },
   );
   try {
     await waitUntilExit();
