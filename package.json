@@ -19,9 +19,9 @@
     "dist",
     "data/deepseek-tokenizer.json.gz",
     "dashboard/index.html",
-    "dashboard/app.js",
     "dashboard/app.css",
     "dashboard/codemirror.js",
+    "dashboard/dist",
     "README.md",
     "LICENSE"
   ],
@@ -35,8 +35,8 @@
     "lint": "biome check src tests",
     "lint:fix": "biome check --write src tests",
     "format": "biome format --write src tests",
-    "typecheck": "tsc --noEmit",
-    "verify": "npm run lint && npm run typecheck && npm run test --silent",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p dashboard",
+    "verify": "npm run build && npm run lint && npm run typecheck && npm run test --silent",
     "prepare": "simple-git-hooks || true",
     "prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build"
   },

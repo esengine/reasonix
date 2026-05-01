@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["src/**/*", "app.js"],
+  "exclude": ["dist", "node_modules"]
+}

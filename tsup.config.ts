@@ -20,4 +20,15 @@ export default defineConfig([
     outDir: "dist/cli",
     banner: { js: "#!/usr/bin/env node" },
   },
+  {
+    entry: { app: "dashboard/app.js" },
+    format: ["esm"],
+    dts: false,
+    clean: true,
+    sourcemap: true,
+    target: "es2022",
+    platform: "browser",
+    outDir: "dashboard/dist",
+    external: [/^https:\/\//],
+  },
 ]);
