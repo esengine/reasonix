@@ -311,10 +311,10 @@ interface IndexConfigResponse {
 }
 
 interface ExcludeDraft {
-  excludeDirs: string;
-  excludeFiles: string;
-  excludeExts: string;
-  excludePatterns: string;
+  excludeDirs: string[];
+  excludeFiles: string[];
+  excludeExts: string[];
+  excludePatterns: string[];
   respectGitignore: boolean;
   maxFileBytes: number;
 }
@@ -328,23 +328,21 @@ interface PreviewData {
 
 function toDraft(c: IndexConfig): ExcludeDraft {
   return {
-    excludeDirs: (c.excludeDirs ?? []).join("\n"),
-    excludeFiles: (c.excludeFiles ?? []).join("\n"),
-    excludeExts: (c.excludeExts ?? []).join("\n"),
-    excludePatterns: (c.excludePatterns ?? []).join("\n"),
+    excludeDirs: c.excludeDirs ?? [],
+    excludeFiles: c.excludeFiles ?? [],
+    excludeExts: c.excludeExts ?? [],
+    excludePatterns: c.excludePatterns ?? [],
     respectGitignore: c.respectGitignore !== false,
     maxFileBytes: c.maxFileBytes ?? 262144,
   };
 }
 
 function fromDraft(d: ExcludeDraft): IndexConfig {
-  const lines = (s: string) =>
-    s.split(/\r?\n/).map((x) => x.trim()).filter((x) => x.length > 0);
   return {
-    excludeDirs: lines(d.excludeDirs),
-    excludeFiles: lines(d.excludeFiles),
-    excludeExts: lines(d.excludeExts),
-    excludePatterns: lines(d.excludePatterns),
+    excludeDirs: d.excludeDirs,
+    excludeFiles: d.excludeFiles,
+    excludeExts: d.excludeExts,
+    excludePatterns: d.excludePatterns,
     respectGitignore: !!d.respectGitignore,
     maxFileBytes: d.maxFileBytes,
   };
@@ -432,10 +430,10 @@ function SemanticExcludesCard() {
                 One value per line. Dirs / files match by basename. Patterns use picomatch syntax (e.g. <code>**/*.generated.ts</code>, <code>vendor/**</code>, <code>!keep-me</code>).
               </div>
               <div class="excludes-grid">
-                <${ExcludesField} label="Exclude dirs" value=${draft.excludeDirs} onChange=${(v: string) => setDraft({ ...draft, excludeDirs: v })} />
-                <${ExcludesField} label="Exclude files" value=${draft.excludeFiles} onChange=${(v: string) => setDraft({ ...draft, excludeFiles: v })} />
-                <${ExcludesField} label="Exclude extensions" value=${draft.excludeExts} onChange=${(v: string) => setDraft({ ...draft, excludeExts: v })} />
-                <${ExcludesField} label="Exclude patterns (glob)" value=${draft.excludePatterns} onChange=${(v: string) => setDraft({ ...draft, excludePatterns: v })} />
+                <${ChipExcludesField} label="exclude dirs" value=${draft.excludeDirs} onChange=${(v: string[]) => setDraft({ ...draft, excludeDirs: v })} />
+                <${ChipExcludesField} label="exclude files" value=${draft.excludeFiles} onChange=${(v: string[]) => setDraft({ ...draft, excludeFiles: v })} />
+                <${ChipExcludesField} label="exclude exts" value=${draft.excludeExts} onChange=${(v: string[]) => setDraft({ ...draft, excludeExts: v })} placeholder=".lock" />
+                <${ChipExcludesField} label="exclude patterns · glob" value=${draft.excludePatterns} onChange=${(v: string[]) => setDraft({ ...draft, excludePatterns: v })} placeholder="**/*.test.ts" />
               </div>
               <div class="excludes-options">
                 <label>
@@ -514,19 +512,55 @@ function ExcludesPreview({ preview }: { preview: PreviewData }) {
   `;
 }
 
-function ExcludesField({
+function ChipExcludesField({
   label,
   value,
   onChange,
+  placeholder = "+ add",
 }: {
   label: string;
-  value: string;
-  onChange: (v: string) => void;
+  value: string[];
+  onChange: (v: string[]) => void;
+  placeholder?: string;
 }) {
+  const [adding, setAdding] = useState("");
+  const remove = (entry: string) => onChange(value.filter((v) => v !== entry));
+  const commit = () => {
+    const trimmed = adding.trim();
+    if (!trimmed || value.includes(trimmed)) {
+      setAdding("");
+      return;
+    }
+    onChange([...value, trimmed]);
+    setAdding("");
+  };
   return html`
     <div class="excludes-field">
       <label>${label}</label>
-      <textarea rows="5" value=${value} onChange=${(e: Event) => onChange((e.target as HTMLTextAreaElement).value)}></textarea>
+      <div class="chip-edit-row">
+        ${value.map(
+          (e) => html`
+            <span class="chip-f">
+              <span>${e}</span>
+              <span class="x" style="cursor:pointer" onClick=${() => remove(e)} title="remove">×</span>
+            </span>
+          `,
+        )}
+        <input
+          type="text"
+          class="chip-add-input"
+          value=${adding}
+          placeholder=${placeholder}
+          onInput=${(ev: Event) => setAdding((ev.target as HTMLInputElement).value)}
+          onKeyDown=${(ev: KeyboardEvent) => {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              commit();
+            }
+          }}
+          onBlur=${commit}
+        />
+      </div>
     </div>
   `;
 }

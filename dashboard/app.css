@@ -804,6 +804,15 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
 .chip-f .ct { color: var(--fg-4); font-size: 10px; }
 .chip-f.active .ct { color: var(--c-brand); }
 .chip-f .x { color: var(--fg-4); padding: 0 2px; }
+.chip-f .x:hover { color: var(--c-err); }
+
+.chip-edit-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 4px 0; }
+.chip-add-input {
+  background: transparent; border: 1px dashed var(--bd); border-radius: 12px;
+  padding: 3px 9px; font-family: var(--font-mono); font-size: 11px;
+  color: var(--fg-3); outline: none; min-width: 80px;
+}
+.chip-add-input:focus { border-color: var(--c-brand); color: var(--fg-0); border-style: solid; }
 
 /* ── Stacked bar (chart) ─────────────────────────────────────────────── */
 .stacked-bar { width: 100%; height: 12px; background: var(--bg-input); border-radius: var(--r); overflow: hidden; display: flex; }
