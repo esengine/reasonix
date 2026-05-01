@@ -60,6 +60,7 @@ interface OverviewLite {
   stats?: ChatStats;
   model?: string;
   semanticIndex?: boolean;
+  budgetUsd?: number | null;
 }
 
 interface SubmitResponse {
@@ -87,6 +88,7 @@ export function ChatPanel() {
   const [effort, setEffortLocal] = useState<string | null>(null);
   const [stats, setStats] = useState<ChatStats | null>(null);
   const [overviewModel, setOverviewModel] = useState<string | null>(null);
+  const [budgetUsd, setBudgetUsd] = useState<number | null>(null);
   const [semanticIndex, setSemanticIndex] = useState<boolean | null>(null);
   const [semanticBannerDismissed, setSemanticBannerDismissed] = useState<boolean>(() => {
     try {
@@ -375,6 +377,7 @@ export function ChatPanel() {
         setEffortLocal(o.reasoningEffort ?? null);
         setStats(o.stats ?? null);
         setOverviewModel(o.model ?? null);
+        setBudgetUsd(o.budgetUsd ?? null);
         setSemanticIndex(o.semanticIndexExists ?? null);
       } catch {
         /* swallow */
@@ -553,60 +556,109 @@ export function ChatPanel() {
           : null
       }
 
-      <div class="chat-feed" ref=${feedRef}>
-        ${
-          allMessages.length === 0
-            ? html`<div class="chat-empty">
-                No conversation yet. Send a prompt below to begin.
-              </div>`
-            : allMessages.map(
-                (m) => html`
-                  <${ChatMessage}
-                    key=${m.id}
-                    msg=${m}
-                    streaming=${streaming && streaming.id === m.id}
-                  />
-                `,
-              )
-        }
-      </div>
-
-      <div class="chat-input-area">
-        <textarea
-          placeholder=${busy ? "wait for the current turn to finish…" : "Type a prompt — Enter sends, Shift+Enter for a newline"}
-          value=${input}
-          onInput=${(e: Event) => setInput((e.target as HTMLTextAreaElement).value)}
-          onKeyDown=${onKeyDown}
-          disabled=${busy}
-          rows="2"
-        ></textarea>
-        <div style="display: flex; flex-direction: column; gap: 6px; align-self: stretch; justify-content: flex-end;">
-          <button
-            class="primary"
-            onClick=${send}
-            disabled=${busy || !input.trim()}
-          >Send</button>
-          <div style="display: flex; gap: 6px;">
-            <button onClick=${newConversation} title="/new — wipe conversation context (loop log + scrollback)">New</button>
-            <button onClick=${clearScrollback} title="/clear — wipe just visible scrollback (context kept)">Clear</button>
+      <div class="chat-body">
+        <div class="chat-main">
+          <div class="chat-feed" ref=${feedRef}>
+            ${
+              allMessages.length === 0
+                ? html`<div class="chat-empty">
+                    No conversation yet. Send a prompt below to begin.
+                  </div>`
+                : allMessages.map(
+                    (m) => html`
+                      <${ChatMessage}
+                        key=${m.id}
+                        msg=${m}
+                        streaming=${streaming && streaming.id === m.id}
+                      />
+                    `,
+                  )
+            }
           </div>
+
+          <div class="chat-input-area">
+            <textarea
+              placeholder=${busy ? "wait for the current turn to finish…" : "Type a prompt — Enter sends, Shift+Enter for a newline"}
+              value=${input}
+              onInput=${(e: Event) => setInput((e.target as HTMLTextAreaElement).value)}
+              onKeyDown=${onKeyDown}
+              disabled=${busy}
+              rows="2"
+            ></textarea>
+            <div style="display: flex; flex-direction: column; gap: 6px; align-self: stretch; justify-content: flex-end;">
+              <button
+                class="primary"
+                onClick=${send}
+                disabled=${busy || !input.trim()}
+              >Send</button>
+              <div style="display: flex; gap: 6px;">
+                <button onClick=${newConversation} title="/new — wipe conversation context (loop log + scrollback)">New</button>
+                <button onClick=${clearScrollback} title="/clear — wipe just visible scrollback (context kept)">Clear</button>
+              </div>
+            </div>
+          </div>
+
+          ${
+            busy
+              ? html`<${InFlightRow}
+                  streaming=${streaming}
+                  activeTool=${activeTool}
+                  startedAt=${turnStartedAt}
+                  statusLine=${statusLine}
+                  onAbort=${abort}
+                  tick=${nowTick}
+                />`
+              : null
+          }
+          <${ChatStatusBar} stats=${stats} model=${overviewModel} />
+        </div>
+
+        <${SideRail} stats=${stats} budgetUsd=${budgetUsd} />
+      </div>
+    </div>
+  `;
+}
+
+interface SideRailProps {
+  stats: ChatStats | null;
+  budgetUsd: number | null;
+}
+
+function SideRail({ stats, budgetUsd }: SideRailProps) {
+  if (!stats) return html`<aside class="chat-rail"></aside>`;
+  const cachePct = Math.round(stats.cacheHitRatio * 100);
+  const cacheTone = cachePct >= 80 ? "ok" : cachePct >= 50 ? "" : "warn";
+  const showBudget = typeof budgetUsd === "number" && budgetUsd > 0;
+  const budgetPct = showBudget ? Math.min(120, (stats.totalCostUsd / budgetUsd) * 100) : 0;
+  const budgetTone = budgetPct >= 100 ? "err" : budgetPct >= 80 ? "warn" : "";
+  return html`
+    <aside class="chat-rail">
+      <div class="rail-card">
+        <div class="rh">Session</div>
+        <div class="rail-kv"><span class="k">turns</span><span class="v">${stats.turns.toLocaleString()}</span></div>
+        <div class="rail-kv"><span class="k">prompt tok</span><span class="v">${stats.lastPromptTokens.toLocaleString()}</span></div>
+        <div class="rail-kv"><span class="k">cost</span><span class="v">${fmtUsd(stats.totalCostUsd)}</span></div>
+        <div class="progress-row" style="margin-top:8px">
+          <span class="lbl">cache hit</span>
+          <div class=${`progress ${cacheTone}`}><div class="progress-fill" style=${`width:${cachePct}%`}></div></div>
+          <span class="v">${cachePct}%</span>
         </div>
       </div>
-
       ${
-        busy
-          ? html`<${InFlightRow}
-              streaming=${streaming}
-              activeTool=${activeTool}
-              startedAt=${turnStartedAt}
-              statusLine=${statusLine}
-              onAbort=${abort}
-              tick=${nowTick}
-            />`
+        showBudget
+          ? html`
+            <div class="rail-card">
+              <div class="rh">Tool budget</div>
+              <div class="progress-row">
+                <span class="lbl">spend</span>
+                <div class=${`progress ${budgetTone}`}><div class="progress-fill" style=${`width:${Math.min(100, budgetPct)}%`}></div></div>
+                <span class="v" style=${budgetTone === "err" ? "color:var(--c-err)" : budgetTone === "warn" ? "color:var(--c-warn)" : ""}>${fmtUsd(stats.totalCostUsd)} / ${fmtUsd(budgetUsd)}</span>
+              </div>
+            </div>
+          `
           : null
       }
-      <${ChatStatusBar} stats=${stats} model=${overviewModel} />
-    </div>
+    </aside>
   `;
 }
 

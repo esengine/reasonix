@@ -27,6 +27,8 @@ export interface OverviewResponse {
   preset: string;
   /** Persisted reasoning_effort (high / max). Same rationale as preset. */
   reasoningEffort: string;
+  /** Session USD spend cap; null when off. Drives the chat side-rail's Tool budget card. */
+  budgetUsd: number | null;
   /** Live session stats — null in standalone mode. */
   stats: DashboardStats | null;
   semanticIndexExists: boolean | null;
@@ -59,6 +61,7 @@ export async function handleOverview(
     toolCount: ctx.tools ? ctx.tools.size : null,
     preset: cfg.preset ?? "auto",
     reasoningEffort: cfg.reasoningEffort ?? "max",
+    budgetUsd: ctx.loop?.budgetUsd ?? null,
     stats: ctx.getStats?.() ?? null,
     semanticIndexExists,
     cockpit: computeCockpit(ctx),

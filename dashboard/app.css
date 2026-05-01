@@ -1322,6 +1322,20 @@ input:focus, textarea:focus, select:focus { border-color: var(--c-brand); }
   height: calc(100vh - 44px - 26px - 48px);
 }
 
+.chat-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+}
+
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .chat-feed {
   flex: 1;
   min-height: 0;
