@@ -1084,3 +1084,4 @@ table th { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; c
 table td { color: var(--fg-1); }
 table tbody tr:hover { background: var(--bg-hover); }
 table td.numeric { color: var(--fg-0); }
+.kv-key { display: inline-block; min-width: 70px; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; margin-right: 8px; }

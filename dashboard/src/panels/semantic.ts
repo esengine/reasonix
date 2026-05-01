@@ -129,18 +129,16 @@ export function SemanticPanel() {
     [load],
   );
 
-  if (!data && !error) return html`<div class="boot">loading semantic status…</div>`;
-  if (error && !data) return html`<div class="notice err">${error}</div>`;
+  if (!data && !error)
+    return html`<div class="card" style="color:var(--fg-3)">loading semantic status…</div>`;
+  if (error && !data) return html`<div class="card accent-err">${error}</div>`;
   if (!data) return null;
 
   if (!data.attached) {
     return html`
-      <div>
-        <div class="panel-header">
-          <h2 class="panel-title">Semantic</h2>
-          <span class="panel-subtitle">code-mode required</span>
-        </div>
-        <div class="empty">${data.reason}</div>
+      <div class="card" style="color:var(--fg-3)">
+        <div class="card-h"><span class="title">Semantic — code-mode required</span></div>
+        <div class="card-b">${data.reason}</div>
       </div>
     `;
   }
@@ -159,16 +157,26 @@ export function SemanticPanel() {
   const installedModels = o.installedModels ?? [];
   const ready = binaryFound && daemonRunning && modelPulled;
 
-  return html`
-    <div>
-      <div class="panel-header">
-        <h2 class="panel-title">Semantic</h2>
-        <span class="panel-subtitle">${data.index?.exists ? "index built" : "no index yet"}</span>
-      </div>
-      ${info ? html`<div class="notice">${info}</div>` : null}
-      ${error ? html`<div class="notice err">${error}</div>` : null}
+  const sectionH3 = (text: string) => html`
+    <h3 style="margin:18px 0 8px;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">${text}</h3>
+  `;
 
-      <div class="section-title">Status</div>
+  return html`
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div class="chips">
+        <span class=${`chip-f ${data.index?.exists ? "active" : ""}`}>
+          ${data.index?.exists ? "index built" : "no index yet"}
+        </span>
+        ${
+          ready
+            ? html`<span class="chip-f" style="border-color:var(--c-ok);color:var(--c-ok)">ready</span>`
+            : html`<span class="chip-f" style="border-color:var(--c-warn);color:var(--c-warn)">setup needed</span>`
+        }
+      </div>
+      ${info ? html`<div><span class="pill info">${info}</span></div>` : null}
+      ${error ? html`<div class="card accent-err">${error}</div>` : null}
+
+      ${sectionH3("Status")}
       <div class="kv">
         <div><span class="kv-key">project</span><code>${data.root}</code></div>
         <div>
@@ -176,13 +184,13 @@ export function SemanticPanel() {
           ${
             binaryFound
               ? daemonRunning
-                ? html`<span class="pill pill-ok">reachable</span><span class="muted" style="margin-left: 8px;">${installedModels.length} model(s)${
+                ? html`<span class="pill ok">reachable</span><span style="color:var(--fg-3);margin-left:8px">${installedModels.length} model(s)${
                     installedModels.length > 0
                       ? ` · ${installedModels.slice(0, 3).join(", ")}${installedModels.length > 3 ? "…" : ""}`
                       : ""
                   }</span>`
-                : html`<span class="pill pill-warn">daemon down</span><span class="muted" style="margin-left: 8px;">binary on PATH but not serving</span>`
-              : html`<span class="pill pill-err">not installed</span><span class="muted" style="margin-left: 8px;">${o.error ?? "ollama binary not on PATH"}</span>`
+                : html`<span class="pill warn">daemon down</span><span style="color:var(--fg-3);margin-left:8px">binary on PATH but not serving</span>`
+              : html`<span class="pill err">not installed</span><span style="color:var(--fg-3);margin-left:8px">${o.error ?? "ollama binary not on PATH"}</span>`
           }
         </div>
         <div>
@@ -190,18 +198,18 @@ export function SemanticPanel() {
           <code>${modelName}</code>
           ${
             modelPulled
-              ? html`<span class="pill pill-ok" style="margin-left: 8px;">pulled</span>`
+              ? html`<span class="pill ok" style="margin-left: 8px;">pulled</span>`
               : daemonRunning
-                ? html`<span class="pill pill-warn" style="margin-left: 8px;">not pulled</span>`
-                : html`<span class="pill pill-dim" style="margin-left: 8px;">unknown (daemon down)</span>`
+                ? html`<span class="pill warn" style="margin-left: 8px;">not pulled</span>`
+                : html`<span class="pill" style="margin-left: 8px;">unknown (daemon down)</span>`
           }
         </div>
         <div>
           <span class="kv-key">index</span>
           ${
             data.index?.exists
-              ? html`<span class="muted">present at <code>.reasonix/semantic/</code></span>`
-              : html`<span class="muted">none — run an index to enable <code>semantic_search</code></span>`
+              ? html`<span style="color:var(--fg-3)">present at <code>.reasonix/semantic/</code></span>`
+              : html`<span style="color:var(--fg-3)">none — run an index to enable <code>semantic_search</code></span>`
           }
         </div>
       </div>
@@ -209,7 +217,7 @@ export function SemanticPanel() {
       ${
         !binaryFound
           ? html`
-            <div class="section-title">Install Ollama</div>
+            ${sectionH3("Install Ollama")}
             <div class="card" style="font-size: 13px;">
               Reasonix doesn't run package managers for you. Install Ollama
               first, then come back to this panel:
@@ -217,7 +225,7 @@ export function SemanticPanel() {
                 <li><strong>macOS / Windows:</strong> download from <a href="https://ollama.com/download" target="_blank" rel="noreferrer">ollama.com/download</a></li>
                 <li><strong>Linux:</strong> <code>curl -fsSL https://ollama.com/install.sh | sh</code></li>
               </ul>
-              <div class="muted" style="margin-top: 8px;">After install, this panel will offer to start the daemon and pull <code>${modelName}</code> for you. Refresh after installing.</div>
+              <div style="color:var(--fg-3);margin-top:8px">After install, this panel will offer to start the daemon and pull <code>${modelName}</code> for you. Refresh after installing.</div>
             </div>
           `
           : null
@@ -226,12 +234,12 @@ export function SemanticPanel() {
       ${
         binaryFound && !daemonRunning
           ? html`
-            <div class="section-title">Daemon</div>
+            ${sectionH3("Daemon")}
             <div class="card" style="font-size: 13px;">
               <code>ollama</code> is on your PATH but the HTTP daemon isn't reachable.
               <div class="row" style="margin-top: 10px;">
                 <button class="primary" disabled=${busy} onClick=${startDaemon}>Start daemon</button>
-                <span class="muted" style="font-size: 12px; align-self: center;">runs <code>ollama serve</code> detached — survives Reasonix exit</span>
+                <span style="color:var(--fg-3);font-size:12px;align-self:center">runs <code>ollama serve</code> detached — survives Reasonix exit</span>
               </div>
             </div>
           `
@@ -241,7 +249,7 @@ export function SemanticPanel() {
       ${
         daemonRunning && !modelPulled
           ? html`
-            <div class="section-title">Model</div>
+            ${sectionH3("Model")}
             <div class="card" style="font-size: 13px;">
               <code>${modelName}</code> isn't installed yet. ${pulling ? "" : "~270 MB download on first pull."}
               <div class="row" style="margin-top: 10px;">
@@ -258,7 +266,7 @@ export function SemanticPanel() {
                       <div>
                         <span class="kv-key">status</span>
                         <span class=${`pill ${pull.status === "done" ? "pill-ok" : pull.status === "error" ? "pill-err" : "pill-active"}`}>${pull.status}</span>
-                        <span class="muted" style="margin-left: 8px;">${((Date.now() - pull.startedAt) / 1000).toFixed(1)}s</span>
+                        <span style="color:var(--fg-3);margin-left:8px">${((Date.now() - pull.startedAt) / 1000).toFixed(1)}s</span>
                       </div>
                       ${
                         pull.lastLine
@@ -274,8 +282,8 @@ export function SemanticPanel() {
           : null
       }
 
-      <div class="section-title">Job</div>
-      ${job ? html`<${SemanticJobView} job=${job} running=${running} />` : html`<div class="muted">No job has run in this dashboard yet.</div>`}
+      ${sectionH3("Job")}
+      ${job ? html`<${SemanticJobView} job=${job} running=${running} />` : html`<div style="color:var(--fg-3)">No job has run in this dashboard yet.</div>`}
 
       <div class="row" style="margin-top: 14px;">
         <button class="primary" disabled=${busy || running || !ready} onClick=${() => start(false)}>Index (incremental)</button>
@@ -437,7 +445,7 @@ function SemanticExcludesCard() {
                 <label>
                   Max file size
                   <input type="number" min="1024" step="1024" value=${draft.maxFileBytes} onChange=${(e: Event) => setDraft({ ...draft, maxFileBytes: Number((e.target as HTMLInputElement).value) || 0 })} />
-                  <span class="muted">bytes</span>
+                  <span style="color:var(--fg-3)">bytes</span>
                 </label>
               </div>
               <div class="excludes-actions">
@@ -473,7 +481,7 @@ function ExcludesPreview({ preview }: { preview: PreviewData }) {
       </div>
       ${
         reasons.length === 0
-          ? html`<div class="muted">nothing skipped — all walked files would be indexed.</div>`
+          ? html`<div style="color:var(--fg-3)">nothing skipped — all walked files would be indexed.</div>`
           : reasons.map(
               (r) => html`
                 <details>
@@ -482,7 +490,7 @@ function ExcludesPreview({ preview }: { preview: PreviewData }) {
                     ${(samples[r] || []).map((p) => html`<li><code>${p}</code></li>`)}
                     ${
                       (buckets[r] || 0) > (samples[r] || []).length
-                        ? html`<li class="muted">…${(buckets[r] || 0) - (samples[r] || []).length} more</li>`
+                        ? html`<li style="color:var(--fg-3)">…${(buckets[r] || 0) - (samples[r] || []).length} more</li>`
                         : null
                     }
                   </ul>
@@ -541,8 +549,8 @@ function SemanticJobView({ job, running }: { job: SemanticJob; running: boolean 
     <div class="kv">
       <div><span class="kv-key">phase</span>
         <span class=${`pill ${job.phase === "error" ? "pill-err" : running ? "pill-active" : "pill-dim"}`}>${phaseLabel}</span>
-        ${job.aborted ? html`<span class="pill pill-warn" style="margin-left: 6px;">stopping</span>` : null}
-        <span class="muted" style="margin-left: 8px;">${elapsed}s</span>
+        ${job.aborted ? html`<span class="pill warn" style="margin-left: 6px;">stopping</span>` : null}
+        <span style="color:var(--fg-3);margin-left:8px">${elapsed}s</span>
       </div>
       ${
         job.filesScanned !== null && job.filesScanned !== undefined
@@ -600,5 +608,5 @@ function SkipBucketsView({ buckets }: { buckets: Record<string, number> }) {
   const parts = order
     .filter(([k]) => (buckets[k] || 0) > 0)
     .map(([k, label]) => `${label}: ${buckets[k]}`);
-  return html`<div><span class="kv-key">skipped</span>${total} files <span class="muted">(${parts.join(", ")})</span></div>`;
+  return html`<div><span class="kv-key">skipped</span>${total} files <span style="color:var(--fg-3)">(${parts.join(", ")})</span></div>`;
 }
