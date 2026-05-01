@@ -375,6 +375,53 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
 .diff-row.hunk { background: var(--bg-elev); color: var(--fg-3); }
 .diff-row.hunk .txt, .diff-row.hunk .gut { color: var(--fg-3); }
 
+/* Inline syntax tokens inherit color from .kw/.str/.com defined in .code; intra-line word diff. */
+.diff-row .word-add { background: rgba(126,231,135,.22); color: var(--c-ok); border-radius: 2px; padding: 0 2px; }
+.diff-row .word-rem { background: rgba(255,139,129,.20); color: var(--c-err); border-radius: 2px; padding: 0 2px; text-decoration: line-through; text-decoration-color: rgba(255,139,129,.55); }
+
+/* Expand-context chevron row sits between hunks; clicking loads the gap. */
+.diff-row.expand { grid-template-columns: 1fr; cursor: pointer; user-select: none; background: transparent; }
+.diff-row.expand .txt { padding: 4px 12px; color: var(--fg-3); text-align: center; font-size: 11px; border-top: 1px dashed var(--bd); border-bottom: 1px dashed var(--bd); }
+.diff-row.expand:hover .txt { color: var(--fg-1); border-color: var(--c-brand); }
+
+/* Side-by-side variant — content split into two cells, no shared gutter strip. */
+.diff.split .diff-row { grid-template-columns: 32px 1fr 32px 1fr; }
+.diff.split .diff-row .pane { padding: 0 10px; white-space: pre; }
+.diff.split .diff-row.add .pane.l, .diff.split .diff-row.rem .pane.r { background: var(--bg-elev); color: var(--fg-4); }
+
+/* Edit-review panel — multi-file aggregator card list. */
+.review-summary {
+  display: flex; align-items: center; gap: 14px; padding: 10px 14px;
+  background: var(--bg-elev); border: 1px solid var(--bd); border-radius: var(--r);
+  font-family: var(--font-mono); font-size: 12px; margin-bottom: 12px;
+}
+.review-summary .count { color: var(--fg-0); font-weight: 600; }
+.review-summary .stat .add { color: var(--c-ok); }
+.review-summary .stat .rem { color: var(--c-err); }
+.review-summary .actions { margin-left: auto; display: flex; gap: 6px; }
+.review-mode { display: inline-flex; gap: 0; border: 1px solid var(--bd); border-radius: var(--r); overflow: hidden; }
+.review-mode button {
+  background: transparent; border: 0; color: var(--fg-3); padding: 4px 10px;
+  font-family: var(--font-mono); font-size: 11px; cursor: pointer;
+}
+.review-mode button.on { background: var(--bg-input); color: var(--fg-0); }
+
+.review-file { border: 1px solid var(--bd); border-radius: var(--r); margin-bottom: 10px; overflow: hidden; }
+.review-file-h {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: var(--bg-elev); cursor: pointer; user-select: none;
+  font-family: var(--font-mono); font-size: 12px;
+}
+.review-file-h .chev { color: var(--fg-3); width: 12px; }
+.review-file-h .file { color: var(--fg-1); }
+.review-file-h .stat { color: var(--fg-3); }
+.review-file-h .stat .add { color: var(--c-ok); }
+.review-file-h .stat .rem { color: var(--c-err); }
+.review-file-h .acts { margin-left: auto; display: flex; gap: 6px; }
+.review-file.collapsed .review-file-body { display: none; }
+.review-file.collapsed .review-file-h .chev::before { content: "▸"; }
+.review-file:not(.collapsed) .review-file-h .chev::before { content: "▾"; }
+
 /* Chart frame */
 .chart {
   background: var(--bg-elev); border: 1px solid var(--bd); border-radius: var(--r); padding: 14px 16px;
@@ -1016,7 +1063,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
     <li><a href="#chat">§4 Chat</a></li>
     <li><a href="#overview">§5 Overview</a></li>
     <li><a href="#sessions">§6 Sessions</a></li>
-    <li><a href="#editor">§7 Editor</a></li>
+    <li><a href="#edit-review">§7 Edit review</a></li>
     <li><a href="#plans">§8 Plans</a></li>
   </ul>
 
@@ -1133,7 +1180,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
     <div class="glyph-grid">
       <div class="glyph-cell"><span class="g">◈</span><span class="n">brand</span></div>
       <div class="glyph-cell"><span class="g">◆</span><span class="n">chat</span></div>
-      <div class="glyph-cell"><span class="g">✎</span><span class="n">editor</span></div>
+      <div class="glyph-cell"><span class="g">✎</span><span class="n">edit</span></div>
       <div class="glyph-cell"><span class="g">⊞</span><span class="n">plan</span></div>
       <div class="glyph-cell"><span class="g">›</span><span class="n">sessions</span></div>
       <div class="glyph-cell"><span class="g">$</span><span class="n">usage</span></div>
@@ -1176,7 +1223,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="side-section">workspace</div>
         <div class="side-tabs">
           <div class="side-tab active"><span class="g">◆</span><span class="label">Chat</span></div>
-          <div class="side-tab"><span class="g">✎</span><span class="label">Editor</span><span class="badge">3</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-tab"><span class="g">⊞</span><span class="label">Plans</span><span class="badge">1</span></div>
           <div class="side-tab"><span class="g">›</span><span class="label">Sessions</span></div>
 
@@ -1236,7 +1283,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span></div>
         <div class="side-tabs">
           <div class="side-tab active" title="Chat"><span class="g">◆</span></div>
-          <div class="side-tab" title="Editor"><span class="g">✎</span></div>
+          <div class="side-tab" title="Edit review"><span class="g">✎</span></div>
           <div class="side-tab" title="Plans"><span class="g">⊞</span></div>
           <div class="side-tab" title="Sessions"><span class="g">›</span></div>
           <div class="side-tab" title="Overview"><span class="g">◈</span></div>
@@ -1361,16 +1408,16 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
 
   <div class="subsec">
     <h3>Diff view</h3>
-    <p>Unified by default; side-by-side available behind a toggle (Editor panel only). Add/remove rows tinted ~6% opacity over the code surface.</p>
+    <p>Unified by default; side-by-side toggle lives in the §7 Edit review panel. Add/remove rows tinted ~6% opacity over the code surface; syntax highlighting reuses the <code class="mono">.kw / .str / .com</code> tokens from the code block, so the diff blends with surrounding code visually. Word-level intra-line diff via <code class="mono">.word-add / .word-rem</code> highlights only the bytes that actually changed.</p>
     <div class="diff">
       <div class="diff-h"><span class="file mono">src/cli/commands/chat.tsx</span><span class="stat mono"><span class="add">+1</span> · <span class="rem">-2</span></span></div>
-      <div class="diff-row hunk"><span class="gut">@@</span><span class="gut"></span><span class="txt">@@ -346,8 +346,7 @@ export async function chatCommand</span></div>
+      <div class="diff-row hunk"><span class="gut">@@</span><span class="gut"></span><span class="txt">@@ -346,8 +346,7 @@ <span class="kw">export async function</span> chatCommand</span></div>
       <div class="diff-row ctx"><span class="gut">346</span><span class="gut">346</span><span class="txt">      session={resolvedSession}</span></div>
       <div class="diff-row ctx"><span class="gut">347</span><span class="gut">347</span><span class="txt">    /&gt;,</span></div>
-      <div class="diff-row ctx"><span class="gut">348</span><span class="gut">348</span><span class="txt">    // patchConsole:false — winpty/MINTTY redraw-glitch source.</span></div>
-      <div class="diff-row rem"><span class="gut">349</span><span class="gut"></span><span class="txt">    // debug:true forces full-frame writes; log-update's diff drops frames…</span></div>
-      <div class="diff-row rem"><span class="gut">350</span><span class="gut"></span><span class="txt">    { exitOnCtrlC: true, patchConsole: false, debug: true },</span></div>
-      <div class="diff-row add"><span class="gut"></span><span class="gut">349</span><span class="txt">    { exitOnCtrlC: true, patchConsole: false },</span></div>
+      <div class="diff-row ctx"><span class="gut">348</span><span class="gut">348</span><span class="txt">    <span class="com">// patchConsole:false — winpty/MINTTY redraw-glitch source.</span></span></div>
+      <div class="diff-row rem"><span class="gut">349</span><span class="gut"></span><span class="txt">    <span class="com">// debug:true forces full-frame writes; log-update's diff drops frames…</span></span></div>
+      <div class="diff-row rem"><span class="gut">350</span><span class="gut"></span><span class="txt">    { exitOnCtrlC: <span class="kw">true</span>, patchConsole: <span class="kw">false</span>, <span class="word-rem">debug: <span class="kw">true</span></span> },</span></div>
+      <div class="diff-row add"><span class="gut"></span><span class="gut">349</span><span class="txt">    { exitOnCtrlC: <span class="kw">true</span>, patchConsole: <span class="kw">false</span> },</span></div>
       <div class="diff-row ctx"><span class="gut">351</span><span class="gut">350</span><span class="txt">  );</span></div>
     </div>
   </div>
@@ -1573,7 +1620,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab active"><span class="g">◆</span><span class="label">Chat</span></div>
-          <div class="side-tab"><span class="g">✎</span><span class="label">Editor</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-tab"><span class="g">⊞</span><span class="label">Plans</span><span class="badge">1</span></div>
           <div class="side-tab"><span class="g">›</span><span class="label">Sessions</span></div>
           <div class="side-section">observe</div>
@@ -1706,6 +1753,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab active"><span class="g">◆</span><span class="label">Chat</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-tab"><span class="g">⊞</span><span class="label">Plans</span></div>
           <div class="side-tab"><span class="g">›</span><span class="label">Sessions</span></div>
         </div>
@@ -1849,7 +1897,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
-          <div class="side-tab"><span class="g">✎</span><span class="label">Editor</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-tab"><span class="g">⊞</span><span class="label">Plans</span></div>
           <div class="side-tab"><span class="g">›</span><span class="label">Sessions</span></div>
           <div class="side-section">observe</div>
@@ -2011,7 +2059,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
-          <div class="side-tab"><span class="g">✎</span><span class="label">Editor</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-tab"><span class="g">⊞</span><span class="label">Plans</span></div>
           <div class="side-tab active"><span class="g">›</span><span class="label">Sessions</span><span class="badge">42</span></div>
           <div class="side-section">observe</div>
@@ -2178,154 +2226,118 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
-<section class="section" id="editor">
-  <h2><span class="num">§7</span>Editor</h2>
+<section class="section" id="edit-review">
+  <h2><span class="num">§7</span>Edit review</h2>
   <p class="lede">
-    The dashboard's <b>web-only</b> value lives most visibly here. A 13-row
-    terminal can't host real syntax-highlighted multi-file editing; the dashboard
-    can. Tree on the left, tabs across the top, CodeMirror-class code area below,
-    line/col + git status in the foot. Cmd-P opens a fuzzy file picker — same
-    component as the global command palette, anchored to file mode.
+    Where the agent's <code class="mono">edit_file</code> output becomes a thing you actually read before it lands.
+    Multi-file aggregator at the top, per-file collapsible cards underneath, GitHub-style diff with
+    syntax highlighting, expand-context chevrons, intra-line word diff, and a unified ↔ split toggle.
+    Inline diffs in chat (§3) are the quick read; this panel is the full review.
   </p>
 
-  <div class="why">
-    <b>Not a replacement for VS Code.</b>
-    The Editor is for the small, <i>relevant</i> set of files the agent is touching.
-    It always opens at the cursor location the model returned, scrolls to the
-    diff range, and shows pending edits as ghost overlays before approval.
-    For deep refactors, the user keeps their own editor — the dashboard is the
-    "see what the agent is about to do" surface.
-  </div>
-
-  <div class="mock">
-    <div class="app">
-      <aside class="app-side">
-        <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
-        <div class="side-tabs">
-          <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
-          <div class="side-tab active"><span class="g">✎</span><span class="label">Editor</span><span class="badge">3</span></div>
-          <div class="side-tab"><span class="g">⊞</span><span class="label">Plans</span></div>
-          <div class="side-tab"><span class="g">›</span><span class="label">Sessions</span></div>
-          <div class="side-section">observe</div>
-          <div class="side-tab"><span class="g">◈</span><span class="label">Overview</span></div>
-        </div>
-        <div class="side-foot"><span class="label">localhost:8742</span><span class="toggle">«</span></div>
-      </aside>
-
-      <header class="app-top">
-        <div class="crumbs">
-          <span class="crumb dim">~/work/reasonix</span>
-          <span class="sep">›</span>
-          <span class="crumb">src/cli/ui</span>
-          <span class="sep">›</span>
-          <span class="crumb" style="color:var(--c-brand)">PromptInput.tsx</span>
-        </div>
-        <span class="grow"></span>
-        <span class="tui-status online"><span class="dot"></span>TUI · #2</span>
-        <span class="meter"><span class="lbl">3 unsaved</span></span>
-      </header>
-
-      <div class="app-body" style="padding:0;display:grid;grid-template-columns:240px minmax(0,1fr);gap:0;min-height:0">
-
-        <!-- File tree -->
-        <div style="border-right:1px solid var(--bd);background:var(--bg-elev);overflow-y:auto">
-          <div style="padding:8px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:6px">
-            <input class="input mono" placeholder="filter / fuzzy" style="font-size:11.5px;padding:3px 6px" />
-            <button class="btn ghost" style="padding:3px 6px"><span class="g">↻</span></button>
-          </div>
-          <div class="tree">
-            <div class="tree-node open"><span class="indent"></span><span class="arrow">▾</span><span class="icon dir">▣</span><span class="name">src</span></div>
-            <div class="tree-node open"><span class="indent"></span><span class="indent"></span><span class="arrow">▾</span><span class="icon dir">▣</span><span class="name">cli</span></div>
-            <div class="tree-node open"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow">▾</span><span class="icon dir">▣</span><span class="name">ui</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow"></span><span class="icon tsx">›</span><span class="name">App.tsx</span><span class="modified">●</span></div>
-            <div class="tree-node sel"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow"></span><span class="icon tsx">›</span><span class="name">PromptInput.tsx</span><span class="modified">●</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow"></span><span class="icon tsx">›</span><span class="name">SessionPicker.tsx</span></div>
-            <div class="tree-node open"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow">▾</span><span class="icon dir">▣</span><span class="name">cards</span><span class="badge">14</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow"></span><span class="icon tsx">›</span><span class="name">ApprovalCard.tsx</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow"></span><span class="icon tsx">›</span><span class="name">PlanCard.tsx</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow"></span><span class="icon tsx">›</span><span class="name">SubAgentCard.tsx</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow">▸</span><span class="icon dir">▣</span><span class="name">layout</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow">▸</span><span class="icon dir">▣</span><span class="name">state</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="indent"></span><span class="arrow">▸</span><span class="icon dir">▣</span><span class="name">commands</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="arrow">▸</span><span class="icon dir">▣</span><span class="name">code</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="arrow">▸</span><span class="icon dir">▣</span><span class="name">tools</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="indent"></span><span class="arrow"></span><span class="icon tsx">›</span><span class="name">loop.ts</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="arrow">▸</span><span class="icon dir">▣</span><span class="name">design</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="arrow">▸</span><span class="icon dir">▣</span><span class="name">tests</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="arrow"></span><span class="icon md">›</span><span class="name">CLAUDE.md</span></div>
-            <div class="tree-node"><span class="indent"></span><span class="arrow"></span><span class="icon json">›</span><span class="name">package.json</span></div>
-          </div>
-        </div>
-
-        <!-- Editor pane: tabs + code + status -->
-        <div style="display:flex;flex-direction:column;min-height:0">
-          <div class="editor-tabs">
-            <div class="editor-tab"><span class="dot"></span><span>App.tsx</span><span class="x">×</span></div>
-            <div class="editor-tab active"><span class="dot"></span><span>PromptInput.tsx</span><span class="x">×</span></div>
-            <div class="editor-tab"><span>chat.tsx</span><span class="x">×</span></div>
-          </div>
-          <div class="editor-area">
-            <div class="editor-line"><span class="lineno">47</span><span class="ln-content">  <span class="kw">const</span> pastesRef <span class="kw">=</span> <span class="fn">useRef</span>&lt;<span class="typ">Map</span>&lt;<span class="typ">number</span>, <span class="typ">PasteEntry</span>&gt;&gt;(<span class="kw">new</span> <span class="typ">Map</span>());</span></div>
-            <div class="editor-line"><span class="lineno">48</span><span class="ln-content">  <span class="kw">const</span> nextPasteIdRef <span class="kw">=</span> <span class="fn">useRef</span>&lt;<span class="typ">number</span>&gt;(<span class="num">0</span>);</span></div>
-            <div class="editor-line"><span class="lineno">49</span><span class="ln-content"></span></div>
-            <div class="editor-line"><span class="lineno">50</span><span class="ln-content">  <span class="com">// Refs (not props/state) — multiple keystrokes in one stdin chunk dispatch</span></span></div>
-            <div class="editor-line"><span class="lineno">51</span><span class="ln-content">  <span class="com">// before re-render, so the handler must read the latest value/cursor.</span></span></div>
-            <div class="editor-line cur"><span class="lineno">52</span><span class="ln-content">  <span class="kw">const</span> lastLocalValueRef <span class="kw">=</span> <span class="fn">useRef</span>(value);</span></div>
-            <div class="editor-line"><span class="lineno">53</span><span class="ln-content">  <span class="kw">const</span> cursorRef <span class="kw">=</span> <span class="fn">useRef</span>(cursor);</span></div>
-            <div class="editor-line"><span class="lineno">54</span><span class="ln-content">  cursorRef.current <span class="kw">=</span> cursor;</span></div>
-            <div class="editor-line"><span class="lineno">55</span><span class="ln-content">  <span class="kw">if</span> (value <span class="kw">!==</span> lastLocalValueRef.current) {</span></div>
-            <div class="editor-line"><span class="lineno">56</span><span class="ln-content">    lastLocalValueRef.current <span class="kw">=</span> value;</span></div>
-            <div class="editor-line"><span class="lineno">57</span><span class="ln-content">    <span class="kw">if</span> (cursor <span class="kw">!==</span> value.length) <span class="fn">setCursor</span>(value.length);</span></div>
-            <div class="editor-line"><span class="lineno">58</span><span class="ln-content">  }</span></div>
-            <div class="editor-line"><span class="lineno">59</span><span class="ln-content"></span></div>
-            <div class="editor-line"><span class="lineno">60</span><span class="ln-content">  <span class="com">// History recall callbacks…</span></span></div>
-            <div class="editor-line"><span class="lineno">61</span><span class="ln-content">  <span class="kw">const</span> <span class="fn">recallPrev</span> <span class="kw">=</span> () <span class="kw">=&gt;</span> {</span></div>
-            <div class="editor-line"><span class="lineno">62</span><span class="ln-content">    <span class="kw">if</span> (!history?.length) <span class="kw">return</span>;</span></div>
-            <div class="editor-line"><span class="lineno">63</span><span class="ln-content">    <span class="kw">const</span> idx <span class="kw">=</span> historyIdx ?? history.length;</span></div>
-          </div>
-          <div class="editor-status">
-            <span><span class="glyph">●</span> <span class="v">PromptInput.tsx</span></span>
-            <span>typescript-react · LF · UTF-8</span>
-            <span style="color:var(--c-warn)">unsaved</span>
-            <span class="grow"></span>
-            <span>Ln <span class="v">52</span>, Col <span class="v">17</span></span>
-            <span>· <span class="v" style="color:var(--c-ok)">+1</span> <span class="v" style="color:var(--c-err)">−2</span></span>
-            <span>· main</span>
-          </div>
-        </div>
-
-      </div>
-
-      <footer class="app-status">
-        <span class="item"><span class="dot"></span><span>tools <span class="v">23</span></span></span>
-        <span class="grow"></span>
-        <span class="item">3 files unsaved</span>
-      </footer>
+  <div class="subsec">
+    <h3>Multi-file summary</h3>
+    <p>Top-of-page aggregator. Stat row, mode toggle, bulk approve/reject. The <em>Apply all</em> button is disabled until every file is either approved or explicitly skipped — same gate the kernel will enforce.</p>
+    <div class="review-summary">
+      <span class="count mono">3 files changed</span>
+      <span class="stat mono"><span class="add">+24</span> · <span class="rem">−18</span></span>
+      <span class="review-mode">
+        <button class="on">unified</button>
+        <button>split</button>
+      </span>
+      <span class="actions">
+        <button class="btn ghost">Reject all</button>
+        <button class="btn primary">Apply all</button>
+      </span>
     </div>
   </div>
 
   <div class="subsec">
-    <h3>Cmd-P file picker</h3>
-    <p>Reuses the command palette component. Pre-filtered to files. Recently-touched-by-agent files are pinned to the top with a glyph; followed by recently-opened-by-user; followed by everything else fuzzy-matched.</p>
-    <div class="mock">
-      <div class="overlay" style="height:300px;background:var(--bg);align-items:flex-start;padding-top:48px">
-        <div class="cmd-palette">
-          <div class="cmd-input-row">
-            <span class="g">›</span>
-            <input value="prom" />
-            <span class="kbd">esc</span>
-          </div>
-          <div class="cmd-list">
-            <div class="cmd-section-h">touched by agent · this session</div>
-            <div class="cmd-row sel"><span class="g">›</span><span class="name">PromptInput.tsx</span><span class="desc">src/cli/ui · modified · ↵ to open</span></div>
-            <div class="cmd-row"><span class="g">›</span><span class="name">prompt.ts</span><span class="desc">src/code · modified</span></div>
-            <div class="cmd-section-h">recently opened</div>
-            <div class="cmd-row"><span class="g">›</span><span class="name">PlanCard.tsx</span><span class="desc">src/cli/ui/cards</span></div>
-            <div class="cmd-row"><span class="g">›</span><span class="name">prompt-viewport.ts</span><span class="desc">src/cli/ui</span></div>
-          </div>
+    <h3>Per-file card · expanded</h3>
+    <p>Default state for any file with under ~80 changed lines. Header shows path + per-file stat + per-file approve/reject. Clicking the chevron collapses to header-only. Approval is sticky across panel re-renders so a long review doesn't lose state.</p>
+    <div class="review-file">
+      <div class="review-file-h">
+        <span class="chev"></span>
+        <span class="file mono">src/cli/commands/chat.tsx</span>
+        <span class="stat mono"><span class="add">+1</span> <span class="rem">−2</span></span>
+        <span class="acts">
+          <button class="btn ghost xs">Reject</button>
+          <button class="btn xs">Approve</button>
+        </span>
+      </div>
+      <div class="review-file-body">
+        <div class="diff">
+          <div class="diff-row hunk"><span class="gut">@@</span><span class="gut"></span><span class="txt">@@ -346,8 +346,7 @@ <span class="kw">export async function</span> chatCommand</span></div>
+          <div class="diff-row ctx"><span class="gut">346</span><span class="gut">346</span><span class="txt">      session={resolvedSession}</span></div>
+          <div class="diff-row ctx"><span class="gut">347</span><span class="gut">347</span><span class="txt">    /&gt;,</span></div>
+          <div class="diff-row ctx"><span class="gut">348</span><span class="gut">348</span><span class="txt">    <span class="com">// patchConsole:false — winpty/MINTTY redraw-glitch source.</span></span></div>
+          <div class="diff-row rem"><span class="gut">349</span><span class="gut"></span><span class="txt">    <span class="com">// debug:true forces full-frame writes; log-update's diff drops frames…</span></span></div>
+          <div class="diff-row rem"><span class="gut">350</span><span class="gut"></span><span class="txt">    { exitOnCtrlC: <span class="kw">true</span>, patchConsole: <span class="kw">false</span>, <span class="word-rem">debug: <span class="kw">true</span></span> },</span></div>
+          <div class="diff-row add"><span class="gut"></span><span class="gut">349</span><span class="txt">    { exitOnCtrlC: <span class="kw">true</span>, patchConsole: <span class="kw">false</span> },</span></div>
+          <div class="diff-row ctx"><span class="gut">351</span><span class="gut">350</span><span class="txt">  );</span></div>
+          <div class="diff-row expand"><span class="txt">↕ expand 14 lines</span></div>
+          <div class="diff-row hunk"><span class="gut">@@</span><span class="gut"></span><span class="txt">@@ -402,3 +401,3 @@ chatCommand</span></div>
+          <div class="diff-row ctx"><span class="gut">402</span><span class="gut">401</span><span class="txt">      teardown();</span></div>
+          <div class="diff-row rem"><span class="gut">403</span><span class="gut"></span><span class="txt">      <span class="word-rem">await session.flush();</span></span></div>
+          <div class="diff-row add"><span class="gut"></span><span class="gut">402</span><span class="txt">      <span class="word-add">await session.flushAndClose();</span></span></div>
+          <div class="diff-row ctx"><span class="gut">404</span><span class="gut">403</span><span class="txt">    }</span></div>
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="subsec">
+    <h3>Per-file card · collapsed</h3>
+    <p>Default for files past the line-count threshold, or after the user has approved/rejected them. Header stays interactive — re-open with one click.</p>
+    <div class="review-file collapsed">
+      <div class="review-file-h">
+        <span class="chev"></span>
+        <span class="file mono">src/loop.ts</span>
+        <span class="stat mono"><span class="add">+18</span> <span class="rem">−14</span></span>
+        <span class="acts">
+          <span class="badge mono" style="color:var(--c-ok);border-color:rgba(126,231,135,.35)">approved</span>
+        </span>
+      </div>
+    </div>
+    <div class="review-file collapsed">
+      <div class="review-file-h">
+        <span class="chev"></span>
+        <span class="file mono">tests/loop.test.ts</span>
+        <span class="stat mono"><span class="add">+5</span> <span class="rem">−2</span></span>
+        <span class="acts">
+          <button class="btn ghost xs">Reject</button>
+          <button class="btn xs">Approve</button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsec">
+    <h3>Side-by-side mode</h3>
+    <p>Activates from the toggle in the top summary. Two panes share row alignment so the eye scans horizontally. Empty cells in either pane render as the elevated background, signalling pure adds/removes vs. modifications. Word diff inside the cells survives the mode swap.</p>
+    <div class="diff split">
+      <div class="diff-h"><span class="file mono">src/cli/commands/chat.tsx</span><span class="stat mono"><span class="add">+1</span> · <span class="rem">−2</span></span></div>
+      <div class="diff-row hunk"><span class="gut">@@</span><span class="pane">@@ -346,8 +346,7 @@ <span class="kw">export async function</span> chatCommand</span><span class="gut">@@</span><span class="pane"></span></div>
+      <div class="diff-row ctx"><span class="gut">348</span><span class="pane">    <span class="com">// patchConsole:false — winpty/MINTTY redraw-glitch source.</span></span><span class="gut">348</span><span class="pane">    <span class="com">// patchConsole:false — winpty/MINTTY redraw-glitch source.</span></span></div>
+      <div class="diff-row rem"><span class="gut">349</span><span class="pane">    <span class="com">// debug:true forces full-frame writes…</span></span><span class="gut"></span><span class="pane l"></span></div>
+      <div class="diff-row rem"><span class="gut">350</span><span class="pane">    { exitOnCtrlC: <span class="kw">true</span>, patchConsole: <span class="kw">false</span>, <span class="word-rem">debug: <span class="kw">true</span></span> },</span><span class="gut">349</span><span class="pane">    { exitOnCtrlC: <span class="kw">true</span>, patchConsole: <span class="kw">false</span> },</span></div>
+      <div class="diff-row ctx"><span class="gut">351</span><span class="pane">  );</span><span class="gut">350</span><span class="pane">  );</span></div>
+    </div>
+  </div>
+
+  <div class="subsec">
+    <h3>Empty + error states</h3>
+    <p>Three visual states for the panel:</p>
+    <ul style="color:var(--fg-2);font-size:13px;line-height:1.7">
+      <li><b>No pending edits</b> — single line in elevated background: <span class="mono" style="color:var(--fg-3)">— no edit_file calls in this turn —</span>. Clicking opens the most recent reviewed turn (read-only).</li>
+      <li><b>One edit, all approved</b> — summary collapses to a single chip: <span class="mono" style="color:var(--c-ok)">✓ 1 file applied · src/cli/commands/chat.tsx</span>. Re-expand from the chip.</li>
+      <li><b>Test red after apply (RFC #25 stage 2)</b> — diff stays visible, file card gains a red footer: <span class="mono" style="color:var(--c-err)">test_run failed · vitest -t "&lt;name&gt;" · status fail · auto-reverted</span>. Approve gate blocks until the model re-tries or the user opts into <code class="mono">/refactor</code>.</li>
+    </ul>
+  </div>
+
+  <div class="subsec">
+    <h3>Wiring</h3>
+    <p>Data source: <code class="mono">events.jsonl</code> via the dashboard's <code class="mono">/api/events</code> stream. Each <code class="mono">tool.dispatched</code> for <code class="mono">edit_file</code> + its paired <code class="mono">tool.result</code> + (post-#25) <code class="mono">test_run</code> compose one card. Apply / reject are no-ops in the design — the actual side-effect is in the kernel; the panel only reflects state.</p>
   </div>
 </section>
 
@@ -2346,7 +2358,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
-          <div class="side-tab"><span class="g">✎</span><span class="label">Editor</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-tab active"><span class="g">⊞</span><span class="label">Plans</span><span class="badge">2</span></div>
           <div class="side-tab"><span class="g">›</span><span class="label">Sessions</span></div>
           <div class="side-section">observe</div>
@@ -2508,6 +2520,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-tab"><span class="g">⊞</span><span class="label">Plans</span></div>
           <div class="side-tab"><span class="g">›</span><span class="label">Sessions</span></div>
           <div class="side-section">observe</div>
@@ -2650,6 +2663,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-section">configure</div>
           <div class="side-tab active"><span class="g">▣</span><span class="label">Tools</span><span class="badge">23</span></div>
           <div class="side-tab"><span class="g">▎</span><span class="label">Permissions</span></div>
@@ -2841,6 +2855,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-section">observe</div>
           <div class="side-tab"><span class="g">◈</span><span class="label">Overview</span></div>
           <div class="side-tab"><span class="g">$</span><span class="label">Usage</span></div>
@@ -2934,7 +2949,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
-          <div class="side-tab"><span class="g">✎</span><span class="label">Editor</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-section">observe</div>
           <div class="side-tab active"><span class="g">≈</span><span class="label">Semantic</span></div>
           <div class="side-tab"><span class="g">$</span><span class="label">Usage</span></div>
@@ -3042,13 +3057,61 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
             </div>
 
             <div class="card">
-              <div class="card-h"><span class="title">excluded by patterns</span></div>
-              <div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-2);line-height:1.7">
-                <div><code class="mono">node_modules/</code></div>
-                <div><code class="mono">dist/</code></div>
-                <div><code class="mono">.git/</code></div>
-                <div><code class="mono">*.lock</code></div>
-                <div><code class="mono">*.snap</code></div>
+              <div class="card-h"><span class="title">index config</span><span class="meta"><a class="mono" style="color:var(--c-brand);text-decoration:none;font-size:11px" href="#">reset</a></span></div>
+
+              <div class="form-row">
+                <span class="lbl">exclude dirs</span>
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  <span class="chip-f"><span>node_modules</span><span class="x">×</span></span>
+                  <span class="chip-f"><span>dist</span><span class="x">×</span></span>
+                  <span class="chip-f"><span>.git</span><span class="x">×</span></span>
+                  <span class="chip-f"><span>.cache</span><span class="x">×</span></span>
+                  <span class="chip-f" style="border-style:dashed;color:var(--fg-3)">+ add</span>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <span class="lbl">exclude files</span>
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  <span class="chip-f"><span>package-lock.json</span><span class="x">×</span></span>
+                  <span class="chip-f"><span>pnpm-lock.yaml</span><span class="x">×</span></span>
+                  <span class="chip-f" style="border-style:dashed;color:var(--fg-3)">+ add</span>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <span class="lbl">exclude exts</span>
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  <span class="chip-f"><span>.lock</span><span class="x">×</span></span>
+                  <span class="chip-f"><span>.snap</span><span class="x">×</span></span>
+                  <span class="chip-f"><span>.png</span><span class="x">×</span></span>
+                  <span class="chip-f"><span>.webp</span><span class="x">×</span></span>
+                  <span class="chip-f" style="border-style:dashed;color:var(--fg-3)">+ add</span>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <span class="lbl">exclude patterns <span style="color:var(--fg-3);font-weight:400;text-transform:none;letter-spacing:0">· glob</span></span>
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  <span class="chip-f"><span>**/*.test.ts</span><span class="x">×</span></span>
+                  <span class="chip-f"><span>fixtures/**</span><span class="x">×</span></span>
+                  <span class="chip-f" style="border-style:dashed;color:var(--fg-3)">+ add</span>
+                </div>
+              </div>
+
+              <div class="checkbox-row" style="margin-top:8px">
+                <span class="box on">✓</span><span>respect <code class="mono">.gitignore</code></span>
+              </div>
+
+              <div class="form-row" style="margin-top:10px">
+                <span class="lbl">max file bytes</span>
+                <input class="input mono" value="2097152" style="font-size:12px" />
+                <span class="help">skip files larger than ~2 MiB</span>
+              </div>
+
+              <div style="display:flex;gap:6px;margin-top:10px">
+                <button class="btn ghost" style="flex:1"><span class="g">⊕</span><span>Preview</span></button>
+                <button class="btn" style="flex:1">Save</button>
               </div>
             </div>
 
@@ -3063,6 +3126,39 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <span class="grow"></span>
         <span class="item">14 results · 0.18s</span>
       </footer>
+    </div>
+  </div>
+
+  <div class="subsec">
+    <h3>Config preview <span class="desc">dry-run output before saving</span></h3>
+    <p>Clicking <em>Preview</em> on the index-config card POSTs the pending config to <code class="mono">/api/index-config/preview</code>, which runs the chunker walker without writing. Shows the projected delta + a sample of files that would change category. No state is mutated.</p>
+    <div class="mock" style="padding:24px">
+      <div class="card" style="max-width:520px;margin:0 auto">
+        <div class="card-h"><span class="glyph">⊕</span><span class="title">preview · pending changes</span><span class="meta"><span class="pill" style="background:rgba(121,192,255,.10);color:var(--c-brand);border-color:rgba(121,192,255,.35)">unsaved</span></span></div>
+        <div class="rail-kv"><span class="k">files now</span><span class="v">312</span></div>
+        <div class="rail-kv"><span class="k">files after save</span><span class="v" style="color:var(--c-warn)">287 <span style="color:var(--fg-3);font-weight:400">(−25)</span></span></div>
+        <div class="rail-kv"><span class="k">chunks delta</span><span class="v">~−140</span></div>
+
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-top:12px;text-transform:uppercase;letter-spacing:.08em">excluded by reason</div>
+        <div class="rail-kv"><span class="k" style="padding-left:10px">dirs</span><span class="v">14</span></div>
+        <div class="rail-kv"><span class="k" style="padding-left:10px">exts</span><span class="v">8</span></div>
+        <div class="rail-kv"><span class="k" style="padding-left:10px">patterns</span><span class="v">2</span></div>
+        <div class="rail-kv"><span class="k" style="padding-left:10px">.gitignore</span><span class="v">1</span></div>
+
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-top:12px;text-transform:uppercase;letter-spacing:.08em">sample (first 5 of 25)</div>
+        <div style="font-family:var(--font-mono);font-size:11.5px;line-height:1.7;color:var(--fg-2);margin-top:4px">
+          <div><span style="color:var(--c-err)">−</span> <code class="mono">tests/fixtures/large-trace.json</code> <span style="color:var(--fg-3)">· patterns</span></div>
+          <div><span style="color:var(--c-err)">−</span> <code class="mono">.cache/parser.bin</code> <span style="color:var(--fg-3)">· dirs</span></div>
+          <div><span style="color:var(--c-err)">−</span> <code class="mono">assets/screenshot-12.png</code> <span style="color:var(--fg-3)">· exts</span></div>
+          <div><span style="color:var(--c-err)">−</span> <code class="mono">build.lock</code> <span style="color:var(--fg-3)">· exts</span></div>
+          <div><span style="color:var(--c-err)">−</span> <code class="mono">scripts/dev-only.sh</code> <span style="color:var(--fg-3)">· .gitignore</span></div>
+        </div>
+
+        <div style="display:flex;gap:6px;margin-top:14px">
+          <button class="btn ghost" style="flex:1">Discard</button>
+          <button class="btn primary" style="flex:1">Save · rebuild required</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3098,6 +3194,7 @@ main { padding: 32px 40px 60px 32px; min-width: 0; }
         <div class="brand"><span class="glyph">◈</span><span class="label">REASONIX</span><span class="ver">0.18.1</span></div>
         <div class="side-tabs">
           <div class="side-tab"><span class="g">◆</span><span class="label">Chat</span></div>
+          <div class="side-tab"><span class="g">✎</span><span class="label">Edit review</span></div>
           <div class="side-section">configure</div>
           <div class="side-tab"><span class="g">▣</span><span class="label">Tools</span></div>
           <div class="side-tab"><span class="g">▎</span><span class="label">Permissions</span></div>
