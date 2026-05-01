@@ -2,9 +2,46 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { html } from "../lib/html.js";
 
+interface HookHandler {
+  command?: string;
+  matcher?: string;
+  [k: string]: unknown;
+}
+
 interface ScopeMeta {
   path?: string | null;
-  hooks?: Record<string, unknown>;
+  hooks?: Record<string, HookHandler[]>;
+}
+
+interface MatrixCell {
+  on: boolean;
+  matcher?: string;
+}
+
+interface MatrixRow {
+  scope: "project" | "global";
+  command: string;
+  cells: Record<string, MatrixCell>;
+}
+
+function buildMatrix(data: HooksData): MatrixRow[] {
+  const rows = new Map<string, MatrixRow>();
+  for (const scope of ["project", "global"] as const) {
+    const hooks = data[scope].hooks ?? {};
+    for (const [event, handlers] of Object.entries(hooks)) {
+      for (const h of handlers ?? []) {
+        const cmd = h.command ?? "(no command)";
+        const key = `${scope}::${cmd}`;
+        let row = rows.get(key);
+        if (!row) {
+          row = { scope, command: cmd, cells: {} };
+          rows.set(key, row);
+        }
+        row.cells[event] = { on: true, matcher: h.matcher };
+      }
+    }
+  }
+  return [...rows.values()];
 }
 
 interface HooksData {
@@ -76,6 +113,12 @@ export function HooksPanel() {
     </h3>
   `;
 
+  const matrixRows = buildMatrix(data);
+  const events = data.events.length > 0
+    ? data.events
+    : Array.from(new Set(matrixRows.flatMap((r) => Object.keys(r.cells))));
+  const gridCols = `220px repeat(${Math.max(events.length, 1)}, minmax(0, 1fr))`;
+
   return html`
     <div style="display:flex;flex-direction:column;gap:6px">
       <div class="chips">
@@ -84,6 +127,43 @@ export function HooksPanel() {
       </div>
       ${info ? html`<div><span class="pill ok">${info}</span></div>` : null}
       ${error ? html`<div class="card accent-err">${error}</div>` : null}
+
+      ${sectionH3("Event matrix", `${matrixRows.length} script${matrixRows.length === 1 ? "" : "s"} × ${events.length} event${events.length === 1 ? "" : "s"}`)}
+      ${
+        matrixRows.length === 0
+          ? html`<div class="card" style="color:var(--fg-3)">
+              No hooks configured. Edit the JSON below to add some.
+            </div>`
+          : html`
+            <div class="card" style="padding:10px 14px;overflow-x:auto">
+              <div class="matrix" style=${`min-width:fit-content`}>
+                <div class="row h" style=${`grid-template-columns:${gridCols}`}>
+                  <div>script</div>
+                  ${events.map((ev) => html`<div>${ev}</div>`)}
+                </div>
+                ${matrixRows.map(
+                  (r) => html`
+                    <div class="row" style=${`grid-template-columns:${gridCols}`}>
+                      <div class="cell" title=${r.command}>
+                        <span style="color:var(--fg-4);font-size:10px;margin-right:6px">${r.scope}</span>
+                        <code class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.command}</code>
+                      </div>
+                      ${events.map((ev) => {
+                        const c = r.cells[ev];
+                        if (!c?.on) return html`<div class="cell off">—</div>`;
+                        return html`
+                          <div class="cell on" title=${c.matcher ?? ""}>
+                            ${c.matcher ? html`<span style="font-size:10px;color:var(--c-warn)">${c.matcher}</span>` : "✓"}
+                          </div>
+                        `;
+                      })}
+                    </div>
+                  `,
+                )}
+              </div>
+            </div>
+          `
+      }
 
       ${(["project", "global"] as const).map((scope) => {
         const meta = data[scope];
