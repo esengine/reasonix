@@ -32,9 +32,6 @@ function PlanCheckpointConfirmInner({
   completedStepIds,
   onChoose,
 }: PlanCheckpointConfirmProps) {
-  // Step list grows with plan size; cap roughly at 20 visible-step-ish rows
-  // plus the 3 picker options + chrome. This is the lamyc-video trigger:
-  // checkpoint + write_file streaming above.
   const stepRows = steps?.length ?? 0;
   useReserveRows("modal", { min: 10, max: Math.max(14, stepRows + 12) });
 

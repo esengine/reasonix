@@ -23,8 +23,6 @@ const REVIEW_FOOTER =
 
 export function EditConfirm({ block, onChoose }: EditConfirmProps) {
   const rows = useTotalRows();
-  // Modal zone is highest priority. Min = chrome + minimum useful diff;
-  // max leaves a few rows for the toast rail / streaming-card footer above.
   const allocated = useReserveRows("modal", {
     min: MODAL_OVERHEAD_ROWS + MIN_DIFF_ROWS,
     max: Math.max(MODAL_OVERHEAD_ROWS + MIN_DIFF_ROWS, rows - 4),

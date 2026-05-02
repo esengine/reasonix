@@ -18,12 +18,21 @@ export function StreamingCard({ card }: { card: StreamingCardData }): React.Reac
 
   if (card.done && !card.aborted) {
     return (
-      <Box flexDirection="column" paddingLeft={3}>
+      <Box
+        flexDirection="column"
+        paddingLeft={2}
+        paddingRight={1}
+        borderStyle="single"
+        borderTop={false}
+        borderRight={false}
+        borderBottom={false}
+        borderLeft
+        borderLeftColor={TONE.brand}
+      >
         <Markdown text={card.text} />
       </Box>
     );
   }
-
   const lineCells = Math.max(20, cols - BODY_INDENT_CELLS - 1);
   const allLines = card.text.length > 0 ? card.text.split("\n") : [""];
   const reserved = (card.aborted ? 2 : 0) + 1;
