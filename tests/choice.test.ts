@@ -1,9 +1,4 @@
-/**
- * ask_choice — the branching primitive that keeps A/B/C decisions out
- * of submit_plan. Covers the schema, the sanitization layer (DeepSeek
- * sometimes emits malformed options arrays even with auto-flatten),
- * and the ChoiceRequestedError toToolResult protocol.
- */
+/** ask_choice — schema, sanitization, ChoiceRequestedError → tool_result protocol. */
 
 import { describe, expect, it } from "vitest";
 import { ToolRegistry } from "../src/tools.js";

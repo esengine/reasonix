@@ -1,9 +1,4 @@
-/**
- * Render a results-*.json into a human-readable report.md.
- *
- *   npx tsx benchmarks/tau-bench/report.ts benchmarks/tau-bench/results-<date>.json
- *   npx tsx benchmarks/tau-bench/report.ts <input.json> --out report.md
- */
+/** Render τ-bench results.json → report.md. CLI usage in benchmarks/README.md. */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -170,8 +165,6 @@ export function renderReport(report: BenchReport): string {
     renderCaveats(),
   ].join("\n");
 }
-
-// ---------- formatting helpers ----------
 
 function pct(num: number, denom: number): string {
   if (denom === 0) return "—";

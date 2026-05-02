@@ -1,14 +1,4 @@
-/**
- * Tests for the usage log + aggregator.
- *
- * Covered:
- *   - appendUsage round-trips (record → file → readUsageLog)
- *   - readUsageLog tolerates malformed tail lines + missing file
- *   - aggregateUsage rolls records into today / week / month / all
- *     using rolling windows against an injected `now`
- *   - bucketCacheHitRatio / bucketSavingsFraction handle zero-denominator
- *   - stats dashboard render contains the expected rows
- */
+/** Usage log + aggregator — append round-trip, malformed-tail tolerance, rolling-window rollups, dashboard render. */
 
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

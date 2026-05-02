@@ -1,11 +1,4 @@
-/**
- * Tests for the viewport-clipping helpers that PromptInput v2 uses
- * to render each logical line as exactly one visual row.
- *
- * The math has to agree with what Ink/Yoga would have rendered (had
- * we let it wrap), so consumers can reason about cell positions.
- * Wide CJK chars count as 2; ASCII is 1; control chars 0.
- */
+/** PromptInput viewport clipping — logical-line → single-visual-row math (CJK=2, ASCII=1, control=0). */
 
 import { describe, expect, it } from "vitest";
 import {

@@ -1,8 +1,4 @@
-/**
- * Tests for the hooks module — settings loading, match patterns,
- * outcome decisions, and the runHooks dispatcher with a stubbed
- * spawner. No real subprocesses, no real filesystem outside tmp dirs.
- */
+/** Hooks — settings load, match patterns, outcome decisions, runHooks dispatcher (stubbed spawner). */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

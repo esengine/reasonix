@@ -1,11 +1,4 @@
-/**
- * R1 thinking-mode contract: when a reasoner turn returns both
- * `reasoning_content` and `tool_calls`, the assistant message we
- * persist + send on the NEXT request (the tool-loop continuation)
- * must carry `reasoning_content` back. Otherwise DeepSeek 400s with
- * "The reasoning_content in the thinking mode must be passed back to
- * the API." Reproduces the bug that surfaced in 0.5.14 live usage.
- */
+/** R1 thinking-mode contract — `reasoning_content` must round-trip on the next request or DeepSeek 400s. */
 
 import { describe, expect, it, vi } from "vitest";
 import { DeepSeekClient } from "../src/client.js";

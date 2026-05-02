@@ -1,9 +1,4 @@
-/**
- * Precedence test for `resolveDefaults` — the glue between CLI flags
- * and `~/.reasonix/config.json`. Bugs here would look like "my config
- * doesn't do anything" or "--model was ignored"; both would be
- * invisible to the rest of the test suite, which is why this one exists.
- */
+/** resolveDefaults — flags vs config precedence; silent failures here are user-visible "config does nothing" bugs. */
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

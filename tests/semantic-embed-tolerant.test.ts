@@ -13,11 +13,6 @@ describe("embedAll fault tolerance", () => {
     vi.restoreAllMocks();
   });
 
-  /**
-   * Helper: stub global fetch so we can simulate Ollama responses
-   * without spinning up a real daemon. Returns whatever the per-call
-   * predicate produces.
-   */
   function stubFetch(handler: (callIdx: number) => Promise<Response> | Response) {
     let callIdx = 0;
     globalThis.fetch = vi.fn(async () => {

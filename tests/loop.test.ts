@@ -1,10 +1,4 @@
-/**
- * Integration tests for CacheFirstLoop.
- *
- * We inject a fake fetch into DeepSeekClient so the loop exercises its real
- * request/response wiring without hitting the network. The non-streaming
- * path is covered here; streaming is exercised by the TUI in practice.
- */
+/** CacheFirstLoop integration — fake-fetch DeepSeekClient, non-streaming path. */
 
 import { describe, expect, it, vi } from "vitest";
 import { DeepSeekClient } from "../src/client.js";

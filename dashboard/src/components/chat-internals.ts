@@ -278,7 +278,6 @@ export function ChatMessage({ msg, streaming }: ChatMessageProps) {
   `;
 }
 
-// ---------- Modal components mirroring the TUI ----------
 //
 // Each component renders a card matching the TUI's ModalCard accent
 // palette: red for shell (run-now), magenta for choice (branching),

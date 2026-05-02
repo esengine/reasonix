@@ -1,8 +1,4 @@
-/**
- * Tests for the `~/.reasonix/memory/` store and its prefix-loading
- * composer. All I/O goes through a temp `homeDir` so the suite never
- * touches the developer's actual memory files.
- */
+/** `~/.reasonix/memory/` store + prefix-loading composer — temp homeDir per test. */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

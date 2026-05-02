@@ -1,9 +1,4 @@
-/**
- * Tests for the CSI recovery boundary. Every keystroke that flows
- * through Ink's `useInput` runs through `recoverCsiTail` first, so a
- * regression here would silently re-break arrow keys / paste markers
- * / Shift+Tab on Windows ConPTY.
- */
+/** CSI recovery boundary — every Ink keystroke runs through `recoverCsiTail`; regressions here re-break arrows / paste / Shift+Tab on Windows ConPTY. */
 
 import { describe, expect, it } from "vitest";
 import {

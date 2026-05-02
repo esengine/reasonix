@@ -1,11 +1,4 @@
-/**
- * Subagent tool — registration, child-loop isolation, fork-registry
- * exclusion rules, error path, abort propagation, plan-mode inheritance.
- *
- * The DeepSeek client is faked so we never hit the network. Same shape
- * as `tests/loop.test.ts` so the wire-level expectations stay aligned
- * with the loop's real behavior.
- */
+/** Subagent tool — registration, child-loop isolation, fork-registry exclusion, abort propagation, plan-mode inheritance. */
 
 import { describe, expect, it, vi } from "vitest";
 import { DeepSeekClient } from "../src/client.js";

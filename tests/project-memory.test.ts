@@ -1,7 +1,4 @@
-/**
- * Tests for the `REASONIX.md` project-memory loader. Pure I/O at the
- * edge, so filesystem-backed tests using a temp dir.
- */
+/** REASONIX.md project-memory loader — filesystem-backed tests in a temp dir. */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

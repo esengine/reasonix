@@ -6,11 +6,6 @@ import { handleSlash } from "../src/cli/ui/slash/dispatch.js";
 import { CacheFirstLoop, DeepSeekClient, ImmutablePrefix } from "../src/index.js";
 import { ToolRegistry } from "../src/tools.js";
 
-/**
- * Build a minimal loop instance for the slash dispatcher to consume.
- * The handler under test never actually calls the loop — it returns
- * a SlashResult — so this is just structural plumbing.
- */
 function makeLoop(): CacheFirstLoop {
   const tools = new ToolRegistry();
   return new CacheFirstLoop({

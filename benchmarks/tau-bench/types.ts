@@ -1,18 +1,8 @@
-/**
- * Task and result types for the tool-use eval harness.
- *
- * Scope note: this is NOT a full port of Sierra's τ-bench (airline+retail).
- * We mirror its *shape* — multi-turn tool-use with an LLM user simulator and
- * DB-end-state success predicates — so a later port can drop real tasks in
- * without changing the harness. Until then, see `tasks.ts` for our seed set.
- */
+/** Tool-use eval types — shape-compatible with Sierra τ-bench so a later port can drop real tasks in. */
 
 import type { ToolDefinition } from "../../src/index.js";
 
-/**
- * The mutable world state a task's tools operate on. Tasks deep-clone this
- * into a per-run snapshot so runs don't leak state across each other.
- */
+/** Mutable world state — deep-cloned per run so mutations don't leak across runs. */
 export interface WorldState {
   [table: string]: Record<string, Record<string, unknown>>;
 }
@@ -22,18 +12,11 @@ export interface UserPersona {
   style: string;
   /** The concrete goal. The user pursues this until it's met or clearly refused. */
   goal: string;
-  /**
-   * Facts the simulator may reveal when the agent asks. Keep tight — the
-   * user shouldn't volunteer everything up front.
-   */
+  /** Facts the simulator may reveal when asked — kept tight; user shouldn't volunteer everything. */
   knowns: Record<string, string>;
 }
 
-/**
- * A tool factory. We take a factory (not a ToolDefinition directly) because
- * each run needs a fresh closure over its per-run WorldState — otherwise all
- * runs would share (and mutate) the same DB.
- */
+/** Tool factory — fresh closure over per-run WorldState; bare ToolDefinitions would share DBs. */
 export type ToolFactory = (db: WorldState) => ToolDefinition;
 
 export interface TaskDefinition {
@@ -50,10 +33,7 @@ export interface TaskDefinition {
   user: UserPersona;
   /** Max turns of (user → agent) before we give up and mark fail. */
   maxTurns?: number;
-  /**
-   * Success predicate. Given the end-state DB (and optionally the final
-   * agent utterance), return true iff the task is considered solved.
-   */
+  /** Success predicate over end-state DB (+ final agent utterance). */
   check: (ctx: { db: WorldState; finalAgentMessage: string; transcript: Turn[] }) => boolean;
 }
 

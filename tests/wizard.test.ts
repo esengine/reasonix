@@ -1,12 +1,4 @@
-/**
- * Pure-function tests for the wizard. The Ink rendering is tested
- * manually — vitest + ink-testing-library would be another dev dep for
- * negligible coverage (arrow keys → setIndex, already obvious). What
- * we DO test: the data-transform surface, because the wizard's output
- * goes straight into config.json and then straight into the `--mcp`
- * parser — any bug shows up as "my saved config silently doesn't
- * bridge the server I picked".
- */
+/** Wizard data-transform — buildSpec → parseMcpSpec round-trip; bugs here = silent config-save failures. */
 
 import { describe, expect, it } from "vitest";
 import { buildSpec } from "../src/cli/ui/Wizard.js";

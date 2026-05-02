@@ -1,8 +1,4 @@
-/**
- * Tests for the checkpoint store. Each test uses a fresh temp dir for
- * the workspace and points HOME at another temp dir so the real
- * `~/.reasonix` is never touched.
- */
+/** Checkpoint store tests — fresh temp workspace + redirected HOME so real `~/.reasonix` is untouched. */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

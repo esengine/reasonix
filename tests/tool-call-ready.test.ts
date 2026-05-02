@@ -1,12 +1,4 @@
-/**
- * Tool-call "ready" progress signal during streaming.
- *
- * Matches the 0.5.19 UX fix: as each tool_call's arguments stream into
- * valid JSON we emit `tool_call_delta` with an incrementing
- * `toolCallReadyCount`, so the UI can render "N ready · building call
- * M" instead of a context-free spinner. Dispatch still happens after
- * the stream ends — this is purely a visibility improvement.
- */
+/** Tool-call ready progress — incrementing `toolCallReadyCount` lets the UI render "N ready · building call M". */
 
 import { describe, expect, it } from "vitest";
 import { looksLikeCompleteJson } from "../src/loop.js";

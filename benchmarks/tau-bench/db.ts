@@ -1,9 +1,6 @@
 import type { WorldState } from "./types.js";
 
-/**
- * Deep-clone a WorldState so per-run mutations stay isolated.
- * structuredClone is enough — WorldState is JSON-shaped by contract.
- */
+/** Deep-clone a WorldState — `structuredClone` is enough since the type is JSON-shaped by contract. */
 export function cloneDb(db: WorldState): WorldState {
   return structuredClone(db);
 }

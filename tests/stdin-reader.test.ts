@@ -1,12 +1,4 @@
-/**
- * Unit tests for the raw stdin reader's CSI parser. Drives the
- * machine via `feed()` (the test-only injection point) so we can
- * exercise every state transition without touching real stdin.
- *
- * These tests are the safety net for the input layer: any regression
- * here means a class of keyboard bug returns. The cases below mirror
- * every symptom we shipped a patch for in 0.7.x.
- */
+/** Stdin reader CSI parser — drives the state machine via `feed()`; safety net for the input layer. */
 
 import { describe, expect, it } from "vitest";
 import { type KeyEvent, StdinReader } from "../src/cli/ui/stdin-reader.js";

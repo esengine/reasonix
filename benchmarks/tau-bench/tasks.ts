@@ -1,16 +1,4 @@
-/**
- * Seed task set — retail-flavored, τ-bench-inspired.
- *
- * Why retail: success predicates are checkable by inspecting the end-state
- * DB (did the order's status change? was the refund logged?), which avoids
- * LLM-judge flakiness in the reproducibility report.
- *
- * Each task follows the same shape:
- *   - a small starting DB
- *   - 2–4 stateful tools (read / mutate rows)
- *   - a user-sim persona that will hold back info until asked
- *   - a check() that inspects the end-state DB
- */
+/** Seed retail tasks — DB-end-state predicates avoid LLM-judge flakiness in the reproducibility report. */
 
 import { getRow, setField } from "./db.js";
 import type { TaskDefinition, ToolFactory, WorldState } from "./types.js";
@@ -21,8 +9,6 @@ Rules:
 - Never invent order ids or emails.
 - If a request is outside your tools, say so honestly.
 - Be concise.`;
-
-// ---------- shared world-state factory ----------
 
 function retailSeed(): WorldState {
   return {
@@ -72,8 +58,6 @@ function retailSeed(): WorldState {
     refunds: {},
   };
 }
-
-// ---------- tool factories (closed over a per-run db) ----------
 
 const lookupOrder: ToolFactory = (db) => ({
   name: "lookup_order",
@@ -189,8 +173,6 @@ const ALL_TOOLS = [
   refundOrder,
   listUserOrders,
 ];
-
-// ---------- tasks ----------
 
 export const TASKS: TaskDefinition[] = [
   {

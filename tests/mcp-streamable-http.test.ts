@@ -1,15 +1,4 @@
-/**
- * Streamable HTTP transport tests.
- *
- * Mirrors `mcp-sse.test.ts`'s in-process http.Server pattern. The fake
- * server speaks the 2025-03-26 Streamable HTTP wire shape directly —
- * it accepts POSTs and responds with one of:
- *   - 202 Accepted (notification ack)
- *   - 200 + application/json (single response)
- *   - 200 + text/event-stream (one or more SSE `event: message` frames)
- * It also mints a `Mcp-Session-Id` on the first response so the client
- * has to round-trip the header on subsequent requests.
- */
+/** Streamable HTTP transport — in-process fake server speaking the Streamable HTTP wire shape. */
 
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -34,19 +23,9 @@ interface FakeOptions {
   path?: string;
   /** Hand back this session id on the initialize response. Default "sess-1". */
   sessionId?: string;
-  /**
-   * Return a JSON-RPC reply for an incoming request.
-   *  - If the value is `{ stream: [...] }`, the server writes those frames
-   *    on an SSE response.
-   *  - If `undefined`, the server replies 202 Accepted (notification ack).
-   *  - Otherwise, the value is sent as a single application/json body.
-   */
+  /** `{ stream: [...] }` → SSE frames; `undefined` → 202 ack; else single application/json body. */
   reply?: (body: unknown) => unknown | { stream: unknown[] } | undefined;
-  /**
-   * Sites that need to inject failures for a specific request shape.
-   * Lookup happens after `reply` returns so the failure can short-circuit
-   * the normal path.
-   */
+  /** Failure injection lookup runs after `reply` so it can short-circuit the normal path. */
   forceStatus?: (body: unknown) => { status: number; body?: string } | undefined;
 }
 

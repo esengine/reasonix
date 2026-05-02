@@ -1,9 +1,4 @@
-/**
- * plan-store — load/save the structured plan state next to the
- * session JSONL log so plans survive terminal restarts. Tests cover
- * the roundtrip, malformed-file recovery, and the relativeTime
- * helper that powers the resume notice.
- */
+/** plan-store — roundtrip, malformed-file recovery, relativeTime helper. */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

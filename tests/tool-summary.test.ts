@@ -1,8 +1,4 @@
-/**
- * summarizeToolResult — the one-line tool-row renderer that powers
- * compact scrollback. Pure function; lives outside Ink so we can
- * test the per-tool-name and structured-payload branches directly.
- */
+/** summarizeToolResult — pure function; per-tool-name + structured-payload branches. */
 
 import { describe, expect, it } from "vitest";
 import { formatDuration, summarizeToolResult } from "../src/cli/ui/tool-summary.js";

@@ -1,13 +1,13 @@
-/**
- * Render a harvest-bench results.json into a markdown report.
- *
- *   npx tsx benchmarks/harvest/report.ts benchmarks/harvest/results-<date>.json
- *   npx tsx benchmarks/harvest/report.ts <input.json> --out report.md
- */
+/** Render a harvest-bench results.json into a markdown report. CLI usage in README. */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { ALL_MODES, type HarvestBenchReport, type HarvestMode, type HarvestRunResult } from "./types.js";
+import {
+  ALL_MODES,
+  type HarvestBenchReport,
+  type HarvestMode,
+  type HarvestRunResult,
+} from "./types.js";
 
 interface CliArgs {
   input: string;
@@ -82,7 +82,9 @@ export function renderReport(report: HarvestBenchReport): string {
   // Per-mode summary
   lines.push("## Summary by mode");
   lines.push("");
-  lines.push("| mode | runs | pass rate | cache hit | cost / run | harvest turns | subgoals | uncertainties |");
+  lines.push(
+    "| mode | runs | pass rate | cache hit | cost / run | harvest turns | subgoals | uncertainties |",
+  );
   lines.push("|---|---:|---:|---:|---:|---:|---:|---:|");
   for (const mode of ALL_MODES) {
     const rs = report.results.filter((r) => r.mode === mode);
@@ -97,20 +99,23 @@ export function renderReport(report: HarvestBenchReport): string {
   // Pairwise deltas that actually answer the question
   lines.push("## Deltas");
   lines.push("");
-  const modes = ALL_MODES.filter((m) =>
-    report.results.some((r) => r.mode === m),
-  );
+  const modes = ALL_MODES.filter((m) => report.results.some((r) => r.mode === m));
   if (modes.length >= 2) {
     const baseline = aggregate(report.results.filter((r) => r.mode === modes[0]));
     for (let i = 1; i < modes.length; i++) {
       const mode = modes[i]!;
       const agg = aggregate(report.results.filter((r) => r.mode === mode));
-      const passDelta = (agg.passes / Math.max(agg.runs, 1)) - (baseline.passes / Math.max(baseline.runs, 1));
+      const passDelta =
+        agg.passes / Math.max(agg.runs, 1) - baseline.passes / Math.max(baseline.runs, 1);
       const costRatio = baseline.avgCost > 0 ? agg.avgCost / baseline.avgCost : 0;
       lines.push(`- **${modes[0]} → ${mode}**`);
       lines.push(`  - pass rate: ${(passDelta * 100).toFixed(0)}pp`);
-      lines.push(`  - cost: ×${costRatio.toFixed(2)} (each run costs ${costRatio > 1 ? "more" : "less"})`);
-      lines.push(`  - harvest signal / run: ${agg.avgSubgoals.toFixed(1)} subgoals, ${agg.avgUncertainties.toFixed(1)} uncertainties`);
+      lines.push(
+        `  - cost: ×${costRatio.toFixed(2)} (each run costs ${costRatio > 1 ? "more" : "less"})`,
+      );
+      lines.push(
+        `  - harvest signal / run: ${agg.avgSubgoals.toFixed(1)} subgoals, ${agg.avgUncertainties.toFixed(1)} uncertainties`,
+      );
       lines.push("");
     }
   }
@@ -149,15 +154,7 @@ export function renderReport(report: HarvestBenchReport): string {
   return lines.join("\n");
 }
 
-/**
- * Findings section is hand-written into report.md after rendering — the
- * numbers don't interpret themselves, and boilerplate sections full of
- * "TBD — analyse the data" are worse than nothing. Append with append().
- *
- * This section has been updated twice: after the first 9-run set (which
- * bottomed out at V3 on easy tasks) and after this 18-run set (which
- * bottomed out at V3 on *hard* tasks too).
- */
+/** Findings prose lives in report.md (hand-written after rendering); this stub keeps the function shape. */
 export function renderFindings(_report: HarvestBenchReport): string {
   return [
     "",
@@ -165,7 +162,7 @@ export function renderFindings(_report: HarvestBenchReport): string {
     "",
     "Two bands of tasks tried (easy: mod7 / flips / hats; hard: pseudoprime341 / D_7 / Euler quadratic). The hard band was chosen for *known V3 failure modes*. Result:",
     "",
-    "1. **V3 chat passed all six tasks, including the three \"hard\" ones.** DeepSeek V3 knew 341 is the smallest base-2 pseudoprime, computed D_7=1854, and identified n=40 as the first Euler-polynomial failure. The tasks are well-known enough to be in training; the trap-answer variants (561, 265, 41) that the checkers specifically reject didn't fire.",
+    '1. **V3 chat passed all six tasks, including the three "hard" ones.** DeepSeek V3 knew 341 is the smallest base-2 pseudoprime, computed D_7=1854, and identified n=40 as the first Euler-polynomial failure. The tasks are well-known enough to be in training; the trap-answer variants (561, 265, 41) that the checkers specifically reject didn\'t fire.',
     "2. **Reasoner cost 3.04× baseline for identical pass rates (6/6 both sides).** On this task set, R1 adds cost and latency without measurable quality. The cache-hit story *does* extend to reasoner (74.2% mean), so Pillar 1 generalizes to R1 — but that's not a Pillar 2 story.",
     "3. **Harvest produced real signal** (mean 2.8 subgoals, 1.3 uncertainties per run where it fired) but didn't improve outcomes. One run hit the 300s timeout (bumped from 120s), suggesting reasoner-harvest latency is still unpredictable on some problems.",
     "",
@@ -173,8 +170,8 @@ export function renderFindings(_report: HarvestBenchReport): string {
     "",
     "We've now given harvest two shots at showing answer-quality value on pure reasoning tasks. Both times V3 ate its lunch. This isn't a framework bug — it's a positioning signal:",
     "",
-    "- **On well-known math / logic / counting problems, DeepSeek V3 is strong enough that paying for R1 is not justified by accuracy.** Pillar 2's \"smart preset\" cost multiplier (10×) quoted in the README is real but for most single-question Q/A it buys nothing.",
-    "- **Harvest's plausible value surfaces are not \"better math answers\".** More likely: (a) transparency / auditability for developers, (b) planning support when tools are in the mix, (c) driving branch-sampling on cases where uncertainty correlates with wrongness. None of those are tested here.",
+    '- **On well-known math / logic / counting problems, DeepSeek V3 is strong enough that paying for R1 is not justified by accuracy.** Pillar 2\'s "smart preset" cost multiplier (10×) quoted in the README is real but for most single-question Q/A it buys nothing.',
+    '- **Harvest\'s plausible value surfaces are not "better math answers".** More likely: (a) transparency / auditability for developers, (b) planning support when tools are in the mix, (c) driving branch-sampling on cases where uncertainty correlates with wrongness. None of those are tested here.',
     "",
     "### Recommendation",
     "",

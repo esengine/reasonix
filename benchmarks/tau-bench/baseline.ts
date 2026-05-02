@@ -1,22 +1,4 @@
-/**
- * Naive baseline runner — deliberately does NOT use CacheFirstLoop.
- *
- * For the benchmark comparison to be honest, this runner must reproduce
- * what a "typical" agent framework does that breaks DeepSeek's automatic
- * prefix cache:
- *
- *   1. Inject a fresh timestamp into the system prompt every turn.
- *   2. Re-serialize the tool list each turn with a shuffled key order.
- *   3. Rebuild the full message array each turn rather than appending.
- *
- * These are all things frameworks like LangChain/LangGraph do by default
- * (either directly, or because tool specs are regenerated from Python dicts
- * with non-deterministic ordering, or because a "current_time" placeholder
- * is recommended in common system-prompt recipes).
- *
- * Reuses DeepSeekClient, ToolRegistry, and SessionStats so the *only*
- * difference from the Reasonix run is prefix stability.
- */
+/** Naive baseline — deliberately breaks prefix cache (fresh timestamp + shuffled tool keys + full-rebuild log) so the comparison vs CacheFirstLoop isolates Pillar 1. */
 
 import {
   type ChatMessage,
@@ -26,7 +8,7 @@ import {
   type ToolDefinition,
   ToolRegistry,
   type ToolSpec,
-  Usage,
+  type Usage,
 } from "../../src/index.js";
 import type { Turn } from "./types.js";
 
@@ -50,12 +32,7 @@ export interface BaselineSubCall {
 export interface BaselineTurnResult {
   assistantMessage: string;
   toolCallsExecuted: { name: string; args: string; result: string }[];
-  /**
-   * Per-sub-call breakdown, one entry per client.chat() invocation. Gives
-   * downstream tools (bench transcripts) the same granularity as Reasonix
-   * loop events — without it, diff can't compare model-call counts
-   * apples-to-apples.
-   */
+  /** Per-sub-call breakdown so bench transcripts match Reasonix loop-event granularity. */
   subCalls: BaselineSubCall[];
   /** Turn number (1-based) assigned by the agent. */
   turnNo: number;
@@ -68,10 +45,7 @@ export class BaselineAgent {
   private readonly registry: ToolRegistry;
   private readonly model: string;
   private readonly maxToolIters: number;
-  /**
-   * Previous-turn messages. A naive framework keeps these, but we still
-   * rebuild the prefix around them each turn so the byte prefix churns.
-   */
+  /** Previous-turn messages — kept, but the prefix rebuilds around them every turn so cache churns. */
   private history: ChatMessage[] = [];
   private turnNo = 0;
 
@@ -84,13 +58,7 @@ export class BaselineAgent {
     for (const t of opts.tools) this.registry.register(t);
   }
 
-  /**
-   * Run one user-turn: sends the user message, lets the model do tool
-   * calls until it stops, returns the final assistant text.
-   *
-   * Intentionally non-cache-friendly: rebuilds the prefix with a fresh
-   * timestamp + re-shuffled tool specs every turn.
-   */
+  /** Run one user-turn — intentionally non-cache-friendly (fresh ts + shuffled tool specs every turn). */
   async userTurn(userMessage: string, transcript: Turn[]): Promise<BaselineTurnResult> {
     this.turnNo++;
 
@@ -159,9 +127,7 @@ export class BaselineAgent {
 }
 
 /**
- * Deterministic Fisher–Yates shuffle seeded by an integer. Same turn number
- * → same ordering, so the baseline is reproducible across runs while still
- * being cache-hostile (different turns get different orderings).
+ * Deterministic Fisher–Yates seeded by turn-number — reproducible runs, cache-hostile orderings.
  */
 function shuffle<T>(arr: T[], seed: number): T[] {
   const out = [...arr];

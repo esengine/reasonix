@@ -1,8 +1,4 @@
-/**
- * Tests for the `remember` / `forget` / `recall_memory` tool surface.
- * Dispatches through ToolRegistry like R1 would, so refusals surface
- * as JSON-encoded `{ error: ... }` strings (matching dispatch semantics).
- */
+/** remember / forget / recall_memory — dispatches through ToolRegistry; refusals surface as JSON-encoded `{ error }`. */
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -13,10 +13,6 @@ interface MainCallScript {
   reasoning: string;
 }
 
-/**
- * Fake fetch that returns different main-call responses per branch (keyed by
- * temperature) and a canned plan-state JSON for every harvest call.
- */
 function makeFakeFetch(
   mainByTemp: Record<string, MainCallScript>,
   harvestJson: string | ((reasoning: string) => string),

@@ -1,10 +1,4 @@
-/**
- * Smoke tests for hook wiring inside CacheFirstLoop. The full
- * pass / block / warn matrix is covered in tests/hooks.test.ts with
- * a stubbed spawner — here we just confirm the loop honors the
- * `hooks` option and exposes a mutable list that `/hooks reload`
- * can swap into without reconstructing the loop.
- */
+/** CacheFirstLoop hook wiring — confirms the loop honors `hooks` and exposes a swappable list for `/hooks reload`. */
 
 import { describe, expect, it, vi } from "vitest";
 import { DeepSeekClient } from "../src/client.js";

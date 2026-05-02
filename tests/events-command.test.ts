@@ -1,9 +1,4 @@
-/**
- * `reasonix events <name>` command formatter — pure stdout assertions.
- * The command itself is mostly formatting; this proves the per-event-type
- * detail rendering hits the right shape, plus the filter / projection
- * flags work end-to-end.
- */
+/** `reasonix events <name>` formatter — per-event-type detail rendering + filter / projection flags. */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,11 +1,4 @@
-/**
- * SSE transport tests.
- *
- * Strategy: spin up a tiny in-process http.Server that implements the
- * 2024-11-05 MCP HTTP+SSE wire shape — GET emits `event: endpoint` then
- * stays open; POSTs land a JSON-RPC response on the SSE channel. No real
- * MCP server needed.
- */
+/** SSE transport — in-process http.Server speaking the MCP HTTP+SSE wire shape. */
 
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";

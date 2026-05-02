@@ -1,9 +1,4 @@
-/**
- * Tests for the version module — semver compare, npx detection, and
- * the cached latest-version fetcher. Network is fully mocked: every
- * `fetch` call goes through an injected stub so tests work offline
- * and across CI providers without flake risk.
- */
+/** Version module — semver compare, npx detection, cached latest-version fetcher (mocked fetch). */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

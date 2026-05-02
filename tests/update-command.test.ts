@@ -1,8 +1,4 @@
-/**
- * Tests for the `reasonix update` command — pure decision function
- * + the CLI orchestrator with every side effect mocked via its
- * test seams. No network, no spawn, no process.exit.
- */
+/** reasonix update — pure planUpdate + orchestrator with every side effect mocked via test seams. */
 
 import { describe, expect, it } from "vitest";
 import { planUpdate, updateCommand } from "../src/cli/commands/update.js";

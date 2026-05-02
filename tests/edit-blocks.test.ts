@@ -1,9 +1,4 @@
-/**
- * Unit tests for SEARCH/REPLACE parsing + application.
- *
- * Filesystem tests use a fresh temp dir per test so they don't collide
- * or leak across runs.
- */
+/** SEARCH/REPLACE parsing + application — fresh temp dir per test. */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

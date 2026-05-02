@@ -1,15 +1,4 @@
-/**
- * Integration test: real subprocess + real transport + bridge + dispatch.
- *
- * Distinct from tests/mcp.test.ts (which uses an in-process fake
- * transport). This one actually spawns the bundled demo MCP server as
- * a child process, connects via StdioTransport, bridges tools into a
- * ToolRegistry, and invokes them.
- *
- * We don't put this in CI yet — subprocess tests on Windows can be
- * slow or flaky. Run locally with `npm test`. If it ever becomes
- * flaky, swap the afterEach cleanup to force-kill and move on.
- */
+/** MCP integration — spawns the demo MCP server, bridges tools, invokes them end-to-end. */
 
 import { afterEach, describe, expect, it } from "vitest";
 import { McpClient } from "../src/mcp/client.js";

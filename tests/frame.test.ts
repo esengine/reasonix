@@ -20,13 +20,7 @@ import {
 } from "../src/frame/index.js";
 import type { Frame } from "../src/frame/index.js";
 
-/**
- * Width invariant — the linchpin every primitive must preserve.
- * Counts the visible width of each row (tail cells contribute 0,
- * regular cells contribute their width) and asserts it equals
- * `Frame.width`. If a primitive ever miscounts, the slicer's
- * arithmetic drifts and we get back the 0.13.x scrolling bugs.
- */
+/** Width invariant — every primitive must preserve `Frame.width`; miscount → slicer drift. */
 function assertWidthInvariant(f: Frame): void {
   for (let i = 0; i < f.rows.length; i++) {
     const row = f.rows[i]!;

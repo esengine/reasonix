@@ -1,9 +1,4 @@
-/**
- * JobRegistry — background-process lifecycle. Each test uses a real
- * child process via `node -e "..."` so we actually exercise the spawn/
- * pipe/kill plumbing. Inline scripts keep fixtures self-contained; no
- * temp files to clean up.
- */
+/** JobRegistry — real spawn/pipe/kill via inline `node -e` scripts. */
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

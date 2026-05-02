@@ -1,11 +1,4 @@
-/**
- * Checker tests for the harvest eval harness.
- *
- * Unlike the bench runner tests (which cover plumbing without API calls),
- * these test the pass/fail verdict logic — the part that determines
- * whether a real run's data is credible. A broken checker silently
- * produces wrong numbers, so the tests here are worth every line.
- */
+/** Harvest-bench checker — pass/fail verdict logic; broken checkers silently corrupt benchmark numbers. */
 
 import { describe, expect, it } from "vitest";
 import { TASKS } from "../benchmarks/harvest/tasks.js";

@@ -1,8 +1,4 @@
-/**
- * Plan Mode — the dispatch-level enforcement (ToolRegistry read-only
- * gate) and the submit_plan tool (PlanProposedError + toToolResult
- * protocol).
- */
+/** Plan Mode — read-only dispatch gate + submit_plan tool's PlanProposedError → tool_result protocol. */
 
 import { describe, expect, it } from "vitest";
 import { ToolRegistry } from "../src/tools.js";

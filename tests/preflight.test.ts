@@ -1,15 +1,4 @@
-/**
- * Preflight context-size check tests.
- *
- * Reactive auto-compact keys off the PREVIOUS turn's prompt_tokens —
- * too late to save a fresh request whose buildMessages already exceeds
- * the model's context window. The preflight estimates locally before
- * sending and compacts first.
- *
- * We set a tiny context budget on a synthetic model id so modestly-
- * sized test content can trip the 95% threshold without churning
- * through ~120k tokens of fake text.
- */
+/** Preflight context-size check — local estimate + auto-compact before send when reactive compact would arrive too late. */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeepSeekClient } from "../src/client.js";

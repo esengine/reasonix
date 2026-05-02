@@ -1,16 +1,4 @@
-/**
- * Types for the harvest eval harness.
- *
- * Scope: this is deliberately NOT τ-bench-lite. These tasks:
- *   - are single-turn Q/A (no user simulator, no DB)
- *   - target reasoning-heavy problems (math, logic, planning)
- *   - use deterministic checkers (regex extraction + set/value compare),
- *     never an LLM judge
- *
- * The point is to measure Pillar 2 (harvest) the same way τ-bench-lite
- * measures Pillar 1 (cache-first): isolate one variable, produce numbers
- * anyone can reproduce.
- */
+/** Harvest-bench types — single-turn Q/A with deterministic checkers; isolates Pillar 2 the way τ-bench-lite isolates Pillar 1. */
 
 export type HarvestMode =
   /** deepseek-chat, no Reasonix tricks. Floor reference for answer quality on reasoning tasks (V3 at its best). */
@@ -22,11 +10,7 @@ export type HarvestMode =
 
 export const ALL_MODES: HarvestMode[] = ["baseline", "reasoner", "reasoner-harvest"];
 
-/**
- * Checker verdict. We don't use boolean directly because "maybe" is real
- * — e.g. "answer in the right shape but can't verify without running the
- * program". For v0.3 we only use {pass, fail}, but the shape leaves room.
- */
+/** Checker verdict — `inconclusive` reserves room for "right shape, can't verify without running it". */
 export type CheckVerdict = "pass" | "fail" | "inconclusive";
 
 export interface HarvestTask {
@@ -37,12 +21,7 @@ export interface HarvestTask {
   systemPrompt: string;
   /** The single question. */
   prompt: string;
-  /**
-   * Check the agent's final reply. Returns pass/fail/inconclusive plus an
-   * optional one-line explanation the report can surface.
-   *
-   * IMPORTANT: must be pure and deterministic. No LLM calls, no file I/O.
-   */
+  /** Pure + deterministic — no LLM calls, no file I/O. Verdict + optional one-line note. */
   check: (agentReply: string) => { verdict: CheckVerdict; note?: string };
 }
 

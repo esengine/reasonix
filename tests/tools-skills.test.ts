@@ -1,7 +1,4 @@
-/**
- * Tests for the `run_skill` tool. Uses a temp `homeDir` and optional
- * `projectRoot` so the tool never reads real skill dirs.
- */
+/** run_skill — temp homeDir / projectRoot so the tool never reads real skill dirs. */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,12 +7,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ToolRegistry } from "../src/tools.js";
 import { registerSkillTools } from "../src/tools/skills.js";
 
-/**
- * Write a skill under `<baseDir>/.reasonix/skills/<name>/SKILL.md`.
- * Callers pass their home tmpdir for global-scope skills, or their
- * projectRoot tmpdir for project-scope skills — the on-disk layout is
- * the same either way, only the base directory differs.
- */
 function writeSkill(baseDir: string, name: string, description: string, body: string): void {
   const dir = join(baseDir, ".reasonix", "skills", name);
   mkdirSync(dir, { recursive: true });
@@ -26,10 +17,6 @@ function writeSkill(baseDir: string, name: string, description: string, body: st
   );
 }
 
-/**
- * Write a skill with arbitrary frontmatter — used for subagent-runAs
- * tests where we need `runAs: subagent` and an optional `model:` line.
- */
 function writeSkillWithFrontmatter(
   baseDir: string,
   name: string,

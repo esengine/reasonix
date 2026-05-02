@@ -1,14 +1,4 @@
-/**
- * Dashboard server tests — drive the real http server on an ephemeral
- * port and assert on responses. Covers:
- *   - Token + CSRF gating (header-only for mutations)
- *   - Each v0.12 endpoint's shape (overview / usage / tools / permissions)
- *   - Permissions CRUD round-trip with a temp config file
- *
- * Skipping browser-driven e2e (Playwright) until v0.13 — for v0.12 the
- * SPA is small enough that endpoint contract + the markup file's
- * existence is enough confidence.
- */
+/** Dashboard server — token/CSRF gates, endpoint shapes, permissions CRUD against a real http server. */
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

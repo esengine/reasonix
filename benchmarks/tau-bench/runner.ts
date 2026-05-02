@@ -1,17 +1,4 @@
-/**
- * τ-bench-lite runner.
- *
- * Usage:
- *   npx tsx benchmarks/tau-bench/runner.ts                         # all tasks, 1 repeat, both modes
- *   npx tsx benchmarks/tau-bench/runner.ts --task t01_address_happy
- *   npx tsx benchmarks/tau-bench/runner.ts --mode reasonix --repeats 3
- *   npx tsx benchmarks/tau-bench/runner.ts --model deepseek-chat --out results.json
- *   npx tsx benchmarks/tau-bench/runner.ts --dry                   # no API calls, smoke-test plumbing
- *
- * Writes a results-<timestamp>.json file (or whatever --out points at).
- * Run `npx tsx benchmarks/tau-bench/report.ts <results.json>` to render
- * report.md.
- */
+/** τ-bench-lite runner — writes results.json. CLI flags + sample invocations in benchmarks/README.md. */
 
 import { type WriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,11 +13,7 @@ import {
   costUsd,
   loadDotenv,
 } from "../../src/index.js";
-import {
-  openTranscriptFile,
-  recordFromLoopEvent,
-  writeRecord,
-} from "../../src/transcript/log.js";
+import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../src/transcript/log.js";
 import { BaselineAgent } from "./baseline.js";
 import { cloneDb } from "./db.js";
 import { TASKS } from "./tasks.js";
@@ -79,8 +62,6 @@ function parseArgs(argv: string[]): CliArgs {
   }
   return out;
 }
-
-// ---------- per-run drivers ----------
 
 interface RunContext {
   client: DeepSeekClient;
@@ -311,8 +292,6 @@ function truncate(s: string, n = 140): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 }
 
-// ---------- dry mode (stubs the LLM) ----------
-
 async function runDry(args: CliArgs): Promise<BenchReport> {
   const tasks = filterTasks(args.taskFilter);
   const results: RunResult[] = [];
@@ -360,8 +339,6 @@ function stubArgs(t: {
   for (const k of Object.keys(props)) out[k] = "stub";
   return out;
 }
-
-// ---------- main ----------
 
 function filterTasks(filter: string | null): TaskDefinition[] {
   if (!filter) return TASKS;

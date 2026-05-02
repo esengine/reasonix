@@ -1,15 +1,4 @@
-/**
- * Harvest-bench runner.
- *
- * Usage:
- *   npx tsx benchmarks/harvest/runner.ts                      # all tasks, all modes, 1 repeat
- *   npx tsx benchmarks/harvest/runner.ts --task mod7_list
- *   npx tsx benchmarks/harvest/runner.ts --mode reasoner-harvest --repeats 3
- *   npx tsx benchmarks/harvest/runner.ts --transcripts-dir transcripts/
- *   npx tsx benchmarks/harvest/runner.ts --dry                # smoke test wiring, no API
- *
- * Writes results.json. Render report.md with `report.ts`.
- */
+/** Harvest-bench runner — writes results.json. CLI flags + sample invocations in benchmarks/README.md. */
 
 import { type WriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,11 +10,7 @@ import {
   claudeEquivalentCost,
   loadDotenv,
 } from "../../src/index.js";
-import {
-  openTranscriptFile,
-  recordFromLoopEvent,
-  writeRecord,
-} from "../../src/transcript/log.js";
+import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../src/transcript/log.js";
 import { TASKS } from "./tasks.js";
 import type {
   HarvestBenchMeta,
@@ -80,8 +65,6 @@ function parseArgs(argv: string[]): CliArgs {
   return out;
 }
 
-// ---------- model resolution ----------
-
 function modelForMode(mode: HarvestMode): string {
   if (mode === "baseline") return "deepseek-chat";
   return "deepseek-reasoner";
@@ -90,8 +73,6 @@ function modelForMode(mode: HarvestMode): string {
 function harvestForMode(mode: HarvestMode): boolean {
   return mode === "reasoner-harvest";
 }
-
-// ---------- run one task in one mode ----------
 
 async function runOnce(
   task: HarvestTask,
@@ -163,7 +144,9 @@ async function runOnce(
     errorMessage = (err as Error).message;
   }
 
-  const verdict = errorMessage ? { verdict: "fail" as const, note: errorMessage } : task.check(finalText);
+  const verdict = errorMessage
+    ? { verdict: "fail" as const, note: errorMessage }
+    : task.check(finalText);
 
   return {
     taskId: task.id,
@@ -184,8 +167,6 @@ async function runOnce(
     errorMessage,
   };
 }
-
-// ---------- dry mode ----------
 
 function runDry(args: CliArgs): HarvestBenchReport {
   const tasks = filterTasks(args.taskFilter);
@@ -217,8 +198,6 @@ function runDry(args: CliArgs): HarvestBenchReport {
   }
   return { meta: buildMeta(args, tasks.length), results };
 }
-
-// ---------- main ----------
 
 function filterTasks(filter: string | null): HarvestTask[] {
   if (!filter) return TASKS;
@@ -276,13 +255,9 @@ async function main(): Promise<void> {
           stream?.end();
         }
         const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+        const note = result.checkNote ? `  ${result.checkNote}` : "";
         console.log(
-          `[${task.id}/${mode}/r${rep + 1}] verdict=${result.verdict}` +
-            ` cache=${(result.cacheHitRatio * 100).toFixed(1)}%` +
-            ` cost=$${result.costUsd.toFixed(6)}` +
-            ` harvest=${result.harvestedTurns}:${result.totalSubgoals}s/${result.totalUncertainties}u` +
-            ` (${elapsed}s)` +
-            (result.checkNote ? `  ${result.checkNote}` : ""),
+          `[${task.id}/${mode}/r${rep + 1}] verdict=${result.verdict} cache=${(result.cacheHitRatio * 100).toFixed(1)}% cost=$${result.costUsd.toFixed(6)} harvest=${result.harvestedTurns}:${result.totalSubgoals}s/${result.totalUncertainties}u (${elapsed}s)${note}`,
         );
         results.push(result);
       }

@@ -1,16 +1,4 @@
-/**
- * Smoke tests for the τ-bench-lite harness.
- *
- * The goal is NOT to verify benchmark numbers (those only exist when you
- * point the harness at a real API key). These tests verify the harness
- * itself is robust:
- *   - each seed task's tools actually operate on *its* db snapshot, not a
- *     shared one (i.e. cloneDb isolation works)
- *   - each task's check() predicate is satisfiable when the correct mutation
- *     happens, and refusal tasks stay false-on-no-change
- *   - the baseline agent's shuffle is deterministic per turn-number so
- *     reproducibility holds across runs
- */
+/** Smoke tests for the τ-bench-lite harness — db isolation, check() predicates, baseline shuffle determinism. */
 
 import { describe, expect, it } from "vitest";
 import { cloneDb } from "../benchmarks/tau-bench/db.js";

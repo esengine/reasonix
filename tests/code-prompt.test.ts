@@ -1,7 +1,4 @@
-/**
- * Tests for `codeSystemPrompt` — the .gitignore injection helper.
- * Pure I/O at the edge, so filesystem-backed tests using a temp dir.
- */
+/** codeSystemPrompt — gitignore injection + system-append composition. */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

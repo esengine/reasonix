@@ -1,20 +1,4 @@
-/**
- * Post-build smoke test for the bundled `dist/`.
- *
- * Unit tests load modules from `src/`, which means path-resolution
- * bugs that only appear AFTER tsup bundles everything into a different
- * directory layout never surface in the regular test suite. v0.5.4
- * shipped to npm with exactly such a bug — `src/tokenizer.ts` at
- * `dist/cli/index.js` tried to read the tokenizer data file relative
- * to the bundled entry, ended up at `dist/data/...` instead of the
- * package-root `data/...`, and every `reasonix run` crashed on first
- * turn with ENOENT.
- *
- * These tests spawn the bundled output and verify the two bundle
- * layouts (`dist/index.js` library + `dist/cli/index.js` CLI) can
- * both locate the tokenizer data file. They're skipped when the
- * build hasn't run yet (CI always runs `npm run build` first).
- */
+/** Post-build smoke — confirm bundled `dist/{index,cli/index}.js` resolves the tokenizer data file at package-root. */
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

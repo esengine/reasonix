@@ -1,8 +1,4 @@
-/**
- * Tests for the loop's error-message decorator. Scope is narrow:
- * context-overflow errors get a user-friendly hint, everything else
- * passes through unchanged.
- */
+/** Loop error decorator — context-overflow gets a user hint; everything else passes through. */
 
 import { describe, expect, it } from "vitest";
 import { formatLoopError, healLoadedMessages, stripHallucinatedToolMarkup } from "../src/loop.js";

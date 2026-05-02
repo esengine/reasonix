@@ -1,8 +1,4 @@
-/**
- * Tests for inspectMcpServer (pure, runs against the fake transport).
- * We don't unit-test the CLI wrapper — that's just argv parsing and
- * stdout printing, covered by the integration story of "types compile".
- */
+/** inspectMcpServer — runs against the fake transport. */
 
 import { describe, expect, it } from "vitest";
 import { McpClient } from "../src/mcp/client.js";

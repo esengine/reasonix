@@ -1,8 +1,4 @@
-/**
- * Tests for the Skills store + prefix-index composer. Every test runs
- * against a temp `homeDir` (global scope) and a temp `projectRoot`
- * (project scope) so we never touch the developer's real skill dirs.
- */
+/** Skills store + prefix-index composer — temp homeDir / projectRoot per test, no real skill dirs touched. */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

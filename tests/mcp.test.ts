@@ -1,11 +1,4 @@
-/**
- * MCP client + bridge tests.
- *
- * Strategy: fake the McpTransport with an in-process pair. The fake
- * server understands initialize / tools/list / tools/call and returns
- * canned responses, letting us verify the client side without spawning
- * a real process.
- */
+/** MCP client + bridge — in-process fake transport answering initialize / tools/list / tools/call. */
 
 import { describe, expect, it } from "vitest";
 import { McpClient } from "../src/mcp/client.js";
@@ -22,8 +15,6 @@ import {
   type McpTool,
   type ReadResourceResult,
 } from "../src/mcp/types.js";
-
-// ---------- fake transport ----------
 
 interface FakeServerOptions {
   tools: McpTool[];
@@ -45,11 +36,7 @@ interface FakeServerOptions {
   capabilities?: Record<string, unknown>;
 }
 
-/**
- * In-process MCP server. Responds directly in `send()` by pushing a
- * response onto the messages queue. Synchronous-enough to make tests
- * deterministic.
- */
+/** In-process MCP transport — responds in `send()` by pushing onto the queue. */
 class FakeMcpTransport implements McpTransport {
   private readonly queue: JsonRpcMessage[] = [];
   private readonly waiters: Array<(m: JsonRpcMessage | null) => void> = [];
@@ -182,8 +169,6 @@ class FakeMcpTransport implements McpTransport {
     else this.queue.push(msg);
   }
 }
-
-// ---------- tests ----------
 
 describe("McpClient: initialize handshake", () => {
   it("completes initialize and sends notifications/initialized", async () => {
@@ -411,12 +396,7 @@ describe("bridgeMcpTools: result-size cap", () => {
 });
 
 describe("McpClient: abort via AbortSignal", () => {
-  /**
-   * Transport that answers initialize and then stalls on tools/call —
-   * never sends a response. Used to exercise client-side abort:
-   * with no response coming, the promise must still reject promptly
-   * when the signal fires.
-   */
+  /** Stalling transport — initialize ok, tools/call never replies; exercises client-side abort. */
   function makeStallingTransport(): { transport: McpTransport; received: JsonRpcRequest[] } {
     const received: JsonRpcRequest[] = [];
     const queue: JsonRpcMessage[] = [];
@@ -512,11 +492,7 @@ describe("McpClient: abort via AbortSignal", () => {
 });
 
 describe("McpClient: progress notifications", () => {
-  /**
-   * Build a transport where tools/call takes multiple "ticks" before
-   * responding — each tick emits a notifications/progress frame tied
-   * to the token the client sent in `_meta.progressToken`.
-   */
+  /** Multi-tick transport — emits notifications/progress frames keyed off `_meta.progressToken`. */
   function makeProgressTransport(
     progressFrames: Array<{ progress: number; total?: number; message?: string }>,
   ): { transport: McpTransport; received: JsonRpcRequest[] } {

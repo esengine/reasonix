@@ -1,15 +1,4 @@
-/**
- * LLM-backed user simulator for tool-use eval.
- *
- * A cheap V3 call that given (persona, goal, transcript so far) emits either
- * the user's next utterance or the literal sentinel `##STOP##` to end the
- * conversation. Kept intentionally small and low-temperature so dialogue
- * stays on-task and is replayable.
- *
- * We accept "some" non-determinism (DeepSeek samples at T=0.1) — the honest
- * way to deal with run-to-run drift is repeat-per-task in the runner, not
- * trying to pretend the sim is deterministic.
- */
+/** LLM-backed user sim — emits next utterance or `##STOP##`; non-determinism handled by repeat-per-task in the runner. */
 
 import type { ChatMessage, DeepSeekClient } from "../../src/index.js";
 import type { Turn, UserPersona } from "./types.js";
@@ -35,10 +24,7 @@ export class UserSimulator {
     private opts: UserSimOptions = {},
   ) {}
 
-  /**
-   * Given the transcript so far, produce the user's next line, or null if
-   * the simulator decided the conversation is over.
-   */
+  /** Next user line, or null if the sim decided the conversation is over. */
   async next(transcript: Turn[]): Promise<string | null> {
     const knowns = JSON.stringify(this.persona.knowns, null, 2);
     const messages: ChatMessage[] = [

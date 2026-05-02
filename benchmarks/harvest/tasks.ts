@@ -1,30 +1,10 @@
-/**
- * Seed reasoning tasks for the harvest eval harness.
- *
- * Each task has:
- *   - a minimal system prompt (so the comparison is about the model, not
- *     the prompt)
- *   - a single user question
- *   - a deterministic checker (regex + set/value compare)
- *
- * When adding a new task, prefer problems where:
- *   - the answer has a clean shape (a number, a small set, a yes/no +
- *     explanation) — easier to check
- *   - reasoning actually matters (so harvest has signal to extract);
- *     trivia questions are out of scope
- *   - there's a known-good answer; judgment calls are out of scope
- */
+/** Seed reasoning tasks for harvest-bench — single-turn Q/A with deterministic checkers. */
 
 import type { HarvestTask } from "./types.js";
 
 const CONCISE_SYSTEM = `You are a precise reasoner. Think carefully, then state your final answer on a clearly-labeled line starting with "Answer:".`;
 
-/**
- * Parse all non-negative integers out of a string. Handles commas,
- * ranges written as "2-4" (expands to 2,3,4), and ignores numbers that
- * look like formula references (e.g. "n^2", "mod 7") by only accepting
- * integers after we strip common LaTeX decorations.
- */
+/** Parse non-negative integers; expands "2-4" → 2,3,4; strips LaTeX decorations first. */
 function extractIntegers(text: string): number[] {
   // Strip LaTeX delimiters so n_1 / n^2 / \{ ... \} don't confuse us.
   const cleaned = text
@@ -51,8 +31,6 @@ function extractAnswerLine(text: string): string {
   return matches[matches.length - 1]![1]!.trim();
 }
 
-// ---------- expected answers ----------
-
 /** Positive n ≤ 100 such that n^2 + n + 1 ≡ 0 (mod 7). */
 const MOD7_EXPECTED: number[] = (() => {
   const out: number[] = [];
@@ -62,10 +40,7 @@ const MOD7_EXPECTED: number[] = (() => {
   return out;
 })();
 
-/**
- * Single-integer checker. Pulls the first plausible integer from the last
- * "Answer:" line; compares for exact equality.
- */
+/** Single-integer checker — first plausible int from the last "Answer:" line, exact equality. */
 function checkSingleInt(expected: number) {
   return (reply: string) => {
     const answerLine = extractAnswerLine(reply);
@@ -77,8 +52,6 @@ function checkSingleInt(expected: number) {
   };
 }
 
-// ---------- tasks ----------
-
 export const TASKS: HarvestTask[] = [
   {
     id: "mod7_list",
@@ -86,7 +59,7 @@ export const TASKS: HarvestTask[] = [
       "Number theory — find all positive n ≤ 100 with n^2+n+1 ≡ 0 (mod 7). 29-element set. Classic R1 scratch-work territory.",
     systemPrompt: CONCISE_SYSTEM,
     prompt:
-      "Find all positive integers n with n ≤ 100 such that n^2 + n + 1 is divisible by 7. Briefly justify, then end with the full list on a line starting with \"Answer:\".",
+      'Find all positive integers n with n ≤ 100 such that n^2 + n + 1 is divisible by 7. Briefly justify, then end with the full list on a line starting with "Answer:".',
     check: (reply) => {
       const answerLine = extractAnswerLine(reply);
       const found = new Set(extractIntegers(answerLine).filter((n) => n >= 1 && n <= 100));
@@ -95,7 +68,8 @@ export const TASKS: HarvestTask[] = [
         return { verdict: "fail", note: "no integers extracted from Answer line" };
       }
       // Exact set equality — both containment directions.
-      for (const n of expected) if (!found.has(n)) return { verdict: "fail", note: `missing n=${n}` };
+      for (const n of expected)
+        if (!found.has(n)) return { verdict: "fail", note: `missing n=${n}` };
       for (const n of found) if (!expected.has(n)) return { verdict: "fail", note: `extra n=${n}` };
       return { verdict: "pass" };
     },
@@ -107,7 +81,7 @@ export const TASKS: HarvestTask[] = [
       "Probability — expected coin flips until 3 consecutive heads. Answer: 14. Tests whether R1 derives via recurrence or via memorized result.",
     systemPrompt: CONCISE_SYSTEM,
     prompt:
-      "A fair coin is flipped repeatedly until you see 3 heads in a row. What is the expected number of total flips? Give a single integer on a line starting with \"Answer:\".",
+      'A fair coin is flipped repeatedly until you see 3 heads in a row. What is the expected number of total flips? Give a single integer on a line starting with "Answer:".',
     check: (reply) => {
       const answerLine = extractAnswerLine(reply);
       const nums = extractIntegers(answerLine);
@@ -136,8 +110,6 @@ export const TASKS: HarvestTask[] = [
       return { verdict: "fail", note: "no clear color in Answer line" };
     },
   },
-
-  // ---------- hard tasks (picked for known V3 failure modes) ----------
 
   {
     id: "pseudoprime_base2",
