@@ -3,6 +3,67 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] — 2026-05-02
+
+**Headline:** TUI quality-of-life pass driven by RFC discussion #20.
+A read-only **context sidebar** on the right surfaces the active plan
++ running tools (`Ctrl+\` toggle, plan-only auto-show), assistant
+replies get a left **accent bar** so long answers are scannable in
+scrollback, the viewport gains a single **row-budget allocator** that
+ends the jitter when an approval modal mounts mid-stream, the prompt
+input grows a full **readline vocabulary** (`Home` / `End` / `Ctrl+K`
+/ `Alt+B/F` / `Alt+Backspace`), and the `@`-picker honors **nested
+`.gitignore`** instead of dropping files past a 500-result cap on
+Flutter / iOS projects.
+
+**TUI:**
+
+- feat(tui): right-side context panel showing the active plan
+  (windowed ±5 around the running step) and any running tool /
+  subagent. Auto-shows when a plan starts running, hides on cancel
+  via a new `plan.drop` reducer action; manual `Ctrl+\` toggle
+  persists in `~/.reasonix/config.json.sidebarOpen`. Refuses below 88
+  cols total; sidebar divider uses `borderTop` so the line auto-fills
+  the panel width. (#127)
+- feat(cards): done assistant Markdown gets a brand-toned `borderLeft`
+  accent. Picked over `backgroundColor` because Ink's `<Box>` doesn't
+  accept it — a left bar works on light + dark themes equally per
+  lamyc's RFC #20 callout. (#126)
+- fix(tui): `StreamingCard`, `EditConfirm`, `ShellConfirm`,
+  `PlanCheckpointConfirm`, `PlanConfirm`, `ChoiceConfirm`,
+  `PromptInput` now declare their height to a single
+  `ViewportBudgetProvider` instead of each reading `stdout.rows` and
+  guessing. Modal-vs-streaming row race that produced visible
+  vertical jitter mid-turn (lamyc's video) is gone. Pure allocator in
+  `src/cli/ui/layout/viewport-budget.tsx` is priority-greedy
+  (`modal > plan-card > status > input > stream`). (#124)
+- feat(prompt): full readline shortcut set wired into the prompt
+  input — `Home` / `End` (line jumps, joins existing `Ctrl+A` /
+  `Ctrl+E`), `Ctrl+K` (kill to end of line), `Alt+B` / `Alt+F` (word
+  back / forward), `Alt+Backspace` (alias for the existing `Ctrl+W`).
+  `Ctrl+U` keeps Reasonix's "clear whole buffer" behaviour, not
+  readline's "kill to start" — clearing a large paste needs a single
+  ergonomic key. (#123)
+
+**Bug fixes:**
+
+- fix(at-mention): @-picker walker now honors **nested** `.gitignore`
+  (root + every subdirectory, layered like git itself) and bumps the
+  default result cap from 500 → 2000. On Flutter / iOS projects with
+  a built `ios/Pods/` directory the alphabetical walk used to burn
+  the cap before reaching `lib/` and every `@` query returned "no
+  files match". The new `src/gitignore.ts` util is shared with the
+  semantic chunker — single source of truth for "walk a dir
+  respecting `.gitignore`". Supports negation (`!keep.log`) and
+  `respectGitignore: false` opt-out. (#129)
+
+**Internal:**
+
+- test: focused unit coverage for `resolvePreset` /
+  `canonicalPresetName` + invariant check that every preset keeps
+  `harvest: false` and `branch: 1` (the rule that branch and harvest
+  are never silently auto-enabled). (#125)
+
 ## [0.22.0] — 2026-05-02
 
 **Headline:** Live MCP-server reconnect — `/mcp reconnect <name>` (and the
