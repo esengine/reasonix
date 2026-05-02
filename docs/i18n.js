@@ -69,7 +69,7 @@
       "qs.step3.body":
         "The model proposes edits as SEARCH/REPLACE blocks — nothing hits disk until you <code>/apply</code>.",
       "qs.req":
-        "Requires Node ≥ 20.10. macOS, Linux, Windows (PowerShell · Git Bash · Windows Terminal). Press <kbd>Esc</kbd> anytime to abort; <code>/help</code> for the full command list.",
+        "Requires Node ≥ 22. macOS, Linux, Windows (PowerShell · Git Bash · Windows Terminal). Press <kbd>Esc</kbd> anytime to abort; <code>/help</code> for the full command list.",
 
       "feat.title": "In the box",
       "feat.code.title": "Pair programmer mode",
@@ -196,7 +196,7 @@
       "qs.step3.body":
         "模型会以 SEARCH/REPLACE 块的形式提出编辑——你不 <code>/apply</code>，磁盘不会被改。",
       "qs.req":
-        "需要 Node ≥ 20.10。支持 macOS、Linux、Windows（PowerShell · Git Bash · Windows Terminal）。任何时候按 <kbd>Esc</kbd> 中断；<code>/help</code> 查看完整命令。",
+        "需要 Node ≥ 22。支持 macOS、Linux、Windows（PowerShell · Git Bash · Windows Terminal）。任何时候按 <kbd>Esc</kbd> 中断；<code>/help</code> 查看完整命令。",
 
       "feat.title": "开箱即用",
       "feat.code.title": "结对编程模式",

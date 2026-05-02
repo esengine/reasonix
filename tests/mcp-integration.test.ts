@@ -7,7 +7,7 @@ import { StdioTransport } from "../src/mcp/stdio.js";
 import { ToolRegistry } from "../src/tools.js";
 
 // Spawning `tsx` directly needs a cross-platform approach. `node --import tsx`
-// works everywhere Node 20+ is installed (which is our engines target) and
+// works everywhere Node 22+ is installed (which is our engines target) and
 // avoids the Windows `.cmd` resolution gotcha in child_process.spawn.
 const NODE_CMD = process.execPath;
 const DEMO_SERVER_ARGS = ["--import", "tsx", "examples/mcp-server-demo.ts"];

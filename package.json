@@ -63,7 +63,7 @@
   },
   "homepage": "https://github.com/esengine/reasonix#readme",
   "engines": {
-    "node": ">=20.10"
+    "node": ">=22"
   },
   "dependencies": {
     "cli-highlight": "^2.1.11",

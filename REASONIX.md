@@ -1,7 +1,7 @@
 # Reasonix — working knowledge
 
 TypeScript project. DeepSeek-native coding agent, cache-first loop.
-MIT-licensed. Node ≥20.10 required.
+MIT-licensed. Node ≥22 required.
 
 ## Stack
 

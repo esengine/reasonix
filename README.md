@@ -49,7 +49,7 @@ src/users.ts
 ▸ 1 pending edit · /apply to write, /discard to drop
 ```
 
-Edits stay in memory until you type `/apply` — nothing hits disk by default. Requires Node ≥ 20.10. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal).
+Edits stay in memory until you type `/apply` — nothing hits disk by default. Requires Node ≥ 22. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal).
 
 ### Appending code-mode system instructions
 

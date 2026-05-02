@@ -7,7 +7,7 @@ export default defineConfig([
     dts: true,
     clean: true,
     sourcemap: true,
-    target: "node20",
+    target: "node22",
     outDir: "dist",
   },
   {
@@ -16,7 +16,7 @@ export default defineConfig([
     dts: false,
     clean: false,
     sourcemap: true,
-    target: "node20",
+    target: "node22",
     outDir: "dist/cli",
     banner: { js: "#!/usr/bin/env node" },
   },

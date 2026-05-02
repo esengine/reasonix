@@ -13,7 +13,7 @@ npm install
 npm run dev          # tsx src/cli/index.ts — live source
 ```
 
-Node ≥ 20.10. No global install needed during development.
+Node ≥ 22. No global install needed during development.
 
 For stack, layout, scripts, see [`REASONIX.md`](./REASONIX.md).
 
@@ -120,7 +120,7 @@ wrapper — don't fork a local table.
 - Branch off `main`. One logical change per PR.
 - `npm run verify` must pass locally (lint + typecheck + tests +
   comment-policy gate). Pre-push hook runs this; CI runs it on
-  Node 20 and 22.
+  Node 22.
 - Don't touch `CHANGELOG.md` — release notes are written by the
   maintainer at release time, drawn from commit history. PR
   descriptions are the authoritative record while the work is in

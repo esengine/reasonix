@@ -49,7 +49,7 @@ src/users.ts
 ▸ 1 处待应用编辑 · /apply 写入 · /discard 丢弃
 ```
 
-不 `/apply`，磁盘不会被改。要求 Node ≥ 20.10。已在 macOS、Linux、Windows（PowerShell · Git Bash · Windows Terminal）测过。
+不 `/apply`，磁盘不会被改。要求 Node ≥ 22。已在 macOS、Linux、Windows（PowerShell · Git Bash · Windows Terminal）测过。
 
 ---
 
