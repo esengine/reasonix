@@ -115,6 +115,7 @@ import {
 } from "./layout/LiveRows.js";
 import { StatusRow } from "./layout/StatusRow.js";
 import { ToastRail } from "./layout/ToastRail.js";
+import { ViewportBudgetProvider } from "./layout/viewport-budget.js";
 import { formatLoopStatus } from "./loop.js";
 import { applyMcpAppend } from "./mcp-append.js";
 import { handleMcpBrowseSlash } from "./mcp-browse.js";
@@ -3189,82 +3190,83 @@ function AppInner({
           (!busy && !isStreaming)
         }
       >
-        <Box flexDirection="column">
+        <ViewportBudgetProvider>
           <Box flexDirection="column">
-            <CardStream excludeId={activePlanCard?.id} />
-            {/*
+            <Box flexDirection="column">
+              <CardStream excludeId={activePlanCard?.id} />
+              {/*
           Welcome card on the empty state. Visible only when nothing
           has happened yet (no past events, nothing in flight, no
           modal up). Removes the "what do I type?" friction without
           surviving past the first turn.
         */}
-            {!hasConversation && !busy && !isStreaming ? (
-              <WelcomeBanner inCodeMode={!!codeMode} dashboardUrl={dashboardUrl} />
-            ) : null}
-            {/*
+              {!hasConversation && !busy && !isStreaming ? (
+                <WelcomeBanner inCodeMode={!!codeMode} dashboardUrl={dashboardUrl} />
+              ) : null}
+              {/*
           Live rows are hidden while the ShellConfirm modal is up — the
           model's concurrent "please confirm" stream is noise the user
           doesn't need, and the picker shouldn't fight it for visual
           attention. They come back naturally once the user chooses and
           the next turn begins.
         */}
-            {!PLAIN_UI &&
-            !pendingShell &&
-            !pendingPlan &&
-            !pendingReviseEditor &&
-            !pendingSessionsPicker &&
-            !pendingMcpBrowser &&
-            !stagedInput &&
-            !pendingEditReview &&
-            !pendingCheckpoint &&
-            !stagedCheckpointRevise &&
-            ongoingTool ? (
-              <OngoingToolRow tool={ongoingTool} progress={toolProgress} />
-            ) : null}
-            {!PLAIN_UI &&
-            !pendingShell &&
-            !pendingPlan &&
-            !pendingReviseEditor &&
-            !pendingSessionsPicker &&
-            !pendingMcpBrowser &&
-            !stagedInput &&
-            !pendingEditReview &&
-            !pendingCheckpoint &&
-            !stagedCheckpointRevise &&
-            subagentActivity ? (
-              <SubagentRow activity={subagentActivity} />
-            ) : null}
-            {!PLAIN_UI &&
-            !pendingShell &&
-            !pendingPlan &&
-            !pendingReviseEditor &&
-            !pendingSessionsPicker &&
-            !pendingMcpBrowser &&
-            !stagedInput &&
-            !pendingEditReview &&
-            !pendingCheckpoint &&
-            !stagedCheckpointRevise &&
-            !ongoingTool &&
-            statusLine ? (
-              <ThinkingRow text={statusLine} />
-            ) : null}
-            {!PLAIN_UI &&
-            undoBanner &&
-            !pendingShell &&
-            !pendingPlan &&
-            !pendingReviseEditor &&
-            !pendingSessionsPicker &&
-            !pendingMcpBrowser &&
-            !stagedInput &&
-            !pendingEditReview &&
-            !pendingCheckpoint &&
-            !stagedCheckpointRevise &&
-            !pendingChoice &&
-            !stagedChoiceCustom &&
-            !pendingRevision ? (
-              <UndoBanner banner={undoBanner} />
-            ) : null}
-            {/*
+              {!PLAIN_UI &&
+              !pendingShell &&
+              !pendingPlan &&
+              !pendingReviseEditor &&
+              !pendingSessionsPicker &&
+              !pendingMcpBrowser &&
+              !stagedInput &&
+              !pendingEditReview &&
+              !pendingCheckpoint &&
+              !stagedCheckpointRevise &&
+              ongoingTool ? (
+                <OngoingToolRow tool={ongoingTool} progress={toolProgress} />
+              ) : null}
+              {!PLAIN_UI &&
+              !pendingShell &&
+              !pendingPlan &&
+              !pendingReviseEditor &&
+              !pendingSessionsPicker &&
+              !pendingMcpBrowser &&
+              !stagedInput &&
+              !pendingEditReview &&
+              !pendingCheckpoint &&
+              !stagedCheckpointRevise &&
+              subagentActivity ? (
+                <SubagentRow activity={subagentActivity} />
+              ) : null}
+              {!PLAIN_UI &&
+              !pendingShell &&
+              !pendingPlan &&
+              !pendingReviseEditor &&
+              !pendingSessionsPicker &&
+              !pendingMcpBrowser &&
+              !stagedInput &&
+              !pendingEditReview &&
+              !pendingCheckpoint &&
+              !stagedCheckpointRevise &&
+              !ongoingTool &&
+              statusLine ? (
+                <ThinkingRow text={statusLine} />
+              ) : null}
+              {!PLAIN_UI &&
+              undoBanner &&
+              !pendingShell &&
+              !pendingPlan &&
+              !pendingReviseEditor &&
+              !pendingSessionsPicker &&
+              !pendingMcpBrowser &&
+              !stagedInput &&
+              !pendingEditReview &&
+              !pendingCheckpoint &&
+              !stagedCheckpointRevise &&
+              !pendingChoice &&
+              !stagedChoiceCustom &&
+              !pendingRevision ? (
+                <UndoBanner banner={undoBanner} />
+              ) : null}
+              {/*
           Belt-and-suspenders fallback: if we're busy but NONE of the
           specific indicators (streaming, ongoingTool, statusLine) is
           visible, something is still happening — show a generic
@@ -3272,223 +3274,224 @@ function AppInner({
           without a label. Catches micro-gaps between events that the
           targeted status lines don't cover.
         */}
-            {!PLAIN_UI &&
-            !pendingShell &&
-            !pendingPlan &&
-            !pendingReviseEditor &&
-            !pendingSessionsPicker &&
-            !pendingMcpBrowser &&
-            !stagedInput &&
-            !pendingEditReview &&
-            !pendingCheckpoint &&
-            !stagedCheckpointRevise &&
-            busy &&
-            !isStreaming &&
-            !ongoingTool &&
-            !statusLine ? (
-              <ThinkingRow text="processing…" />
-            ) : null}
-            <ToastRail />
-          </Box>
-          {!PLAIN_UI && activePlanCard ? (
-            <Box flexDirection="column" marginY={1}>
-              <PlanCard card={activePlanCard} />
+              {!PLAIN_UI &&
+              !pendingShell &&
+              !pendingPlan &&
+              !pendingReviseEditor &&
+              !pendingSessionsPicker &&
+              !pendingMcpBrowser &&
+              !stagedInput &&
+              !pendingEditReview &&
+              !pendingCheckpoint &&
+              !stagedCheckpointRevise &&
+              busy &&
+              !isStreaming &&
+              !ongoingTool &&
+              !statusLine ? (
+                <ThinkingRow text="processing…" />
+              ) : null}
+              <ToastRail />
             </Box>
-          ) : null}
-          {stagedInput ? (
-            <PlanRefineInput
-              mode={stagedInput.mode}
-              onSubmit={handleStagedInputSubmit}
-              onCancel={handleStagedInputCancel}
-            />
-          ) : stagedCheckpointRevise ? (
-            <PlanRefineInput
-              mode="checkpoint-revise"
-              onSubmit={handleCheckpointReviseSubmit}
-              onCancel={handleCheckpointReviseCancel}
-            />
-          ) : stagedChoiceCustom ? (
-            <PlanRefineInput
-              mode="choice-custom"
-              onSubmit={handleChoiceCustomSubmit}
-              onCancel={handleChoiceCustomCancel}
-            />
-          ) : pendingChoice ? (
-            <ChoiceConfirm
-              question={pendingChoice.question}
-              options={pendingChoice.options}
-              allowCustom={pendingChoice.allowCustom}
-              onChoose={stableHandleChoiceConfirm}
-            />
-          ) : pendingRevision ? (
-            <PlanReviseConfirm
-              reason={pendingRevision.reason}
-              oldRemaining={(planStepsRef.current ?? []).filter(
-                (s) => !completedStepIdsRef.current.has(s.id),
-              )}
-              newRemaining={pendingRevision.remainingSteps}
-              summary={pendingRevision.summary}
-              onChoose={stableHandleReviseConfirm}
-            />
-          ) : pendingCheckpoint ? (
-            <PlanCheckpointConfirm
-              stepId={pendingCheckpoint.stepId}
-              title={pendingCheckpoint.title}
-              completed={pendingCheckpoint.completed}
-              total={pendingCheckpoint.total}
-              steps={planStepsRef.current ?? undefined}
-              completedStepIds={completedStepIdsRef.current}
-              onChoose={stableHandleCheckpointConfirm}
-            />
-          ) : pendingSessionsPicker ? (
-            <SessionPicker
-              sessions={sessionsPickerList}
-              workspace={currentRootDir}
-              onChoose={(outcome) => {
-                if (outcome.kind === "open") {
-                  setPendingSessionsPicker(false);
-                  if (onSwitchSession) {
-                    onSwitchSession(outcome.name);
-                  } else {
-                    log.pushInfo(
-                      `▸ to switch to "${outcome.name}", quit and run: reasonix chat --session ${outcome.name}`,
-                    );
-                  }
-                  return;
-                }
-                if (outcome.kind === "new") {
-                  setPendingSessionsPicker(false);
-                  if (onSwitchSession) {
-                    onSwitchSession(undefined);
-                  } else {
-                    log.pushInfo(
-                      "▸ to start a fresh session, quit and run: reasonix chat (no --session flag)",
-                    );
-                  }
-                  return;
-                }
-                if (outcome.kind === "delete") {
-                  deleteSession(outcome.name);
-                  setSessionsPickerList(listSessionsForWorkspace(currentRootDir));
-                  return;
-                }
-                if (outcome.kind === "rename") {
-                  renameSession(outcome.name, outcome.newName);
-                  setSessionsPickerList(listSessionsForWorkspace(currentRootDir));
-                  return;
-                }
-                if (outcome.kind === "quit") {
-                  setPendingSessionsPicker(false);
-                }
-              }}
-            />
-          ) : pendingMcpBrowser ? (
-            <McpBrowser
-              servers={mcpServers ?? []}
-              configPath={defaultConfigPath()}
-              onClose={() => setPendingMcpBrowser(false)}
-              postInfo={(text) => log.pushInfo(text)}
-              applyAppend={(target, addedTools) => applyMcpAppend(loop, target, addedTools)}
-            />
-          ) : pendingPlan ? (
-            <PlanConfirm
-              plan={pendingPlan}
-              steps={planStepsRef.current ?? undefined}
-              summary={planSummaryRef.current ?? undefined}
-              onChoose={stableHandlePlanConfirm}
-              projectRoot={currentRootDir}
-            />
-          ) : pendingReviseEditor ? (
-            <PlanReviseEditor
-              steps={planStepsRef.current ?? []}
-              completedStepIds={completedStepIdsRef.current}
-              onAccept={(revised, skippedIds) => {
-                planStepsRef.current = revised;
-                for (const id of skippedIds) completedStepIdsRef.current.add(id);
-                persistPlanState();
-                const planText = pendingReviseEditor;
-                setPendingReviseEditor(null);
-                setPendingPlan(planText);
-              }}
-              onCancel={() => {
-                const planText = pendingReviseEditor;
-                setPendingReviseEditor(null);
-                setPendingPlan(planText);
-              }}
-            />
-          ) : pendingShell ? (
-            <ShellConfirm
-              command={pendingShell.command}
-              allowPrefix={derivePrefix(pendingShell.command)}
-              kind={pendingShell.kind}
-              onChoose={handleShellConfirm}
-            />
-          ) : pendingEditReview ? (
-            <EditConfirm
-              block={pendingEditReview}
-              onChoose={(choice, denyContext) => {
-                const resolve = editReviewResolveRef.current;
-                if (resolve) {
-                  editReviewResolveRef.current = null;
-                  resolve({ choice, denyContext });
-                }
-              }}
-            />
-          ) : walkthroughActive && pendingEdits.current.length > 0 ? (
-            <EditConfirm
-              // pendingTick re-keys the modal so each apply/discard
-              // forces a remount with the NEW first block. Without it,
-              // EditConfirm's internal scroll state would persist
-              // across blocks, which is the wrong UX.
-              key={`walk-${pendingTick}`}
-              block={pendingEdits.current[0]!}
-              onChoose={handleWalkChoice}
-            />
-          ) : (
-            <>
-              {codeMode ? (
-                <ModeStatusBar
-                  editMode={editMode}
-                  pendingCount={pendingCount}
-                  flash={modeFlash}
-                  planMode={planMode}
-                  undoArmed={!!undoBanner || hasUndoable()}
-                  jobs={codeMode.jobs}
-                />
-              ) : null}
-              {activeLoop ? <LoopStatusRow loop={activeLoop} /> : null}
-              <StatusRow />
-              <PromptInput
-                value={input}
-                onChange={setInput}
-                onSubmit={handleSubmit}
-                disabled={busy}
-                onHistoryPrev={recallPrev}
-                onHistoryNext={recallNext}
+            {!PLAIN_UI && activePlanCard ? (
+              <Box flexDirection="column" marginY={1}>
+                <PlanCard card={activePlanCard} />
+              </Box>
+            ) : null}
+            {stagedInput ? (
+              <PlanRefineInput
+                mode={stagedInput.mode}
+                onSubmit={handleStagedInputSubmit}
+                onCancel={handleStagedInputCancel}
               />
-              {slashMatches !== null ? (
-                <SlashSuggestions matches={slashMatches} selectedIndex={slashSelected} />
-              ) : null}
-              {atMatches !== null ? (
-                <AtMentionSuggestions
-                  matches={atMatches}
-                  selectedIndex={atSelected}
-                  query={atPicker?.query ?? ""}
+            ) : stagedCheckpointRevise ? (
+              <PlanRefineInput
+                mode="checkpoint-revise"
+                onSubmit={handleCheckpointReviseSubmit}
+                onCancel={handleCheckpointReviseCancel}
+              />
+            ) : stagedChoiceCustom ? (
+              <PlanRefineInput
+                mode="choice-custom"
+                onSubmit={handleChoiceCustomSubmit}
+                onCancel={handleChoiceCustomCancel}
+              />
+            ) : pendingChoice ? (
+              <ChoiceConfirm
+                question={pendingChoice.question}
+                options={pendingChoice.options}
+                allowCustom={pendingChoice.allowCustom}
+                onChoose={stableHandleChoiceConfirm}
+              />
+            ) : pendingRevision ? (
+              <PlanReviseConfirm
+                reason={pendingRevision.reason}
+                oldRemaining={(planStepsRef.current ?? []).filter(
+                  (s) => !completedStepIdsRef.current.has(s.id),
+                )}
+                newRemaining={pendingRevision.remainingSteps}
+                summary={pendingRevision.summary}
+                onChoose={stableHandleReviseConfirm}
+              />
+            ) : pendingCheckpoint ? (
+              <PlanCheckpointConfirm
+                stepId={pendingCheckpoint.stepId}
+                title={pendingCheckpoint.title}
+                completed={pendingCheckpoint.completed}
+                total={pendingCheckpoint.total}
+                steps={planStepsRef.current ?? undefined}
+                completedStepIds={completedStepIdsRef.current}
+                onChoose={stableHandleCheckpointConfirm}
+              />
+            ) : pendingSessionsPicker ? (
+              <SessionPicker
+                sessions={sessionsPickerList}
+                workspace={currentRootDir}
+                onChoose={(outcome) => {
+                  if (outcome.kind === "open") {
+                    setPendingSessionsPicker(false);
+                    if (onSwitchSession) {
+                      onSwitchSession(outcome.name);
+                    } else {
+                      log.pushInfo(
+                        `▸ to switch to "${outcome.name}", quit and run: reasonix chat --session ${outcome.name}`,
+                      );
+                    }
+                    return;
+                  }
+                  if (outcome.kind === "new") {
+                    setPendingSessionsPicker(false);
+                    if (onSwitchSession) {
+                      onSwitchSession(undefined);
+                    } else {
+                      log.pushInfo(
+                        "▸ to start a fresh session, quit and run: reasonix chat (no --session flag)",
+                      );
+                    }
+                    return;
+                  }
+                  if (outcome.kind === "delete") {
+                    deleteSession(outcome.name);
+                    setSessionsPickerList(listSessionsForWorkspace(currentRootDir));
+                    return;
+                  }
+                  if (outcome.kind === "rename") {
+                    renameSession(outcome.name, outcome.newName);
+                    setSessionsPickerList(listSessionsForWorkspace(currentRootDir));
+                    return;
+                  }
+                  if (outcome.kind === "quit") {
+                    setPendingSessionsPicker(false);
+                  }
+                }}
+              />
+            ) : pendingMcpBrowser ? (
+              <McpBrowser
+                servers={mcpServers ?? []}
+                configPath={defaultConfigPath()}
+                onClose={() => setPendingMcpBrowser(false)}
+                postInfo={(text) => log.pushInfo(text)}
+                applyAppend={(target, addedTools) => applyMcpAppend(loop, target, addedTools)}
+              />
+            ) : pendingPlan ? (
+              <PlanConfirm
+                plan={pendingPlan}
+                steps={planStepsRef.current ?? undefined}
+                summary={planSummaryRef.current ?? undefined}
+                onChoose={stableHandlePlanConfirm}
+                projectRoot={currentRootDir}
+              />
+            ) : pendingReviseEditor ? (
+              <PlanReviseEditor
+                steps={planStepsRef.current ?? []}
+                completedStepIds={completedStepIdsRef.current}
+                onAccept={(revised, skippedIds) => {
+                  planStepsRef.current = revised;
+                  for (const id of skippedIds) completedStepIdsRef.current.add(id);
+                  persistPlanState();
+                  const planText = pendingReviseEditor;
+                  setPendingReviseEditor(null);
+                  setPendingPlan(planText);
+                }}
+                onCancel={() => {
+                  const planText = pendingReviseEditor;
+                  setPendingReviseEditor(null);
+                  setPendingPlan(planText);
+                }}
+              />
+            ) : pendingShell ? (
+              <ShellConfirm
+                command={pendingShell.command}
+                allowPrefix={derivePrefix(pendingShell.command)}
+                kind={pendingShell.kind}
+                onChoose={handleShellConfirm}
+              />
+            ) : pendingEditReview ? (
+              <EditConfirm
+                block={pendingEditReview}
+                onChoose={(choice, denyContext) => {
+                  const resolve = editReviewResolveRef.current;
+                  if (resolve) {
+                    editReviewResolveRef.current = null;
+                    resolve({ choice, denyContext });
+                  }
+                }}
+              />
+            ) : walkthroughActive && pendingEdits.current.length > 0 ? (
+              <EditConfirm
+                // pendingTick re-keys the modal so each apply/discard
+                // forces a remount with the NEW first block. Without it,
+                // EditConfirm's internal scroll state would persist
+                // across blocks, which is the wrong UX.
+                key={`walk-${pendingTick}`}
+                block={pendingEdits.current[0]!}
+                onChoose={handleWalkChoice}
+              />
+            ) : (
+              <>
+                {codeMode ? (
+                  <ModeStatusBar
+                    editMode={editMode}
+                    pendingCount={pendingCount}
+                    flash={modeFlash}
+                    planMode={planMode}
+                    undoArmed={!!undoBanner || hasUndoable()}
+                    jobs={codeMode.jobs}
+                  />
+                ) : null}
+                {activeLoop ? <LoopStatusRow loop={activeLoop} /> : null}
+                <StatusRow />
+                <PromptInput
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={handleSubmit}
+                  disabled={busy}
+                  onHistoryPrev={recallPrev}
+                  onHistoryNext={recallNext}
                 />
-              ) : null}
-              {slashArgContext ? (
-                <SlashArgPicker
-                  matches={slashArgMatches}
-                  selectedIndex={slashArgSelected}
-                  spec={slashArgContext.spec}
-                  kind={slashArgContext.kind}
-                  partial={slashArgContext.partial}
-                />
-              ) : null}
-              {/* CtxFooter retired — UsageCard auto-emits per turn covers the same data */}
-            </>
-          )}
-        </Box>
+                {slashMatches !== null ? (
+                  <SlashSuggestions matches={slashMatches} selectedIndex={slashSelected} />
+                ) : null}
+                {atMatches !== null ? (
+                  <AtMentionSuggestions
+                    matches={atMatches}
+                    selectedIndex={atSelected}
+                    query={atPicker?.query ?? ""}
+                  />
+                ) : null}
+                {slashArgContext ? (
+                  <SlashArgPicker
+                    matches={slashArgMatches}
+                    selectedIndex={slashArgSelected}
+                    spec={slashArgContext.spec}
+                    kind={slashArgContext.kind}
+                    partial={slashArgContext.partial}
+                  />
+                ) : null}
+                {/* CtxFooter retired — UsageCard auto-emits per turn covers the same data */}
+              </>
+            )}
+          </Box>
+        </ViewportBudgetProvider>
       </TickerProvider>
     </>
   );

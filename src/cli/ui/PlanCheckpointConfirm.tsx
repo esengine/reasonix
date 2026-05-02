@@ -7,6 +7,7 @@ import type { PlanStep } from "../../tools/plan.js";
 import { PlanStepList, type StepStatus } from "./PlanStepList.js";
 import { SingleSelect } from "./Select.js";
 import { ApprovalCard } from "./cards/ApprovalCard.js";
+import { useReserveRows } from "./layout/viewport-budget.js";
 
 export type CheckpointChoice = "continue" | "revise" | "stop";
 
@@ -31,6 +32,12 @@ function PlanCheckpointConfirmInner({
   completedStepIds,
   onChoose,
 }: PlanCheckpointConfirmProps) {
+  // Step list grows with plan size; cap roughly at 20 visible-step-ish rows
+  // plus the 3 picker options + chrome. This is the lamyc-video trigger:
+  // checkpoint + write_file streaming above.
+  const stepRows = steps?.length ?? 0;
+  useReserveRows("modal", { min: 10, max: Math.max(14, stepRows + 12) });
+
   const label = title ? `${stepId} · ${title}` : stepId;
   const counter = total > 0 ? `${completed}/${total}` : "";
   const isLast = total > 0 && completed >= total;

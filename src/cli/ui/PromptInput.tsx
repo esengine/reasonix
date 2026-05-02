@@ -2,6 +2,7 @@ import { Box, Text, useStdout } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React as a runtime value (classic transform compiles JSX to React.createElement)
 import React, { useRef, useState } from "react";
 import { useKeystroke } from "./keystroke-context.js";
+import { useReserveRows } from "./layout/viewport-budget.js";
 import { type MultilineKey, lineAndColumn, processMultilineKey } from "./multiline-keys.js";
 import {
   PASTE_SENTINEL_RANGE,
@@ -43,6 +44,12 @@ export function PromptInput({
   onHistoryPrev,
   onHistoryNext,
 }: PromptInputProps) {
+  // Claim the input zone so the streaming card above clamps when the prompt
+  // grows multi-line. Cap at 24 — the renderItems collapser already hides
+  // content past ~20 logical lines, so the visual height never exceeds that.
+  const inputLineCount = value.length > 0 ? value.split("\n").length : 1;
+  useReserveRows("input", { min: 1, max: Math.min(inputLineCount + 3, 24) });
+
   const [cursor, setCursor] = useState(value.length);
 
   // Paste registry — keyed by sentinel id, holds original content.

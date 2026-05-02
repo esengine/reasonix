@@ -5,6 +5,7 @@ import React from "react";
 import type { ChoiceOption } from "../../tools/choice.js";
 import { SingleSelect } from "./Select.js";
 import { ApprovalCard } from "./cards/ApprovalCard.js";
+import { useReserveRows } from "./layout/viewport-budget.js";
 
 export type ChoiceConfirmChoice =
   | { kind: "pick"; optionId: string }
@@ -22,6 +23,9 @@ const CUSTOM_VALUE = "__custom__";
 const CANCEL_VALUE = "__cancel__";
 
 function ChoiceConfirmInner({ question, options, allowCustom, onChoose }: ChoiceConfirmProps) {
+  const optionRows = options.length + (allowCustom ? 1 : 0) + 1; // +1 for cancel
+  useReserveRows("modal", { min: 6, max: Math.max(10, optionRows + 6) });
+
   const items: Array<{ value: string; label: string; hint?: string }> = options.map((opt) => ({
     value: opt.id,
     label: `${opt.id} · ${opt.title}`,
