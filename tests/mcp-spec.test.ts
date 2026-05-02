@@ -67,6 +67,19 @@ describe("parseMcpSpec: stdio", () => {
     expect(s.name).toBeNull();
     expect(s.command).toBe("2fs=cmd");
   });
+
+  it("allows hyphens in the name (kebab-case is the MCP ecosystem norm)", () => {
+    const spec = parseMcpSpec("sage-wiki=npx -y @scope/sage-wiki");
+    if (spec.transport !== "stdio") throw new Error("unreachable");
+    expect(spec.name).toBe("sage-wiki");
+    expect(spec.command).toBe("npx");
+    expect(spec.args).toEqual(["-y", "@scope/sage-wiki"]);
+    // Leading hyphen → not a valid identifier → whole thing is command
+    const lead = parseMcpSpec("-fs=cmd");
+    if (lead.transport !== "stdio") throw new Error("unreachable");
+    expect(lead.name).toBeNull();
+    expect(lead.command).toBe("-fs=cmd");
+  });
 });
 
 describe("parseMcpSpec: sse", () => {
