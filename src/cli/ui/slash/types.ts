@@ -1,6 +1,6 @@
 import type { EditMode } from "../../../config.js";
 import type { InspectionReport } from "../../../mcp/inspect.js";
-import type { McpClientHost } from "../../../mcp/registry.js";
+import type { BridgeEnv, McpClientHost } from "../../../mcp/registry.js";
 import type { JobRegistry } from "../../../tools/jobs.js";
 import type { PlanStep } from "../../../tools/plan.js";
 
@@ -122,6 +122,8 @@ export interface McpServerSummary {
   report: InspectionReport;
   /** Mutable client handle so `/mcp reconnect` can swap the underlying socket without re-bridging tools. */
   host: McpClientHost;
+  /** Captured at first-bridge time so append-drift reconnects can register newly-added tools with the same options. */
+  bridgeEnv: BridgeEnv;
 }
 
 export interface SlashCommandSpec {

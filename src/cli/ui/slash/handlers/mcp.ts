@@ -1,4 +1,6 @@
 import { readConfig, writeConfig } from "../../../../config.js";
+import type { CacheFirstLoop } from "../../../../loop.js";
+import { applyMcpAppend } from "../../mcp-append.js";
 import { kickOffMcpReconnect } from "../../mcp-reconnect-kickoff.js";
 import type { SlashHandler } from "../dispatch.js";
 import { appendSection } from "../helpers.js";
@@ -13,7 +15,7 @@ const mcp: SlashHandler = (args, loop, ctx) => {
     return toggleDisabled(sub, args[1], { servers, specs });
   }
   if (sub === "reconnect") {
-    return triggerReconnect(args[1], servers, ctx.postInfo);
+    return triggerReconnect(args[1], servers, ctx.postInfo, loop);
   }
   // `/mcp text` (or non-TTY) falls through to the printed-card path. The
   // default `/mcp` opens the interactive browser modal.
@@ -132,6 +134,7 @@ function triggerReconnect(
   rawName: string | undefined,
   servers: ReadonlyArray<McpServerSummary>,
   postInfo: ((text: string) => void) | undefined,
+  loop: CacheFirstLoop,
 ): { info: string } {
   const name = rawName?.trim();
   if (!name) {
@@ -150,7 +153,14 @@ function triggerReconnect(
   if (!postInfo) {
     return { info: "/mcp reconnect requires the interactive TUI (postInfo not wired)." };
   }
-  return { info: kickOffMcpReconnect(target, postInfo) };
+  // Append-drift accepted automatically: server added new tools, we register them
+  // and call addTool on the prefix (cache miss only on the appended chunks per the
+  // benchmarks/spike-mcp-reconnect data — typically <5% loss).
+  return {
+    info: kickOffMcpReconnect(target, postInfo, (t, addedTools) =>
+      applyMcpAppend(loop, t, addedTools),
+    ),
+  };
 }
 
 export const handlers: Record<string, SlashHandler> = { mcp };

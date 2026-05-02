@@ -116,6 +116,7 @@ import {
 import { StatusRow } from "./layout/StatusRow.js";
 import { ToastRail } from "./layout/ToastRail.js";
 import { formatLoopStatus } from "./loop.js";
+import { applyMcpAppend } from "./mcp-append.js";
 import { handleMcpBrowseSlash } from "./mcp-browse.js";
 import { formatLongPaste } from "./paste-collapse.js";
 import { resolvePreset } from "./presets.js";
@@ -3387,6 +3388,7 @@ function AppInner({
               configPath={defaultConfigPath()}
               onClose={() => setPendingMcpBrowser(false)}
               postInfo={(text) => log.pushInfo(text)}
+              applyAppend={(target, addedTools) => applyMcpAppend(loop, target, addedTools)}
             />
           ) : pendingPlan ? (
             <PlanConfirm
