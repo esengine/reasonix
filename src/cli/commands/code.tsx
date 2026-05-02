@@ -20,7 +20,7 @@
 
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { loadEditMode, loadProjectShellAllowed } from "../../config.js";
+import { loadEditMode, loadProjectShellAllowed, readConfig } from "../../config.js";
 import { bootstrapSemanticSearchInCodeMode } from "../../index/semantic/tool.js";
 import { sanitizeName } from "../../memory/session.js";
 import { ToolRegistry } from "../../tools.js";
@@ -186,6 +186,7 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
     session,
     seedTools: tools,
     codeMode: { rootDir, jobs, reregisterTools: registerRootedTools },
+    mcp: readConfig().mcp,
     forceResume: opts.forceResume,
     forceNew: opts.forceNew,
     noDashboard: opts.noDashboard,
