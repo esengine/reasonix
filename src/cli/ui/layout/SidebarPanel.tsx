@@ -60,10 +60,16 @@ function SectionHeader({ glyph, title, tone }: { glyph: string; title: string; t
 }
 
 function Divider() {
+  // Border auto-fills the parent's content width — no hardcoded char repeat.
   return (
-    <Box marginY={0}>
-      <Text color={FG.faint}>{"─".repeat(SIDEBAR_WIDTH - 2)}</Text>
-    </Box>
+    <Box
+      borderStyle="single"
+      borderTop
+      borderRight={false}
+      borderBottom={false}
+      borderLeft={false}
+      borderTopColor={FG.faint}
+    />
   );
 }
 
