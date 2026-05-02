@@ -1,4 +1,4 @@
-/** `/mcp reconnect` — open a fresh client, accept identity drift only, refuse the rest cleanly. */
+/** `/mcp reconnect` — open a fresh client, accept identity (always) and append (opt-in), refuse the rest cleanly. */
 
 import { McpClient } from "./client.js";
 import { classifyToolListDrift } from "./drift.js";
@@ -16,10 +16,19 @@ export interface ReconnectArgs {
   spec: string;
   /** The current tool list, used as the drift baseline. */
   beforeTools: readonly McpTool[];
+  /** Drift kinds the caller is willing to accept. Default: ["identity"]. */
+  accept?: ReadonlyArray<"identity" | "append">;
 }
 
 export type ReconnectResult =
-  | { ok: true; afterTools: McpTool[]; ms: number }
+  | {
+      ok: true;
+      kind: "identity" | "append";
+      afterTools: McpTool[];
+      /** Tools present in `afterTools` but not in `beforeTools` (empty for identity). */
+      addedTools: McpTool[];
+      ms: number;
+    }
   | {
       ok: false;
       reason:
@@ -35,6 +44,7 @@ export type ReconnectResult =
 
 export async function reconnectMcpServer(args: ReconnectArgs): Promise<ReconnectResult> {
   const t0 = Date.now();
+  const accept = args.accept ?? ["identity"];
   let parsed: McpSpec;
   try {
     parsed = parseMcpSpec(args.spec);
@@ -57,24 +67,37 @@ export async function reconnectMcpServer(args: ReconnectArgs): Promise<Reconnect
     await next.initialize();
     const listed = await next.listTools();
     const drift = classifyToolListDrift(toolsToSpecs(args.beforeTools), toolsToSpecs(listed.tools));
-    if (drift.kind !== "identity") {
-      // The new client is fine but its tool surface differs — accepting it
-      // would either mutate the registry/prefix (we don't do that yet) or
-      // silently break the cache invariant. Close the new handle and leave
-      // the old one in place untouched.
+    // Identity is always free — accept it regardless of `accept`. The opt-in
+    // controls only whether append-drift also gets through.
+    const acceptedKind: "identity" | "append" | null =
+      drift.kind === "identity"
+        ? "identity"
+        : drift.kind === "append" && accept.includes("append")
+          ? "append"
+          : null;
+    if (acceptedKind === null) {
       await next.close().catch(() => {});
+      const refused = drift.kind as Exclude<typeof drift.kind, "identity">;
       return {
         ok: false,
-        reason: driftReason(drift.kind),
+        reason: driftReason(refused),
         message: driftMessage(drift),
         ms: Date.now() - t0,
       };
     }
-    // Identity drift — safe to swap.
+    const addedTools =
+      acceptedKind === "append" ? listed.tools.filter((t) => drift.added.includes(t.name)) : [];
+    // Swap.
     const old = args.host.client;
     args.host.client = next;
     await old.close().catch(() => {});
-    return { ok: true, afterTools: listed.tools, ms: Date.now() - t0 };
+    return {
+      ok: true,
+      kind: acceptedKind,
+      afterTools: listed.tools,
+      addedTools,
+      ms: Date.now() - t0,
+    };
   } catch (err) {
     await next.close().catch(() => {});
     return {

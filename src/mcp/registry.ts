@@ -49,10 +49,49 @@ export interface BridgeResult {
   skipped: Array<{ name: string; reason: string }>;
 }
 
+/** Resolved bridge environment that `registerSingleMcpTool` needs. Stored on summaries so reconnect can append new tools later. */
+export interface BridgeEnv {
+  registry: ToolRegistry;
+  host: McpClientHost;
+  prefix: string;
+  maxResultChars: number;
+  tracker: LatencyTracker | null;
+  onProgress?: BridgeOptions["onProgress"];
+}
+
+/** Register one MCP tool's bridged closure into the registry. Returns the registered name (or "" if skipped). */
+export function registerSingleMcpTool(
+  mcpTool: import("./types.js").McpTool,
+  env: BridgeEnv,
+): string {
+  if (!mcpTool.name) return "";
+  const registeredName = `${env.prefix}${mcpTool.name}`;
+  env.registry.register({
+    name: registeredName,
+    description: mcpTool.description ?? "",
+    parameters: mcpTool.inputSchema as JSONSchema,
+    fn: async (args: Record<string, unknown>, ctx) => {
+      const t0 = env.tracker ? Date.now() : 0;
+      // Resolve client at call time via the host indirection so `/mcp reconnect`
+      // can swap a fresh client in without re-bridging tools.
+      const live = env.host.client;
+      const toolResult = await live.callTool(mcpTool.name, args, {
+        onProgress: env.onProgress
+          ? (info) => env.onProgress!({ toolName: registeredName, ...info })
+          : undefined,
+        signal: ctx?.signal,
+      });
+      if (env.tracker) env.tracker.record(Date.now() - t0);
+      return flattenMcpResult(toolResult, { maxChars: env.maxResultChars });
+    },
+  });
+  return registeredName;
+}
+
 export async function bridgeMcpTools(
   client: McpClient,
   opts: BridgeOptions = {},
-): Promise<BridgeResult> {
+): Promise<BridgeResult & { env: BridgeEnv }> {
   const registry = opts.registry ?? new ToolRegistry({ autoFlatten: opts.autoFlatten });
   const prefix = opts.namePrefix ?? "";
   const maxResultChars = opts.maxResultChars ?? DEFAULT_MAX_RESULT_CHARS;
@@ -62,35 +101,29 @@ export async function bridgeMcpTools(
   const tracker = opts.onSlow
     ? new LatencyTracker(serverName, { thresholdMs: opts.slowThresholdMs, onSlow: opts.onSlow })
     : null;
+  // Synthesize a host on the fly when the caller didn't provide one. Older
+  // callers (tests, single-shot non-reconnectable bridges) get the live
+  // `client` reference frozen in; reconnect-aware callers pass their own
+  // mutable host.
+  const host: McpClientHost = opts.host ?? { client };
+  const env: BridgeEnv = {
+    registry,
+    host,
+    prefix,
+    maxResultChars,
+    tracker,
+    onProgress: opts.onProgress,
+  };
   const listed = await client.listTools();
   for (const mcpTool of listed.tools) {
     if (!mcpTool.name) {
       result.skipped.push({ name: "?", reason: "empty tool name" });
       continue;
     }
-    const registeredName = `${prefix}${mcpTool.name}`;
-    registry.register({
-      name: registeredName,
-      description: mcpTool.description ?? "",
-      parameters: mcpTool.inputSchema as JSONSchema,
-      fn: async (args: Record<string, unknown>, ctx) => {
-        const t0 = tracker ? Date.now() : 0;
-        // Resolve client at call time via the host indirection (when given) so
-        // `/mcp reconnect` can swap a fresh client in without re-bridging tools.
-        const live = opts.host?.client ?? client;
-        const toolResult = await live.callTool(mcpTool.name, args, {
-          onProgress: opts.onProgress
-            ? (info) => opts.onProgress!({ toolName: registeredName, ...info })
-            : undefined,
-          signal: ctx?.signal,
-        });
-        if (tracker) tracker.record(Date.now() - t0);
-        return flattenMcpResult(toolResult, { maxChars: maxResultChars });
-      },
-    });
-    result.registeredNames.push(registeredName);
+    const registeredName = registerSingleMcpTool(mcpTool, env);
+    if (registeredName) result.registeredNames.push(registeredName);
   }
-  return result;
+  return { ...result, env };
 }
 
 export interface FlattenOptions {

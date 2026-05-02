@@ -284,6 +284,7 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
           toolCount: bridge.registeredNames.length,
           report,
           host,
+          bridgeEnv: bridge.env,
         });
       } catch (err) {
         // Per-server failure is non-fatal: one broken server shouldn't
