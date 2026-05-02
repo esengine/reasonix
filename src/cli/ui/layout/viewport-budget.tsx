@@ -1,12 +1,4 @@
-/**
- * Viewport row-budget — single layout authority for vertical row allocation.
- *
- * Solves the "two components race for the same rows" class of bug by making
- * row claims explicit. Each component declares `{ min, max }` rows it wants
- * for its zone; the provider runs a priority-greedy allocator and feeds each
- * component back its actual allocation. No more magic `RESERVED_CHROME_ROWS = 14`
- * scattered across files.
- */
+/** Single allocator for vertical viewport rows; consumers claim per-zone via useReserveRows. */
 
 import { useStdout } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
@@ -14,11 +6,7 @@ import React, { createContext, useContext, useEffect, useMemo, useReducer } from
 
 export type ZoneId = "modal" | "plan-card" | "status" | "input" | "stream" | "safety";
 
-/**
- * Higher number = claims rows first. Modal wins over stream because user
- * focus is the modal; stream is "soak the rest". Safety is the lowest
- * positive number so the unobservable margin always survives.
- */
+/** Higher number = claims rows first. */
 const ZONE_PRIORITY: Record<ZoneId, number> = {
   modal: 100,
   "plan-card": 80,
@@ -111,8 +99,7 @@ export function ViewportBudgetProvider({
     totalRows: initialRows ?? stdout?.rows ?? 40,
   }));
 
-  // Single resize listener — children read totalRows from context instead of
-  // each calling useStdout themselves (N-1 fewer re-renders on resize).
+  // Single resize listener — children read totalRows from context.
   useEffect(() => {
     if (initialRows !== undefined) return undefined;
     if (!stdout) return undefined;
@@ -145,17 +132,10 @@ export function ViewportBudgetProvider({
   return <BudgetContext.Provider value={value}>{children}</BudgetContext.Provider>;
 }
 
-/**
- * Reserve rows for a zone. Returns the actual allocation (may differ from `max`
- * on small terminals or when higher-priority zones claim first). Falls back to
- * `max` when no provider is mounted (unit tests, plain-UI mode).
- *
- * Effect deps key off `dispatch` (stable from useReducer) + spec primitives,
- * NOT the whole ctx object — ctx identity changes after every claim and would
- * loop the effect indefinitely.
- */
+/** Returns actual allocation; falls back to spec.max when no provider is mounted. */
 export function useReserveRows(zone: ZoneId, spec: ClaimSpec): number {
   const ctx = useContext(BudgetContext);
+  // Deps key off dispatch (stable) + primitives — whole ctx changes every claim and would loop.
   const dispatch = ctx?.dispatch;
 
   useEffect(() => {
@@ -169,8 +149,7 @@ export function useReserveRows(zone: ZoneId, spec: ClaimSpec): number {
   if (!ctx) return Number.isFinite(spec.max) ? spec.max : 40;
   const allocated = ctx.allocations.get(zone);
   if (allocated !== undefined) return allocated;
-  // Pre-effect first render — return optimistic max so the first frame
-  // doesn't render at min and snap larger after the effect commits.
+  // Optimistic max for pre-effect first render.
   return Number.isFinite(spec.max) ? spec.max : ctx.totalRows;
 }
 

@@ -44,9 +44,7 @@ export function PromptInput({
   onHistoryPrev,
   onHistoryNext,
 }: PromptInputProps) {
-  // Claim the input zone so the streaming card above clamps when the prompt
-  // grows multi-line. Cap at 24 — the renderItems collapser already hides
-  // content past ~20 logical lines, so the visual height never exceeds that.
+  // Cap at 24 — collapseLinesForDisplay hides content past ~20 logical lines.
   const inputLineCount = value.length > 0 ? value.split("\n").length : 1;
   useReserveRows("input", { min: 1, max: Math.min(inputLineCount + 3, 24) });
 

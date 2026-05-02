@@ -19,9 +19,6 @@ export interface ShellConfirmProps {
 }
 
 export function ShellConfirm({ command, allowPrefix, kind, onChoose }: ShellConfirmProps) {
-  // Claim modal zone so the streaming card above clamps. Header/footer + 3
-  // options + spacing → ~12 rows max; deny phase swaps to DenyContextInput
-  // which is similar height.
   useReserveRows("modal", { min: 8, max: 14 });
 
   const isBackground = kind === "run_background";
