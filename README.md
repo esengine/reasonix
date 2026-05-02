@@ -93,7 +93,7 @@ Cache stability isn't a feature you turn on; it's an invariant the loop is desig
   <img src="docs/feature-grid.svg" alt="Feature grid — cache-first loop, plan mode, MCP first-class, sessions and dashboard, hooks, memory and skills" width="860"/>
 </p>
 
-Permissions (`allow` / `ask` / `deny`), tool-call repair (flatten · scavenge · truncation · storm), and `/effort` for cheap turns round out the loop. [Architecture →](./docs/ARCHITECTURE.md) · [Dashboard mockup →](./design/agent-dashboard.html) · [TUI mockup →](./design/agent-tui-terminal.html) · [Website →](https://esengine.github.io/reasonix/)
+Permissions (`allow` / `ask` / `deny`), tool-call repair (flatten · scavenge · truncation · storm), and `/effort` for cheap turns round out the loop. [Architecture →](./docs/ARCHITECTURE.md) · [Dashboard mockup →](https://esengine.github.io/reasonix/design/agent-dashboard.html) · [TUI mockup →](https://esengine.github.io/reasonix/design/agent-tui-terminal.html) · [Website →](https://esengine.github.io/reasonix/)
 
 ---
 
@@ -103,7 +103,7 @@ Reasonix is solo-maintained but designed to grow. Scoped starter tickets — eac
 
 **Open Discussions** — opinions wanted:
 - [#20 · CLI / TUI design](https://github.com/esengine/reasonix/discussions/20) — what's broken, what's missing, what would you change?
-- [#21 · Dashboard design](https://github.com/esengine/reasonix/discussions/21) — react against the [proposed mockup](./design/agent-dashboard.html)
+- [#21 · Dashboard design](https://github.com/esengine/reasonix/discussions/21) — react against the [proposed mockup](https://esengine.github.io/reasonix/design/agent-dashboard.html)
 - [#22 · Future feature wishlist](https://github.com/esengine/reasonix/discussions/22) — what would you build into Reasonix next?
 
 **Before your first PR**: read [`CONTRIBUTING.md`](./CONTRIBUTING.md). Short, strict project rules (comments, errors, libraries-over-hand-rolled); `tests/comment-policy.test.ts` enforces the comment ones and `npm run verify` is the pre-push gate.
