@@ -26,6 +26,8 @@ export interface ReasonixConfig {
   reasoningEffort?: ReasoningEffort;
   /** Stored as `--mcp`-format strings so one parser handles both flag and config. */
   mcp?: string[];
+  /** Names of servers in `mcp` to skip on bridge — see `/mcp disable <name>`. */
+  mcpDisabled?: string[];
   session?: string | null;
   setupCompleted?: boolean;
   search?: boolean;

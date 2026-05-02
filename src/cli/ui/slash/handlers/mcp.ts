@@ -1,3 +1,4 @@
+import { readConfig, writeConfig } from "../../../../config.js";
 import type { SlashHandler } from "../dispatch.js";
 import { appendSection } from "../helpers.js";
 
@@ -5,9 +6,13 @@ const mcp: SlashHandler = (args, loop, ctx) => {
   const servers = ctx.mcpServers ?? [];
   const specs = ctx.mcpSpecs ?? [];
   const toolSpecs = loop.prefix.toolSpecs ?? [];
+  const sub = args[0];
+  if (sub === "disable" || sub === "enable") {
+    return toggleDisabled(sub, args[1], { servers, specs });
+  }
   // `/mcp text` (or non-TTY) falls through to the printed-card path. The
   // default `/mcp` opens the interactive browser modal.
-  const wantsTextDump = args[0] === "text";
+  const wantsTextDump = sub === "text";
   if (servers.length === 0 && specs.length === 0 && toolSpecs.length === 0) {
     return {
       info:
@@ -72,6 +77,50 @@ function healthBadge(elapsedMs: number): string {
   if (elapsedMs < 500) return `● healthy · ${elapsedMs}ms`;
   if (elapsedMs < 3000) return `◌ slow · ${elapsedMs}ms`;
   return `✗ very slow · ${elapsedMs}ms`;
+}
+
+function toggleDisabled(
+  action: "disable" | "enable",
+  rawName: string | undefined,
+  ctx: { servers: ReadonlyArray<{ label: string }>; specs: ReadonlyArray<string> },
+): { info: string } {
+  const name = rawName?.trim();
+  if (!name) {
+    return {
+      info: `usage: /mcp ${action} <name>  ·  pick a name shown in /mcp (anonymous servers can't be named-toggled).`,
+    };
+  }
+  const known = new Set<string>([
+    ...ctx.servers.map((s) => s.label),
+    ...ctx.specs.map((spec) => parseLabelFromSpec(spec)).filter((n): n is string => n !== null),
+  ]);
+  if (!known.has(name)) {
+    const list = [...known].sort().join(", ") || "(none)";
+    return { info: `unknown MCP server "${name}". Known: ${list}.` };
+  }
+  const cfg = readConfig();
+  const current = new Set(cfg.mcpDisabled ?? []);
+  if (action === "disable") {
+    if (current.has(name)) {
+      return { info: `▸ ${name} is already disabled — restart to apply, or /mcp enable ${name}.` };
+    }
+    current.add(name);
+    writeConfig({ ...cfg, mcpDisabled: [...current].sort() });
+    return {
+      info: `▸ ${name} disabled — takes effect on next launch. /mcp enable ${name} to revert.`,
+    };
+  }
+  if (!current.has(name)) {
+    return { info: `▸ ${name} is not disabled.` };
+  }
+  current.delete(name);
+  writeConfig({ ...cfg, mcpDisabled: current.size > 0 ? [...current].sort() : undefined });
+  return { info: `▸ ${name} re-enabled — takes effect on next launch.` };
+}
+
+function parseLabelFromSpec(spec: string): string | null {
+  const match = spec.match(/^([a-zA-Z_][a-zA-Z0-9_-]*)=/);
+  return match ? (match[1] ?? null) : null;
 }
 
 export const handlers: Record<string, SlashHandler> = { mcp };

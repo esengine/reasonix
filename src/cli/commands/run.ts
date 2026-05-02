@@ -1,7 +1,13 @@
 import type { WriteStream } from "node:fs";
 import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
-import { defaultConfigPath, isPlausibleKey, loadApiKey, saveApiKey } from "../../config.js";
+import {
+  defaultConfigPath,
+  isPlausibleKey,
+  loadApiKey,
+  readConfig,
+  saveApiKey,
+} from "../../config.js";
 import { loadDotenv } from "../../env.js";
 import { CacheFirstLoop, DeepSeekClient, ImmutablePrefix } from "../../index.js";
 import { McpClient } from "../../mcp/client.js";
@@ -76,6 +82,7 @@ export async function runCommand(opts: RunOptions): Promise<void> {
   const clients: McpClient[] = [];
   let tools: ToolRegistry | undefined;
   let successCount = 0;
+  const disabledNames = new Set(readConfig().mcpDisabled ?? []);
   if (requestedSpecs.length > 0) {
     tools = new ToolRegistry();
     for (const raw of requestedSpecs) {
@@ -83,6 +90,10 @@ export async function runCommand(opts: RunOptions): Promise<void> {
       try {
         const spec = parseMcpSpec(raw);
         label = spec.name ?? "anon";
+        if (spec.name && disabledNames.has(spec.name)) {
+          process.stderr.write(`${formatMcpLifecycleEvent({ state: "disabled", name: label })}\n`);
+          continue;
+        }
         process.stderr.write(`${formatMcpLifecycleEvent({ state: "handshake", name: label })}\n`);
         const t0 = Date.now();
         const prefix = spec.name

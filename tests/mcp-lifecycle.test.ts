@@ -27,6 +27,12 @@ describe("formatMcpLifecycleEvent", () => {
     );
   });
 
+  it("renders the disabled state", () => {
+    expect(formatMcpLifecycleEvent({ state: "disabled", name: "linear" })).toBe(
+      "⌘ MCP · linear          ○ disabled     via /mcp disable linear",
+    );
+  });
+
   it("renders the failed state", () => {
     expect(
       formatMcpLifecycleEvent({

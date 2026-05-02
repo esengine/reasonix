@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -792,6 +792,84 @@ describe("handleSlash", () => {
     });
     expect(r.info).toMatch(/MCP servers \(1\)/);
     expect(r.info).toMatch(/server-filesystem|fs/);
+  });
+
+  describe("/mcp disable / enable", () => {
+    let tempHome: string;
+    let originalHome: string | undefined;
+    let originalUserProfile: string | undefined;
+
+    beforeEach(() => {
+      tempHome = mkdtempSync(join(tmpdir(), "reasonix-mcp-toggle-"));
+      originalHome = process.env.HOME;
+      originalUserProfile = process.env.USERPROFILE;
+      process.env.HOME = tempHome;
+      process.env.USERPROFILE = tempHome;
+    });
+    afterEach(() => {
+      process.env.HOME = originalHome;
+      process.env.USERPROFILE = originalUserProfile;
+      rmSync(tempHome, { recursive: true, force: true });
+    });
+
+    it("/mcp disable <name> persists the name into config.mcpDisabled", () => {
+      const r = handleSlash("mcp", ["disable", "notion"], makeLoop(), {
+        mcpSpecs: ["notion=npx -y @scope/notion", "linear=npx -y @scope/linear"],
+      });
+      expect(r.info).toMatch(/notion disabled/);
+      expect(r.info).toMatch(/next launch/);
+      const cfgPath = join(tempHome, ".reasonix", "config.json");
+      const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+      expect(cfg.mcpDisabled).toEqual(["notion"]);
+    });
+
+    it("/mcp enable <name> removes from disabled and clears the array when empty", () => {
+      const cfgPath = join(tempHome, ".reasonix", "config.json");
+      mkdirSync(join(tempHome, ".reasonix"), { recursive: true });
+      writeFileSync(cfgPath, JSON.stringify({ mcpDisabled: ["notion", "linear"] }));
+      const r = handleSlash("mcp", ["enable", "notion"], makeLoop(), {
+        mcpSpecs: ["notion=npx -y @scope/notion", "linear=npx -y @scope/linear"],
+      });
+      expect(r.info).toMatch(/notion re-enabled/);
+      const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+      expect(cfg.mcpDisabled).toEqual(["linear"]);
+    });
+
+    it("/mcp enable removes the array entirely when last entry clears", () => {
+      const cfgPath = join(tempHome, ".reasonix", "config.json");
+      mkdirSync(join(tempHome, ".reasonix"), { recursive: true });
+      writeFileSync(cfgPath, JSON.stringify({ mcpDisabled: ["notion"] }));
+      handleSlash("mcp", ["enable", "notion"], makeLoop(), {
+        mcpSpecs: ["notion=npx -y @scope/notion"],
+      });
+      const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+      expect(cfg.mcpDisabled).toBeUndefined();
+    });
+
+    it("/mcp disable rejects unknown names with the list of known ones", () => {
+      const r = handleSlash("mcp", ["disable", "ghost"], makeLoop(), {
+        mcpSpecs: ["notion=cmd", "linear=cmd"],
+      });
+      expect(r.info).toMatch(/unknown MCP server "ghost"/);
+      expect(r.info).toMatch(/Known: linear, notion/);
+    });
+
+    it("/mcp disable with no arg shows usage", () => {
+      const r = handleSlash("mcp", ["disable"], makeLoop(), {
+        mcpSpecs: ["notion=cmd"],
+      });
+      expect(r.info).toMatch(/usage: \/mcp disable <name>/);
+    });
+
+    it("/mcp disable on already-disabled is idempotent", () => {
+      const cfgPath = join(tempHome, ".reasonix", "config.json");
+      mkdirSync(join(tempHome, ".reasonix"), { recursive: true });
+      writeFileSync(cfgPath, JSON.stringify({ mcpDisabled: ["notion"] }));
+      const r = handleSlash("mcp", ["disable", "notion"], makeLoop(), {
+        mcpSpecs: ["notion=cmd"],
+      });
+      expect(r.info).toMatch(/already disabled/);
+    });
   });
 
   it("/status shows ctx / session / mcp / pending lines with rich detail", () => {

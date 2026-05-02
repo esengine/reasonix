@@ -1,6 +1,6 @@
 import { render } from "ink";
 import React, { useState } from "react";
-import { loadApiKey, searchEnabled } from "../../config.js";
+import { loadApiKey, readConfig, searchEnabled } from "../../config.js";
 import { loadDotenv } from "../../env.js";
 import { McpClient } from "../../mcp/client.js";
 import { type InspectionReport, inspectMcpServer } from "../../mcp/inspect.js";
@@ -203,6 +203,7 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
   // the loop runs as a bare chat.
   let tools: ToolRegistry | undefined = opts.seedTools;
 
+  const disabledNames = new Set(readConfig().mcpDisabled ?? []);
   if (requestedSpecs.length > 0) {
     if (!tools) tools = new ToolRegistry();
     for (const raw of requestedSpecs) {
@@ -210,6 +211,10 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
       try {
         const spec = parseMcpSpec(raw);
         label = spec.name ?? "anon";
+        if (spec.name && disabledNames.has(spec.name)) {
+          process.stderr.write(`${formatMcpLifecycleEvent({ state: "disabled", name: label })}\n`);
+          continue;
+        }
         process.stderr.write(`${formatMcpLifecycleEvent({ state: "handshake", name: label })}\n`);
         const t0 = Date.now();
         const prefix = spec.name
