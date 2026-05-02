@@ -1,6 +1,6 @@
-import { readConfig, writeConfig } from "../../../../config.js";
 import type { CacheFirstLoop } from "../../../../loop.js";
 import { applyMcpAppend } from "../../mcp-append.js";
+import { toggleMcpDisabled } from "../../mcp-disable.js";
 import { kickOffMcpReconnect } from "../../mcp-reconnect-kickoff.js";
 import type { SlashHandler } from "../dispatch.js";
 import { appendSection } from "../helpers.js";
@@ -105,24 +105,7 @@ function toggleDisabled(
     const list = [...known].sort().join(", ") || "(none)";
     return { info: `unknown MCP server "${name}". Known: ${list}.` };
   }
-  const cfg = readConfig();
-  const current = new Set(cfg.mcpDisabled ?? []);
-  if (action === "disable") {
-    if (current.has(name)) {
-      return { info: `▸ ${name} is already disabled — restart to apply, or /mcp enable ${name}.` };
-    }
-    current.add(name);
-    writeConfig({ ...cfg, mcpDisabled: [...current].sort() });
-    return {
-      info: `▸ ${name} disabled — takes effect on next launch. /mcp enable ${name} to revert.`,
-    };
-  }
-  if (!current.has(name)) {
-    return { info: `▸ ${name} is not disabled.` };
-  }
-  current.delete(name);
-  writeConfig({ ...cfg, mcpDisabled: current.size > 0 ? [...current].sort() : undefined });
-  return { info: `▸ ${name} re-enabled — takes effect on next launch.` };
+  return { info: toggleMcpDisabled(action, name) };
 }
 
 function parseLabelFromSpec(spec: string): string | null {

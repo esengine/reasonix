@@ -4,6 +4,7 @@ import { Box, Text } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
 import React, { useState } from "react";
 import { useKeystroke } from "./keystroke-context.js";
+import { toggleMcpDisabled } from "./mcp-disable.js";
 import { type ApplyAppend, kickOffMcpReconnect } from "./mcp-reconnect-kickoff.js";
 import type { McpServerSummary } from "./slash/types.js";
 import { COLOR } from "./theme.js";
@@ -41,6 +42,12 @@ export function McpBrowser({
       // so the line is visible immediately.
       postInfo(kickOffMcpReconnect(target, postInfo, applyAppend));
       onClose();
+    } else if (ev.input === "d") {
+      const target = servers[index];
+      if (!target) return;
+      // Persist `mcpDisabled` and close — takes effect on next launch.
+      postInfo(toggleMcpDisabled("disable", target.label));
+      onClose();
     }
   });
 
@@ -66,7 +73,7 @@ export function McpBrowser({
         )}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>↑↓ pick · [r] reconnect · [d] disable (TBD) · esc quit</Text>
+        <Text dimColor>↑↓ pick · [r] reconnect · [d] disable · esc quit</Text>
       </Box>
     </Box>
   );
