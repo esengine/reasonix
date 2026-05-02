@@ -23,6 +23,7 @@ import { App } from "../ui/App.js";
 import { SessionPicker } from "../ui/SessionPicker.js";
 import { Setup } from "../ui/Setup.js";
 import { KeystrokeProvider } from "../ui/keystroke-context.js";
+import { formatMcpLifecycleEvent } from "../ui/mcp-lifecycle.js";
 import type { McpServerSummary } from "../ui/slash.js";
 
 export interface ProgressInfo {
@@ -205,8 +206,12 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
   if (requestedSpecs.length > 0) {
     if (!tools) tools = new ToolRegistry();
     for (const raw of requestedSpecs) {
+      let label = "anon";
       try {
         const spec = parseMcpSpec(raw);
+        label = spec.name ?? "anon";
+        process.stderr.write(`${formatMcpLifecycleEvent({ state: "handshake", name: label })}\n`);
+        const t0 = Date.now();
         const prefix = spec.name
           ? `${spec.name}_`
           : requestedSpecs.length === 1 && opts.mcpPrefix
@@ -225,17 +230,13 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
           namePrefix: prefix,
           onProgress: (info) => progressSink.current?.(info),
         });
-        // Collect resources + prompts once at startup so the /mcp
-        // slash can render them synchronously. Servers that don't
-        // support these fall through as `{supported: false}` instead
-        // of throwing — see inspectMcpServer.
+        // Inspect collects resources + prompts once so `/mcp` can render them
+        // synchronously. Servers that don't support these fall through as
+        // `{supported: false}` instead of throwing.
         let report: InspectionReport;
         try {
           report = await inspectMcpServer(mcp);
         } catch {
-          // If the inspect call itself fails (rare — shouldn't happen
-          // since inspectMcpServer swallows -32601), synthesize a
-          // minimal report so `/mcp` still has something to render.
           report = {
             protocolVersion: mcp.protocolVersion,
             serverInfo: mcp.serverInfo,
@@ -246,13 +247,18 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
             elapsedMs: 0,
           };
         }
-        const label = spec.name ?? "anon";
-        const source =
-          spec.transport === "sse" || spec.transport === "streamable-http"
-            ? spec.url
-            : `${spec.command} ${spec.args.join(" ")}`;
+        const ms = Date.now() - t0;
+        const resourceCount = report.resources.supported ? report.resources.items.length : 0;
+        const promptCount = report.prompts.supported ? report.prompts.items.length : 0;
         process.stderr.write(
-          `▸ MCP[${label}]: ${bridge.registeredNames.length} tool(s) from ${source}\n`,
+          `${formatMcpLifecycleEvent({
+            state: "connected",
+            name: label,
+            tools: bridge.registeredNames.length,
+            resources: resourceCount,
+            prompts: promptCount,
+            ms,
+          })}\n`,
         );
         clients.push(mcp);
         successfulSpecs.push(raw);
@@ -265,14 +271,13 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
         });
       } catch (err) {
         // Per-server failure is non-fatal: one broken server shouldn't
-        // kill a chat that has working servers configured. We record
-        // the failure, show a visible warning, and keep going. User
-        // can fix via `reasonix setup` (unchecks the broken entry)
-        // without losing their other servers.
+        // kill a chat that has working servers configured. Recover by
+        // recording the failure and continuing; user fixes via `reasonix
+        // setup` without losing their other servers.
         const reason = (err as Error).message;
         failedSpecs.push({ spec: raw, reason });
         process.stderr.write(
-          `▸ MCP setup SKIPPED for "${raw}": ${reason}\n  → this server will not be available this session. Run \`reasonix setup\` to remove it, or fix the underlying issue (missing npm package, network, etc.).\n`,
+          `${formatMcpLifecycleEvent({ state: "failed", name: label, reason })}\n  → run \`reasonix setup\` to remove this entry, or fix the underlying issue (missing npm package, network, etc.).\n`,
         );
       }
     }

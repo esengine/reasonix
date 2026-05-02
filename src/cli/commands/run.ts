@@ -13,6 +13,7 @@ import { StreamableHttpTransport } from "../../mcp/streamable-http.js";
 import { appendUsage } from "../../telemetry/usage.js";
 import { ToolRegistry } from "../../tools.js";
 import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../transcript/log.js";
+import { formatMcpLifecycleEvent } from "../ui/mcp-lifecycle.js";
 
 export interface RunOptions {
   task: string;
@@ -78,8 +79,12 @@ export async function runCommand(opts: RunOptions): Promise<void> {
   if (requestedSpecs.length > 0) {
     tools = new ToolRegistry();
     for (const raw of requestedSpecs) {
+      let label = "anon";
       try {
         const spec = parseMcpSpec(raw);
+        label = spec.name ?? "anon";
+        process.stderr.write(`${formatMcpLifecycleEvent({ state: "handshake", name: label })}\n`);
+        const t0 = Date.now();
         const prefix = spec.name
           ? `${spec.name}_`
           : requestedSpecs.length === 1 && opts.mcpPrefix
@@ -94,12 +99,13 @@ export async function runCommand(opts: RunOptions): Promise<void> {
         const mcp = new McpClient({ transport });
         await mcp.initialize();
         const bridge = await bridgeMcpTools(mcp, { registry: tools, namePrefix: prefix });
-        const source =
-          spec.transport === "sse" || spec.transport === "streamable-http"
-            ? spec.url
-            : `${spec.command} ${spec.args.join(" ")}`;
         process.stderr.write(
-          `▸ MCP[${spec.name ?? "anon"}]: ${bridge.registeredNames.length} tool(s) from ${source}\n`,
+          `${formatMcpLifecycleEvent({
+            state: "connected",
+            name: label,
+            tools: bridge.registeredNames.length,
+            ms: Date.now() - t0,
+          })}\n`,
         );
         clients.push(mcp);
         successCount++;
@@ -109,7 +115,7 @@ export async function runCommand(opts: RunOptions): Promise<void> {
         // fails the whole run over a side-concern tool the task might
         // not even touch.
         process.stderr.write(
-          `▸ MCP setup SKIPPED for "${raw}": ${(err as Error).message}\n  → run \`reasonix setup\` to remove broken entries from your saved config.\n`,
+          `${formatMcpLifecycleEvent({ state: "failed", name: label, reason: (err as Error).message })}\n  → run \`reasonix setup\` to remove broken entries from your saved config.\n`,
         );
       }
     }

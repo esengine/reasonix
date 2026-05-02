@@ -3,6 +3,57 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] — 2026-05-02
+
+**Headline:** Drops Node 20 support (EOL'd 2026-04-30). The README has been
+overhauled with hero-terminal / hero-stats / feature-grid SVGs that match
+the design-doc palette, plus contributor-avatar grid, Code of Conduct, and
+SECURITY policy.
+
+**Breaking:**
+
+- `engines.node` bumped from `>=20.10` to `>=22`. Node 20 reached
+  end-of-life on 2026-04-30; `npm install reasonix` on Node 20 will now
+  print an `EBADENGINE` warning. Tested CI surface trimmed to a single
+  Node 22 job. (#98)
+
+**Fixes:**
+
+- fix(code): `reasonix code` now bridges MCP servers from
+  `~/.reasonix/config.json`, matching `reasonix chat` behaviour.
+  Previously any servers defined in config were silently skipped in
+  code-mode sessions. (#91)
+- fix(mcp): `NAME_PREFIX` regex in `parseMcpSpec` accepts hyphens, so
+  kebab-case server names like `sage-wiki=npx -y @scope/sage-wiki`
+  parse correctly. Previously the entire string was treated as a raw
+  command path. Regression test in `tests/mcp-spec.test.ts`. (#96)
+
+**Docs / project hygiene:**
+
+- docs(readme): introduce three new SVG assets that anchor the README's
+  visual rhythm to the design-doc palette — `hero-terminal.svg`
+  (faithful to `formatPendingPreview` unified-diff output),
+  `hero-stats.svg` (94% / ~30× / MIT), and `feature-grid.svg` (six-card
+  3×2 grid). Bilingual `*.zh-CN.svg` siblings ship for the zh README.
+  All SVGs live under `docs/assets/`. (#102)
+- docs(readme): designer pass — drop redundant `# Reasonix` H1 (the
+  logo wordmark says it), drop the duplicated tagline, center the
+  badges + description under one column, trim the comparison table
+  to differentiating rows only, drop the `--system-append` doc
+  subsection (lives in `--help`). (#102)
+- docs: design mockups (`agent-dashboard.html`, `agent-tui-terminal.html`)
+  moved into `docs/design/` so README links resolve to the rendered
+  GitHub Pages page instead of HTML source view. (#102)
+- docs(readme): replace the hardcoded `good-first-issue` ticket list
+  with a single label-filter link — auto-fresh as tickets close. (#99)
+- docs(readme): drop "DeepSeek free credit on signup" claim from
+  README, website, TUI Setup / Wizard prompts — perk no longer
+  offered. (#102)
+- docs(readme): add `contrib.rocks` contributor-avatar grid; add
+  GitHub stars + Discussions badges. (#102)
+- docs: add `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) and
+  `SECURITY.md` (private-disclosure policy with explicit scope). (#102)
+
 ## [0.17.1] — 2026-04-29
 
 **Headline:** Fix a render crash in the dashboard's Editor that triggered
