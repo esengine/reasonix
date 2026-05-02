@@ -240,7 +240,7 @@ function ApiKeyStep({
       <Box marginTop={1}>
         <Text>Paste your DeepSeek API key to get started.</Text>
       </Box>
-      <Text dimColor>Get one (free credit on signup): https://platform.deepseek.com/api_keys</Text>
+      <Text dimColor>Get one at: https://platform.deepseek.com/api_keys</Text>
       <Text dimColor>Saved locally to {defaultConfigPath()}</Text>
       <Box marginTop={1}>
         <Text bold color="cyan">

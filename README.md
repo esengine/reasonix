@@ -106,7 +106,7 @@ Reasonix is solo-maintained but designed to grow. Scoped starter tickets — eac
 - **Multi-provider flexibility.** DeepSeek-only on purpose — every layer is tuned around DeepSeek's specific cache mechanic and pricing. Coupling to one backend is the feature.
 - **IDE integration.** Terminal-first; the diff lives in `git diff`, the file tree in `ls`. The dashboard is a companion, not a Cursor replacement.
 - **Hardest-leaderboard reasoning.** Claude Opus still wins some benchmarks. DeepSeek V4 is competitive on coding; if your work is "solve this PhD proof" rather than "fix this auth bug," start with Claude.
-- **Air-gapped / fully-free.** DeepSeek's API has free credit on signup but isn't free forever. For air-gapped, see Aider + Ollama or [Continue](https://continue.dev).
+- **Air-gapped / fully-free.** Reasonix needs a paid DeepSeek API key. For air-gapped or zero-cost runs see Aider + Ollama or [Continue](https://continue.dev).
 
 ---
 

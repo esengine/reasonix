@@ -60,7 +60,7 @@
       "qs.title": "Quick start (60 seconds)",
       "qs.step1.title": "Get a DeepSeek API key",
       "qs.step1.body":
-        'Free credit on signup at <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a>.',
+        'Sign up at <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> and create a key.',
       "qs.step2.title": "Point it at a project",
       "qs.step2.body": "No install needed.",
       "qs.step2.note":
@@ -187,7 +187,7 @@
       "qs.title": "60 秒快速上手",
       "qs.step1.title": "获取 DeepSeek API Key",
       "qs.step1.body":
-        '在 <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> 注册即送免费额度。',
+        '到 <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> 注册并创建 Key。',
       "qs.step2.title": "切到项目目录运行",
       "qs.step2.body": "无需安装。",
       "qs.step2.note":

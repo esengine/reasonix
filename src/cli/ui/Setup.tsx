@@ -49,7 +49,7 @@ export function Setup({ onReady }: SetupProps) {
         <Text color={COLOR.info}>Paste your DeepSeek API key to get started.</Text>
       </Box>
       <Box>
-        <Text dimColor>{"  free credit on signup · "}</Text>
+        <Text dimColor>{"  sign up at · "}</Text>
         <Text color={COLOR.primary}>https://platform.deepseek.com/api_keys</Text>
       </Box>
       <Box>
