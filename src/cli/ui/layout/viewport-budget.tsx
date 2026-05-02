@@ -10,7 +10,7 @@
 
 import { useStdout } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
-import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
 
 export type ZoneId = "modal" | "plan-card" | "status" | "input" | "stream" | "safety";
 
@@ -149,23 +149,22 @@ export function ViewportBudgetProvider({
  * Reserve rows for a zone. Returns the actual allocation (may differ from `max`
  * on small terminals or when higher-priority zones claim first). Falls back to
  * `max` when no provider is mounted (unit tests, plain-UI mode).
+ *
+ * Effect deps key off `dispatch` (stable from useReducer) + spec primitives,
+ * NOT the whole ctx object — ctx identity changes after every claim and would
+ * loop the effect indefinitely.
  */
 export function useReserveRows(zone: ZoneId, spec: ClaimSpec): number {
   const ctx = useContext(BudgetContext);
-  // Stable spec identity — re-dispatch only when min/max actually change.
-  const lastSpecRef = useRef<ClaimSpec | null>(null);
-  const last = lastSpecRef.current;
-  const changed = !last || last.min !== spec.min || last.max !== spec.max;
-  if (changed) lastSpecRef.current = spec;
+  const dispatch = ctx?.dispatch;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: spec identity managed via lastSpecRef
   useEffect(() => {
-    if (!ctx) return undefined;
-    ctx.dispatch({ type: "claim", zone, spec: lastSpecRef.current ?? spec });
+    if (!dispatch) return undefined;
+    dispatch({ type: "claim", zone, spec: { min: spec.min, max: spec.max } });
     return () => {
-      ctx.dispatch({ type: "release", zone });
+      dispatch({ type: "release", zone });
     };
-  }, [ctx, zone, changed]);
+  }, [dispatch, zone, spec.min, spec.max]);
 
   if (!ctx) return Number.isFinite(spec.max) ? spec.max : 40;
   const allocated = ctx.allocations.get(zone);
