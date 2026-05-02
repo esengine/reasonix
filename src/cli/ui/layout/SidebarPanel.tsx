@@ -37,9 +37,16 @@ export function SidebarPanel({
 }
 
 function findActivePlan(cards: ReadonlyArray<Card>) {
+  // "Active" alone isn't enough — submit_plan creates the card up-front (all
+  // steps queued) before the user picks approve / cancel in PlanConfirm. The
+  // plan must have actually started (some step past "queued") AND still have
+  // work pending, otherwise the card is either awaiting approval or rejected.
   for (let i = cards.length - 1; i >= 0; i--) {
     const c = cards[i];
-    if (c?.kind === "plan" && c.variant === "active") return c;
+    if (c?.kind !== "plan" || c.variant !== "active") continue;
+    const started = c.steps.some((s) => s.status !== "queued");
+    const stillWorking = c.steps.some((s) => s.status !== "done" && s.status !== "skipped");
+    if (started && stillWorking) return c;
   }
   return null;
 }
