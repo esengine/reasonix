@@ -81,4 +81,52 @@ describe("codeSystemPrompt", () => {
       expect(gitignoreAt).toBeGreaterThan(routingAt);
     });
   });
+
+  describe("system append", () => {
+    it("does not add a User System Append section when neither option is provided", () => {
+      const out = codeSystemPrompt(root);
+      expect(out).not.toMatch(/# User System Append/);
+    });
+
+    it("preserves the base system prompt when appending", () => {
+      const out = codeSystemPrompt(root, { systemAppend: "Extra rule." });
+      expect(out).toContain(CODE_SYSTEM_PROMPT);
+    });
+
+    it("appends an inline systemAppend string under a # User System Append heading", () => {
+      const out = codeSystemPrompt(root, {
+        systemAppend: "Always inspect relevant files before editing.",
+      });
+      expect(out).toMatch(/# User System Append/);
+      expect(out).toContain("Always inspect relevant files before editing.");
+    });
+
+    it("appends systemAppendFile contents under the # User System Append heading", () => {
+      const out = codeSystemPrompt(root, { systemAppendFile: "Run tests before committing." });
+      expect(out).toMatch(/# User System Append/);
+      expect(out).toContain("Run tests before committing.");
+    });
+
+    it("appends inline prompt first, then file contents, when both are provided", () => {
+      const out = codeSystemPrompt(root, {
+        systemAppend: "First instruction.",
+        systemAppendFile: "Second instruction.",
+      });
+      expect(out).toMatch(/# User System Append/);
+      const appendIdx = out.indexOf("# User System Append");
+      const firstIdx = out.indexOf("First instruction.", appendIdx);
+      const secondIdx = out.indexOf("Second instruction.", appendIdx);
+      expect(firstIdx).toBeGreaterThan(0);
+      expect(secondIdx).toBeGreaterThan(firstIdx);
+    });
+
+    it("places the append section after the .gitignore section", () => {
+      writeFileSync(join(root, ".gitignore"), "node_modules\n");
+      const out = codeSystemPrompt(root, { systemAppend: "Post-gitignore instruction." });
+      const gitignoreAt = out.indexOf("# Project .gitignore");
+      const appendAt = out.indexOf("# User System Append");
+      expect(gitignoreAt).toBeGreaterThan(0);
+      expect(appendAt).toBeGreaterThan(gitignoreAt);
+    });
+  });
 });

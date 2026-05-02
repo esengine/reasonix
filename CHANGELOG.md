@@ -3,6 +3,10 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- feat(code): `--system-append` / `--system-append-file` CLI options append user instructions to the code system prompt without replacing the default prompt. Both can be used together (inline first, then file contents). File read errors surface with their OS error code.
+
 ## [0.17.1] — 2026-04-29
 
 **Headline:** Fix a render crash in the dashboard's Editor that triggered

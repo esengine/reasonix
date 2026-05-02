@@ -209,6 +209,12 @@ export interface CodeSystemPromptOptions {
    *  explicit routing fragment so the model picks it for intent-style
    *  queries instead of defaulting to grep. */
   hasSemanticSearch?: boolean;
+  /** Inline string appended after the generated code system prompt.
+   *  Preserves the default prompt — this is append-only, not a replacement. */
+  systemAppend?: string;
+  /** UTF-8 file contents appended after the generated code system prompt.
+   *  Preserves the default prompt — this is append-only, not a replacement. */
+  systemAppendFile?: string;
 }
 
 export function codeSystemPrompt(rootDir: string, opts: CodeSystemPromptOptions = {}): string {
@@ -217,26 +223,26 @@ export function codeSystemPrompt(rootDir: string, opts: CodeSystemPromptOptions 
     : CODE_SYSTEM_PROMPT;
   const withMemory = applyMemoryStack(base, rootDir);
   const gitignorePath = join(rootDir, ".gitignore");
-  if (!existsSync(gitignorePath)) return withMemory;
-  let content: string;
-  try {
-    content = readFileSync(gitignorePath, "utf8");
-  } catch {
-    return withMemory;
+  let result = withMemory;
+  if (existsSync(gitignorePath)) {
+    let content: string | undefined;
+    try {
+      content = readFileSync(gitignorePath, "utf8");
+    } catch {
+      // read failed — content stays undefined, no .gitignore block emitted
+    }
+    if (content !== undefined) {
+      const MAX = 2000;
+      const truncated =
+        content.length > MAX
+          ? `${content.slice(0, MAX)}\n… (truncated ${content.length - MAX} chars)`
+          : content;
+      result = `${result}\n\n# Project .gitignore\n\nThe user's repo ships this .gitignore — treat every pattern as "don't traverse or edit inside these paths unless explicitly asked":\n\n\`\`\`\n${truncated}\n\`\`\`\n`;
+    }
   }
-  const MAX = 2000;
-  const truncated =
-    content.length > MAX
-      ? `${content.slice(0, MAX)}\n… (truncated ${content.length - MAX} chars)`
-      : content;
-  return `${withMemory}
-
-# Project .gitignore
-
-The user's repo ships this .gitignore — treat every pattern as "don't traverse or edit inside these paths unless explicitly asked":
-
-\`\`\`
-${truncated}
-\`\`\`
-`;
+  const appendParts = [opts.systemAppend, opts.systemAppendFile].filter(Boolean);
+  if (appendParts.length > 0) {
+    result = `${result}\n\n# User System Append\n\n${appendParts.join("\n\n")}`;
+  }
+  return result;
 }

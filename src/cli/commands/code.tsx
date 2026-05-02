@@ -18,6 +18,7 @@
  *     for SEARCH/REPLACE blocks and applied on disk after each turn.
  */
 
+import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { loadEditMode, loadProjectShellAllowed } from "../../config.js";
 import { bootstrapSemanticSearchInCodeMode } from "../../index/semantic/tool.js";
@@ -61,6 +62,10 @@ export interface CodeOptions {
   budgetUsd?: number;
   /** Suppress the auto-launched embedded web dashboard. */
   noDashboard?: boolean;
+  /** Inline string appended to the code system prompt after the generated base prompt. */
+  systemAppend?: string;
+  /** Path to a UTF-8 text file whose contents are appended to the code system prompt. */
+  systemAppendFile?: string;
 }
 
 export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
@@ -151,11 +156,32 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
     void jobs.shutdown();
   });
 
+  let systemAppendFileContents: string | undefined;
+  if (opts.systemAppend !== undefined && opts.systemAppend.trim().length === 0) {
+    process.stderr.write("▲ --system-append is empty — no prompt text will be appended\n");
+  }
+  if (opts.systemAppendFile) {
+    const filePath = resolve(opts.systemAppendFile);
+    try {
+      systemAppendFileContents = readFileSync(filePath, "utf8");
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      process.stderr.write(
+        `Error: cannot read --system-append-file "${filePath}": ${e.code ? `[${e.code}] ` : ""}${e.message}\n`,
+      );
+      process.exit(1);
+    }
+  }
+
   await chatCommand({
     model: opts.model ?? "deepseek-v4-flash",
     harvest: opts.harvest ?? false,
     budgetUsd: opts.budgetUsd,
-    system: codeSystemPrompt(rootDir, { hasSemanticSearch: semantic.enabled }),
+    system: codeSystemPrompt(rootDir, {
+      hasSemanticSearch: semantic.enabled,
+      systemAppend: opts.systemAppend,
+      systemAppendFile: systemAppendFileContents,
+    }),
     transcript: opts.transcript,
     session,
     seedTools: tools,

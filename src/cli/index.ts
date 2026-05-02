@@ -125,6 +125,14 @@ program
     "--no-dashboard",
     "Suppress the auto-launched embedded web dashboard. Default behavior boots it on TUI mount and shows the URL in the status bar (clickable in OSC-8-aware terminals).",
   )
+  .option(
+    "--system-append <prompt>",
+    "Append instructions to the code system prompt. Does NOT replace the default prompt — adds after it.",
+  )
+  .option(
+    "--system-append-file <path>",
+    "Append file contents to the code system prompt. Does NOT replace the default prompt. UTF-8, relative to cwd or absolute.",
+  )
   .action(async (dir: string | undefined, opts) => {
     await codeCommand({
       dir,
@@ -136,6 +144,8 @@ program
       harvest: !!opts.harvest,
       budgetUsd: parseBudgetFlag(opts.budget),
       noDashboard: opts.dashboard === false,
+      systemAppend: opts.systemAppend,
+      systemAppendFile: opts.systemAppendFile,
     });
   });
 

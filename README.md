@@ -51,8 +51,20 @@ src/users.ts
 
 Edits stay in memory until you type `/apply` — nothing hits disk by default. Requires Node ≥ 20.10. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal).
 
----
+### Appending code-mode system instructions
 
+`reasonix code` supports append-only system prompt customization for users who want to layer personal workflow rules on top of the default Reasonix Code prompt.
+
+```sh
+reasonix code --system-append "Always inspect relevant files before editing."
+reasonix code --system-append-file ./agent-instructions.md
+```
+
+Both options may be used together. When both are provided, the inline `--system-append` text is added first, followed by the `--system-append-file` contents, under a `# User System Append` heading at the end of the generated system prompt.
+
+These options do not replace the default code prompt. They append additional instructions after Reasonix Code's built-in tool-use and edit-protocol instructions. There is no `--system` override for `reasonix code`.
+
+---
 ## How it compares
 
 |                                  | Reasonix         | Claude Code     | Cursor             | Aider            |
