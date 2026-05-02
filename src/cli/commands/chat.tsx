@@ -4,7 +4,7 @@ import { loadApiKey, readConfig, searchEnabled } from "../../config.js";
 import { loadDotenv } from "../../env.js";
 import { McpClient } from "../../mcp/client.js";
 import { type InspectionReport, inspectMcpServer } from "../../mcp/inspect.js";
-import { bridgeMcpTools } from "../../mcp/registry.js";
+import { type McpClientHost, bridgeMcpTools } from "../../mcp/registry.js";
 import { parseMcpSpec } from "../../mcp/spec.js";
 import { SseTransport } from "../../mcp/sse.js";
 import { type McpTransport, StdioTransport } from "../../mcp/stdio.js";
@@ -231,10 +231,15 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
               : new StdioTransport({ command: spec.command, args: spec.args });
         const mcp = new McpClient({ transport });
         await mcp.initialize();
+        // Host indirection lets `/mcp reconnect` swap the underlying client
+        // without re-bridging the registered tools (closures resolve via
+        // host.client at call time).
+        const host: McpClientHost = { client: mcp };
         const bridge = await bridgeMcpTools(mcp, {
           registry: tools,
           namePrefix: prefix,
           serverName: label,
+          host,
           onProgress: (info) => progressSink.current?.(info),
           onSlow: (info) =>
             process.stderr.write(
@@ -278,7 +283,7 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
           spec: raw,
           toolCount: bridge.registeredNames.length,
           report,
-          client: mcp,
+          host,
         });
       } catch (err) {
         // Per-server failure is non-fatal: one broken server shouldn't

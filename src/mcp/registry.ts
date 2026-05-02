@@ -27,6 +27,13 @@ export interface BridgeOptions {
   slowThresholdMs?: number;
   /** Fired exactly when the per-server p95 transitions over `slowThresholdMs`. */
   onSlow?: (ev: SlowEvent) => void;
+  /** Indirection so reconnect can swap the underlying client without re-registering tools. */
+  host?: McpClientHost;
+}
+
+/** Mutable holder so `/mcp reconnect` can swap the underlying client without re-bridging tools. */
+export interface McpClientHost {
+  client: McpClient;
 }
 
 export const DEFAULT_MAX_RESULT_CHARS = 32_000;
@@ -68,19 +75,13 @@ export async function bridgeMcpTools(
       parameters: mcpTool.inputSchema as JSONSchema,
       fn: async (args: Record<string, unknown>, ctx) => {
         const t0 = tracker ? Date.now() : 0;
-        const toolResult = await client.callTool(mcpTool.name, args, {
-          // Forward server-side progress frames to the bridge caller,
-          // tagged with the registered name so multi-server UIs can
-          // disambiguate. No-op when `onProgress` isn't configured —
-          // the client then also omits the _meta.progressToken and
-          // the server won't emit progress.
+        // Resolve client at call time via the host indirection (when given) so
+        // `/mcp reconnect` can swap a fresh client in without re-bridging tools.
+        const live = opts.host?.client ?? client;
+        const toolResult = await live.callTool(mcpTool.name, args, {
           onProgress: opts.onProgress
             ? (info) => opts.onProgress!({ toolName: registeredName, ...info })
             : undefined,
-          // Thread the tool-dispatch AbortSignal all the way down to
-          // the MCP request so Esc truly cancels in flight — the
-          // client will emit notifications/cancelled AND reject the
-          // pending promise immediately, no "wait for subprocess".
           signal: ctx?.signal,
         });
         if (tracker) tracker.record(Date.now() - t0);

@@ -1,6 +1,9 @@
 import { readConfig, writeConfig } from "../../../../config.js";
+import { reconnectMcpServer } from "../../../../mcp/reconnect.js";
+import { formatMcpLifecycleEvent } from "../../mcp-lifecycle.js";
 import type { SlashHandler } from "../dispatch.js";
 import { appendSection } from "../helpers.js";
+import type { McpServerSummary } from "../types.js";
 
 const mcp: SlashHandler = (args, loop, ctx) => {
   const servers = ctx.mcpServers ?? [];
@@ -9,6 +12,9 @@ const mcp: SlashHandler = (args, loop, ctx) => {
   const sub = args[0];
   if (sub === "disable" || sub === "enable") {
     return toggleDisabled(sub, args[1], { servers, specs });
+  }
+  if (sub === "reconnect") {
+    return triggerReconnect(args[1], servers, ctx.postInfo);
   }
   // `/mcp text` (or non-TTY) falls through to the printed-card path. The
   // default `/mcp` opens the interactive browser modal.
@@ -121,6 +127,71 @@ function toggleDisabled(
 function parseLabelFromSpec(spec: string): string | null {
   const match = spec.match(/^([a-zA-Z_][a-zA-Z0-9_-]*)=/);
   return match ? (match[1] ?? null) : null;
+}
+
+function triggerReconnect(
+  rawName: string | undefined,
+  servers: ReadonlyArray<McpServerSummary>,
+  postInfo: ((text: string) => void) | undefined,
+): { info: string } {
+  const name = rawName?.trim();
+  if (!name) {
+    return {
+      info: "usage: /mcp reconnect <name>  ·  pick a name shown in /mcp.",
+    };
+  }
+  const target = servers.find((s) => s.label === name);
+  if (!target) {
+    const list = servers
+      .map((s) => s.label)
+      .sort()
+      .join(", ");
+    return { info: `unknown MCP server "${name}". Known: ${list || "(none)"}.` };
+  }
+  if (!postInfo) {
+    return { info: "/mcp reconnect requires the interactive TUI (postInfo not wired)." };
+  }
+  // Sync return: kick off the async work and let it report via postInfo.
+  // Identity drift is the only currently-supported success case; everything
+  // else surfaces as a "restart Reasonix to apply" line so the user knows
+  // why the reconnect didn't take.
+  const beforeTools = target.report.tools.supported ? target.report.tools.items : [];
+  void (async () => {
+    try {
+      const result = await reconnectMcpServer({
+        host: target.host,
+        spec: target.spec,
+        beforeTools,
+      });
+      if (result.ok) {
+        postInfo(
+          formatMcpLifecycleEvent({
+            state: "connected",
+            name: target.label,
+            tools: beforeTools.length,
+            ms: result.ms,
+          }),
+        );
+      } else {
+        postInfo(
+          formatMcpLifecycleEvent({
+            state: "failed",
+            name: target.label,
+            reason: `${result.reason} · ${result.message}`,
+          }),
+        );
+      }
+    } catch (err) {
+      postInfo(
+        formatMcpLifecycleEvent({
+          state: "failed",
+          name: target.label,
+          reason: (err as Error).message,
+        }),
+      );
+    }
+  })();
+  return { info: formatMcpLifecycleEvent({ state: "reconnect", name: target.label }) };
 }
 
 export const handlers: Record<string, SlashHandler> = { mcp };

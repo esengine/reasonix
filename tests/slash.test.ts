@@ -786,6 +786,57 @@ describe("handleSlash", () => {
     expect(r.info).toMatch(/prompts\s+\(not supported\)/);
   });
 
+  describe("/mcp reconnect", () => {
+    function summary(label: string, spec: string) {
+      // Stub host — slash dispatch only reads it; the async reconnect runs
+      // in the background and we only inspect the synchronous return.
+      const host = { client: {} as never };
+      return {
+        label,
+        spec,
+        toolCount: 0,
+        host,
+        report: {
+          protocolVersion: "2024-11-05",
+          serverInfo: { name: label, version: "1.0.0" },
+          capabilities: { tools: {} },
+          tools: { supported: true as const, items: [] },
+          resources: { supported: false as const, reason: "method not found" },
+          prompts: { supported: false as const, reason: "method not found" },
+          elapsedMs: 0,
+        },
+      };
+    }
+
+    it("/mcp reconnect <name> emits the lifecycle line on dispatch", () => {
+      const r = handleSlash("mcp", ["reconnect", "notion"], makeLoop(), {
+        mcpServers: [summary("notion", "notion=node nope")],
+        postInfo: () => {
+          /* swallowed for this test */
+        },
+      });
+      expect(r.info).toMatch(/MCP · notion/);
+      expect(r.info).toMatch(/↻ reconnect…/);
+    });
+
+    it("/mcp reconnect rejects unknown name with the list of known", () => {
+      const r = handleSlash("mcp", ["reconnect", "ghost"], makeLoop(), {
+        mcpServers: [summary("notion", "notion=cmd"), summary("linear", "linear=cmd")],
+        postInfo: () => {},
+      });
+      expect(r.info).toMatch(/unknown MCP server "ghost"/);
+      expect(r.info).toMatch(/Known: linear, notion/);
+    });
+
+    it("/mcp reconnect with no name shows usage", () => {
+      const r = handleSlash("mcp", ["reconnect"], makeLoop(), {
+        mcpServers: [summary("notion", "notion=cmd")],
+        postInfo: () => {},
+      });
+      expect(r.info).toMatch(/usage: \/mcp reconnect <name>/);
+    });
+  });
+
   it("/mcp falls back to the spec-only list when mcpServers is absent", () => {
     const r = handleSlash("mcp", [], makeLoop(), {
       mcpSpecs: ["filesystem=npx -y @scope/fs /tmp"],
