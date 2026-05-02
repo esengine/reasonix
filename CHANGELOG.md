@@ -3,6 +3,85 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] — 2026-05-02
+
+**Headline:** Live MCP-server reconnect — `/mcp reconnect <name>` (and the
+`r` keybind in the `/mcp` browser modal) tear down a stuck client, hand-
+shake a fresh one, and accept either identity or append-drift mid-session
+without breaking the prompt prefix cache. The `d` keybind in the same
+modal persists `mcpDisabled` for the selected server.
+
+The reconnect work was driven by an empirical DeepSeek cache spike
+(`benchmarks/spike-mcp-reconnect/`) that overturned the original RFC's
+"any drift = full miss" framing — the cache is chunk-keyed, so an
+appended tool costs only the new chunks (~95% hit retained). The full
+graduated-permissive design lives in #110.
+
+**MCP UX:**
+
+- feat(mcp): new `/mcp reconnect <name>` slash subcommand. Re-handshakes
+  the named server's transport and swaps the underlying `McpClient`
+  through a new `McpClientHost` indirection so existing tool closures
+  keep working without re-bridging. Identity-drift is always accepted;
+  append-drift (server added new tools at the end of its tool list) is
+  accepted mid-session via `applyMcpAppend`, which calls
+  `prefix.addTool` + `registry.register` for each new tool. Edit /
+  reorder / remove drift is refused with a clear "restart Reasonix to
+  apply" message — those are catastrophic for the cache and would need
+  new `ImmutablePrefix` API surface (`replaceTool` / `removeTool`).
+  (#115, #117)
+- feat(mcp): activate `r` (reconnect) and `d` (disable) keybinds in the
+  `/mcp` browser modal. Both surfaces now route through one shared
+  helper (`kickOffMcpReconnect` / `toggleMcpDisabled`) so the slash
+  command and the modal stay byte-identical in behaviour. (#116, #118)
+- feat(mcp): new `reconnect` lifecycle state added to the formatter —
+  `⌘ MCP · <name>          ↻ reconnect…   tearing down · re-handshake
+  · listing tools` per design §37.
+
+**Internal architecture:**
+
+- `src/mcp/registry.ts` — extracted `registerSingleMcpTool(mcpTool, env)`
+  + new `BridgeEnv` type. `bridgeMcpTools` now exposes a `host`
+  parameter (mutable client holder) and returns the resolved env so
+  reconnect can register newly-added tools with the same options. (#115)
+- `src/mcp/reconnect.ts` (new) — opens a fresh transport, classifies
+  drift via `classifyToolListDrift`, swaps `host.client` only on
+  accepted drift kinds, closes the new client cleanly on refusal so
+  the old one stays untouched.
+- `src/mcp/drift.ts` (new) — `classifyToolListDrift(before, after)`
+  returns `{ kind, added, removed, edited }` over the five drift
+  taxonomy buckets (identity / append / edit / reorder / remove).
+  Pure function. (#114)
+- `McpServerSummary.client?: McpClient` replaced by `host:
+  McpClientHost` + `bridgeEnv: BridgeEnv`. Internal-only (the type
+  isn't in the public package surface).
+
+**Tests / spikes:**
+
+- `tests/mcp-reconnect-prefix-invariant.test.ts` (new) — six structural
+  cases pinning `ImmutablePrefix.fingerprint` behaviour under every
+  drift the reconnect path can produce. Locks the bytes-equal claim
+  the design rests on. (#112)
+- `benchmarks/spike-mcp-reconnect/` (new) — live `deepseek-chat` spike
+  + captured results: confirms DeepSeek's cache is chunk-keyed (~128
+  tokens), so appended-tool drift retains 94.8% hit and a
+  description edit on the first tool retains 84.1% hit. Drives the
+  graduated-permissive policy. (#113)
+- `tests/mcp-drift.test.ts`, `tests/mcp-reconnect.test.ts`,
+  `tests/mcp-append.test.ts` (new) — unit coverage for the
+  classifier, reconnect early-returns, and the append handler.
+
+**Deferred (filed as catastrophic-cache-cost cases):**
+
+- Edit-drift mid-session (needs `ImmutablePrefix.replaceTool`)
+- Reorder-drift mid-session (needs `removeTool` + cache-reset card)
+- Remove-drift mid-session (same)
+- `--strict` flag to refuse even append-drift
+
+Each is structurally a guaranteed cache miss and refused-with-restart
+is the right default; the follow-up issues will land if real demand
+surfaces.
+
 ## [0.21.0] — 2026-05-02
 
 **Headline:** MCP CLI surfaces realigned with `docs/design/agent-tui-terminal.html`
