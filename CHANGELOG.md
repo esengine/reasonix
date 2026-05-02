@@ -3,6 +3,31 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.1] — 2026-05-02
+
+**Headline:** Two follow-up fixes to 0.23.0 — the `ReasoningCard` and
+`StreamingCard` get a card-aligned redesign so they share the
+`CardBox` + `Pill` primitives the rest of the run cards already use,
+and the repair-storm detector now grants the loop one self-correction
+attempt on the first storm before bailing the turn.
+
+**TUI:**
+
+- fix(tui): redesign reasoning + streaming cards. Both cards now sit
+  inside the shared `CardBox` with a tier-aware accent and a `Pill`
+  header, replacing the ad-hoc layout that didn't line up with
+  `ToolCard` / done-assistant rendering. New `primitives/CardBox.tsx`
+  and `primitives/Pill.tsx` are reused by the broader card family.
+  Closes #133. (#136)
+
+**Loop:**
+
+- fix(loop): repair-storm detector now self-corrects once before
+  stopping. A single short repeat-loop sequence (e.g. one retry of
+  the same tool call) used to abort an otherwise recoverable turn;
+  the loop now gets one self-correction attempt and only bails on
+  the second storm. (#134)
+
 ## [0.23.0] — 2026-05-02
 
 **Headline:** TUI quality-of-life pass driven by RFC discussion #20.
