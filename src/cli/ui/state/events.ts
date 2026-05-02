@@ -196,6 +196,10 @@ const planStepComplete = z.object({
   stepId: z.string(),
 });
 
+const planDrop = z.object({
+  type: z.literal("plan.drop"),
+});
+
 const branchStart = z.object({
   type: z.literal("branch.start"),
   id: cardId,
@@ -320,6 +324,7 @@ export const AgentEventSchema = z.discriminatedUnion("type", [
   sessionReset,
   planShow,
   planStepComplete,
+  planDrop,
   ctxShow,
   doctorShow,
   usageShow,

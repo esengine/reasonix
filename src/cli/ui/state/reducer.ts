@@ -172,6 +172,23 @@ export function reduce(state: AgentState, event: AgentEvent): AgentState {
         variant: event.variant,
       });
 
+    case "plan.drop": {
+      // Latest still-active plan flips to "replay" — preserves it in scrollback
+      // but signals "no longer the live plan" to selectors and UI.
+      let dropped = false;
+      const cards = state.cards.map((c, i) => {
+        if (dropped) return c;
+        if (c.kind !== "plan" || c.variant !== "active") return c;
+        // Walk from end — only the LAST active plan should drop.
+        if (state.cards.slice(i + 1).some((cc) => cc.kind === "plan" && cc.variant === "active")) {
+          return c;
+        }
+        dropped = true;
+        return { ...c, variant: "replay" as const };
+      });
+      return dropped ? { ...state, cards } : state;
+    }
+
     case "plan.step.complete": {
       let changed = false;
       const cards = state.cards.map((c) => {

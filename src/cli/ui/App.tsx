@@ -2853,13 +2853,14 @@ function AppInner({
       planSummaryRef.current = null;
       persistPlanState();
       togglePlanMode(false);
+      agentStore.dispatch({ type: "plan.drop" });
       await syntheticSubmit.post({
         marker: "▸ plan cancelled",
         synthetic:
           "The plan was cancelled. Drop it entirely. Ask me what I actually want before proposing another plan or making any changes.",
       });
     },
-    [pendingPlan, togglePlanMode, syntheticSubmit, persistPlanState],
+    [pendingPlan, togglePlanMode, syntheticSubmit, persistPlanState, agentStore],
   );
 
   // Ref-wrapped stable alias. `handlePlanConfirm` has deps that churn
