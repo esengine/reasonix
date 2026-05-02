@@ -11,24 +11,30 @@ import { FG, TONE } from "../theme/tokens.js";
 const BODY_INDENT_CELLS = 5;
 
 export function StreamingCard({ card }: { card: StreamingCardData }): React.ReactElement {
-  // Done cards render via Markdown in <Static>; live frame stays plain
-  // text since markdown on partial streamed chunks would jitter.
+  const { stdout } = useStdout();
+  const cols = stdout?.columns ?? 80;
+  // Claim before the done-state branch — hook order must stay stable across the done flip.
+  const budget = useReserveRows("stream", { min: 4, max: Number.POSITIVE_INFINITY });
+
   if (card.done && !card.aborted) {
     return (
-      <Box flexDirection="column" paddingLeft={3}>
+      <Box
+        flexDirection="column"
+        paddingLeft={2}
+        paddingRight={1}
+        borderStyle="single"
+        borderTop={false}
+        borderRight={false}
+        borderBottom={false}
+        borderLeft
+        borderLeftColor={TONE.brand}
+      >
         <Markdown text={card.text} />
       </Box>
     );
   }
-
-  const { stdout } = useStdout();
-  const cols = stdout?.columns ?? 80;
   const lineCells = Math.max(20, cols - BODY_INDENT_CELLS - 1);
   const allLines = card.text.length > 0 ? card.text.split("\n") : [""];
-  // Stream zone soaks whatever rows the higher-priority modal/plan-card/input
-  // didn't claim. Min 4 keeps a "▶ + 3 lines" footer visible even when a modal
-  // takes the whole viewport.
-  const budget = useReserveRows("stream", { min: 4, max: Number.POSITIVE_INFINITY });
   const reserved = (card.aborted ? 2 : 0) + 1;
   const lineSlots = Math.max(4, budget - reserved);
   const overflows = !card.done && allLines.length > lineSlots;
