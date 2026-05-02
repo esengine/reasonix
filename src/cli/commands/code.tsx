@@ -158,7 +158,7 @@ export async function codeCommand(opts: CodeOptions = {}): Promise<void> {
 
   let systemAppendFileContents: string | undefined;
   if (opts.systemAppend !== undefined && opts.systemAppend.trim().length === 0) {
-    process.stderr.write("▲ --system-append is empty — no prompt text will be appended\n");
+    process.stderr.write("--system-append is empty — no prompt text will be appended\n");
   }
   if (opts.systemAppendFile) {
     const filePath = resolve(opts.systemAppendFile);

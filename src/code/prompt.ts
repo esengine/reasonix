@@ -228,9 +228,7 @@ export function codeSystemPrompt(rootDir: string, opts: CodeSystemPromptOptions 
     let content: string | undefined;
     try {
       content = readFileSync(gitignorePath, "utf8");
-    } catch {
-      // read failed — content stays undefined, no .gitignore block emitted
-    }
+    } catch {}
     if (content !== undefined) {
       const MAX = 2000;
       const truncated =
