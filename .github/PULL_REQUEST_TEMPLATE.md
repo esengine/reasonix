@@ -15,6 +15,6 @@
 ## Checklist
 
 - [ ] `npm run verify` passes locally (lint + typecheck + tests + comment-policy gate)
-- [ ] CHANGELOG updated under `## [Unreleased]` if user-visible
 - [ ] No `Co-Authored-By: Claude` trailer in commits
-- [ ] Comments follow CLAUDE.md (no module-essay headers, no incident history)
+- [ ] Comments follow CONTRIBUTING.md (no module-essay headers, no incident history)
+- [ ] No edits to `CHANGELOG.md` — release notes are maintainer-written at release time

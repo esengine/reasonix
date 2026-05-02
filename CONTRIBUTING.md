@@ -121,8 +121,10 @@ wrapper — don't fork a local table.
 - `npm run verify` must pass locally (lint + typecheck + tests +
   comment-policy gate). Pre-push hook runs this; CI runs it on
   Node 20 and 22.
-- Update `CHANGELOG.md` under `## [Unreleased]` if user-visible.
-  Maintainers move it under a versioned section at release time.
+- Don't touch `CHANGELOG.md` — release notes are written by the
+  maintainer at release time, drawn from commit history. PR
+  descriptions are the authoritative record while the work is in
+  flight.
 
 ## Code review
 
@@ -139,7 +141,8 @@ None of this is personal — it's how the codebase stays small.
 ## Releasing (maintainers)
 
 1. Bump `package.json` version.
-2. Move `## [Unreleased]` → `## [X.Y.Z] — <date>` in `CHANGELOG.md`.
+2. Add `## [X.Y.Z] — <date>` to `CHANGELOG.md` with a hand-written
+   summary drawn from `git log` since the prior tag.
 3. `chore(release): X.Y.Z — <one-line summary>` commit.
 4. `git tag -a vX.Y.Z -m "..."`, push commit + tag.
 5. Wait for CI green, then `npm publish`.
