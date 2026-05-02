@@ -810,7 +810,7 @@ describe("handleSlash", () => {
 
     it("/mcp reconnect <name> emits the lifecycle line on dispatch", () => {
       const r = handleSlash("mcp", ["reconnect", "notion"], makeLoop(), {
-        mcpServers: [summary("notion", "notion=node nope")],
+        mcpServers: [summary("notion", "notion=node -e 0")],
         postInfo: () => {
           /* swallowed for this test */
         },
