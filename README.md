@@ -31,23 +31,9 @@ npx reasonix code
 
 First run: paste a [DeepSeek API key](https://platform.deepseek.com/api_keys), pick a preset, optionally select MCP servers. Every run after drops you straight in.
 
-```
-reasonix code › fix the case-sensitivity bug in findByEmail
-
-assistant
-  ▸ tool<search_files> → src/users.ts, src/users.test.ts
-  ▸ tool<read_file>    → src/users.ts (412 chars)
-
-src/users.ts
-<<<<<<< SEARCH
-  return users.find(u => u.email === email);
-=======
-  const needle = email.toLowerCase();
-  return users.find(u => u.email.toLowerCase() === needle);
->>>>>>> REPLACE
-
-▸ 1 pending edit · /apply to write, /discard to drop
-```
+<p align="center">
+  <img src="docs/hero-terminal.svg" alt="Reasonix code mode — assistant proposes a SEARCH/REPLACE edit; nothing on disk until /apply" width="860"/>
+</p>
 
 Edits stay in memory until you type `/apply` — nothing hits disk by default. Requires Node ≥ 22. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal).
 

@@ -31,23 +31,9 @@ npx reasonix code
 
 首次运行：粘贴一个 [DeepSeek API Key](https://platform.deepseek.com/api_keys)、选预设、可选地多选 MCP 服务器。之后每次直接进入。
 
-```
-reasonix code › 修一下 findByEmail 对大小写敏感的登录 bug
-
-assistant
-  ▸ tool<search_files> → src/users.ts, src/users.test.ts
-  ▸ tool<read_file>    → src/users.ts (412 chars)
-
-src/users.ts
-<<<<<<< SEARCH
-  return users.find(u => u.email === email);
-=======
-  const needle = email.toLowerCase();
-  return users.find(u => u.email.toLowerCase() === needle);
->>>>>>> REPLACE
-
-▸ 1 处待应用编辑 · /apply 写入 · /discard 丢弃
-```
+<p align="center">
+  <img src="docs/hero-terminal.zh-CN.svg" alt="Reasonix code 模式预览 — 助手提出 SEARCH/REPLACE 编辑，未 /apply 不落盘" width="860"/>
+</p>
 
 不 `/apply`，磁盘不会被改。要求 Node ≥ 22。已在 macOS、Linux、Windows（PowerShell · Git Bash · Windows Terminal）测过。
 
