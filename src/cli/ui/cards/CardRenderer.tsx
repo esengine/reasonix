@@ -2,7 +2,6 @@ import { Box, Text } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
 import React from "react";
 import type { Card } from "../state/cards.js";
-import { useAgentState } from "../state/provider.js";
 import { FG } from "../theme/tokens.js";
 import { BranchCard } from "./BranchCard.js";
 import { CtxCard } from "./CtxCard.js";
@@ -23,25 +22,19 @@ import { UserCard } from "./UserCard.js";
 import { WarnCard } from "./WarnCard.js";
 
 export function CardRenderer({ card }: { card: Card }): React.ReactElement {
-  // Once assistant content starts streaming, reasoning collapses so the
-  // answer takes the live region budget.
-  const contentStreaming = useAgentState((s) =>
-    s.cards.some((c) => c.kind === "streaming" && c.text.length > 0 && !c.done),
-  );
   return (
     <Box flexDirection="column" marginTop={1}>
-      {renderCard(card, contentStreaming)}
+      {renderCard(card)}
     </Box>
   );
 }
 
-function renderCard(card: Card, contentStreaming: boolean): React.ReactElement {
+function renderCard(card: Card): React.ReactElement {
   switch (card.kind) {
     case "user":
       return <UserCard card={card} />;
     case "reasoning":
-      // Yield to content while it streams; otherwise show a body preview.
-      return <ReasoningCard card={card} expanded={!(card.streaming && contentStreaming)} />;
+      return <ReasoningCard card={card} expanded={true} />;
     case "streaming":
       return <StreamingCard card={card} />;
     case "tool":

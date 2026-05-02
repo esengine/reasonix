@@ -10,7 +10,7 @@ import { CardHeader } from "./CardHeader.js";
 
 const READ_TAIL = 2;
 const OTHER_TAIL = 5;
-const BODY_INDENT_CELLS = 5;
+const BODY_INDENT_CELLS = 7;
 
 /** Read-style tools dump file/list bodies — short tail is enough; the model already has the full text in context. */
 function tailLinesFor(name: string): number {

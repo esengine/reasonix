@@ -254,6 +254,52 @@ main { padding: 32px 48px 40px 32px; min-width: 0; }
   color: var(--fg-4); font-weight: 700; margin-right: 12px;
 }
 .tag .cls { color: var(--c-brand); }
+
+/* Inline pill — bg-tinted chip used inside .mock rows for section labels,
+   model badges, and inline path refs. Padding lives INSIDE the content
+   (leading/trailing space chars) so column alignment in monospace
+   ASCII art is preserved. Terminal implementation: <Text backgroundColor=
+   color=> with real space chars on either side of the label. */
+.mock .pill {
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+/* Section pill — accent-tinted bg, accent fg. One per card type.
+   Color group matches the card's accent bar. */
+.mock .pill.sec-reason  { background: #2a1f3d; color: var(--c-accent); }
+.mock .pill.sec-tool    { background: #0f2230; color: var(--c-info); }
+.mock .pill.sec-shell   { background: #0f2230; color: var(--c-info); }
+.mock .pill.sec-task    { background: #0d1d2e; color: var(--c-brand); }
+.mock .pill.sec-plan    { background: #2a1f3d; color: var(--c-accent); }
+.mock .pill.sec-diff    { background: #11141a; color: var(--fg-1); }
+.mock .pill.sec-user    { background: #11141a; color: var(--fg-2); }
+.mock .pill.sec-warn    { background: #2b1f12; color: var(--c-warn); }
+.mock .pill.sec-err     { background: #2c1416; color: var(--c-err); }
+.mock .pill.sec-ok      { background: #102815; color: var(--c-ok); }
+/* State variants — same shape, swapped color when the card is in a non-default state. */
+.mock .pill.sec-task.s-done    { background: #102815; color: var(--c-ok); }
+.mock .pill.sec-task.s-failed  { background: #2c1416; color: var(--c-err); }
+/* Model pill — neutral bg-elev, color signals model class.
+   flash=brand/blue (cheap fast), pro=accent/purple (premium),
+   r1=violet (reasoner). Read at a glance without text. */
+.mock .pill.mdl-flash { background: #11141a; color: var(--c-brand); }
+.mock .pill.mdl-pro   { background: #11141a; color: var(--c-accent); }
+.mock .pill.mdl-r1    { background: #11141a; color: var(--c-violet); }
+/* Path pill — neutral bg-elev for filenames / paths inside tool rows.
+   Lower-weight so it reads as data not chrome. */
+.mock .pill.path { background: #11141a; color: var(--fg-2); font-weight: 500; letter-spacing: 0; }
+
+/* Body anchor — the ↳ corner glyph that sits at the start of the FIRST
+   body line, telling the eye "this is where the card body branches off
+   from the header above". Subtle, color-matches the card accent. */
+.mock .anchor       { color: var(--c-accent); }
+.mock .anchor.brand { color: var(--c-brand); }
+.mock .anchor.info  { color: var(--c-info); }
+.mock .anchor.violet{ color: var(--c-violet); }
+.mock .anchor.ok    { color: var(--c-ok); }
+.mock .anchor.err   { color: var(--c-err); }
+.mock .anchor.warn  { color: var(--c-warn); }
+.mock .anchor.fg3   { color: var(--fg-3); }
 </style>
 </head>
 <body>
@@ -431,22 +477,22 @@ main { padding: 32px 48px 40px 32px; min-width: 0; }
 <pre class="body">
   <span class="fg4">◈ session-7  ·  main  ·  ~/projects/reasonix  ·  deepseek-chat</span>
 
-  <span class="fg3">◇</span> <span class="b fg2">you</span>  <span class="fg4">· just now</span>
-    <span class="fg1">refactor the SKIP_DIRS list out of chunker.ts so directory_tree</span>
-    <span class="fg1">can reuse it</span>
+    <span class="pill sec-user">&nbsp;YOU&nbsp;</span>  <span class="fg4">· just now</span>
+    <span class="anchor fg3">↳</span> <span class="fg1">refactor the SKIP_DIRS list out of chunker.ts so directory_tree</span>
+      <span class="fg1">can reuse it</span>
 
-  <span class="accent">▎</span> <span class="accent b">◆ Reasoning</span>  <span class="fg4">· 3 paragraphs · 412 tok</span>                              <span class="fg4">▸</span>
+  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-pro">&nbsp;v4-pro&nbsp;</span>  <span class="fg4">412 tok · 3 ¶</span>                                  <span class="fg3">3.1s</span>
 
-  <span class="brand">▎</span> <span class="brand b">▶ Step 2 of 5 · Refactor exclude config</span>          <span class="fg3">4.2s · </span><span class="brand">running</span>
+  <span class="brand">▎</span> <span class="pill sec-task">&nbsp;TASK&nbsp;</span>  <span class="b fg0">2 / 5  Refactor exclude config</span>                       <span class="fg3">4.2s · </span><span class="brand">running</span>
   <span class="brand">▎</span>
-  <span class="brand">▎</span>   <span class="fg2">Pull SKIP_DIRS / SKIP_FILES out of chunker.ts so directory_tree</span>
-  <span class="brand">▎</span>   <span class="fg2">can reuse them.</span>
+  <span class="brand">▎</span>   <span class="anchor brand">↳</span> <span class="fg2">Pull SKIP_DIRS / SKIP_FILES out of chunker.ts so directory_tree</span>
+  <span class="brand">▎</span>     <span class="fg2">can reuse them.</span>
   <span class="brand">▎</span>
-  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="fg2">src/index/semantic/chunker.ts</span>      <span class="fg3">0.08s · 250 lines</span>
-  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="fg2">src/tools/filesystem.ts</span>            <span class="fg3">0.07s · 712 lines</span>
-  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">write  </span> <span class="fg2">src/index/config.ts</span>                <span class="fg3">0.12s · created</span>
-  <span class="brand">▎</span>   <span class="brand">▶</span>  <span class="b fg1">edit   </span> <span class="fg2">src/tools/filesystem.ts</span>            <span class="brand">running…</span>
-  <span class="brand">▎</span>   <span class="fg4">○</span>  <span class="b fg3">verify </span> <span class="fg3">npm run typecheck &amp;&amp; npm test</span>      <span class="fg4">queued</span>
+  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="pill path">&nbsp;src/index/semantic/chunker.ts&nbsp;</span>   <span class="fg3">0.08s · 250 lines</span>
+  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="pill path">&nbsp;src/tools/filesystem.ts&nbsp;</span>          <span class="fg3">0.07s · 712 lines</span>
+  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">write  </span> <span class="pill path">&nbsp;src/index/config.ts&nbsp;</span>              <span class="fg3">0.12s · created</span>
+  <span class="brand">▎</span>   <span class="brand">▶</span>  <span class="b fg1">edit   </span> <span class="pill path">&nbsp;src/tools/filesystem.ts&nbsp;</span>          <span class="brand">running…</span>
+  <span class="brand">▎</span>   <span class="fg4">○</span>  <span class="b fg3">verify </span> <span class="fg3">npm run typecheck &amp;&amp; npm test</span>     <span class="fg4">queued</span>
 
   <span class="brand">▎</span> <span class="brand b">▶</span>  <span class="fg1">The change maps to three edits — I'll start with the config module,</span>
   <span class="brand">▎</span>    <span class="fg1">then the chunker, then wire it through the CLI command. Each step</span>
@@ -577,111 +623,183 @@ main { padding: 32px 48px 40px 32px; min-width: 0; }
   <!-- User message -->
   <section class="section" id="c-user">
     <h2><span class="num">05</span>Cards · user message</h2>
-    <p class="lede">No accent bar — the user's input is the conversational anchor, deserves a quieter treatment than agent activity.</p>
+    <p class="lede">No accent bar — the user's input is the conversational anchor, deserves a quieter treatment than agent activity. The <span class="pill sec-user">&nbsp;YOU&nbsp;</span> pill uses a neutral bg with muted fg so it reads as identification, not status.</p>
     <div class="tag">CARD · <span class="cls">.user</span></div>
-<pre class="mock">  <span class="fg3">◇</span> <span class="b fg2">you</span>  <span class="fg4">· 2 min ago</span>
-    <span class="fg1">refactor the SKIP_DIRS list out of chunker.ts so directory_tree</span>
-    <span class="fg1">can reuse it</span>
+<pre class="mock">    <span class="pill sec-user">&nbsp;YOU&nbsp;</span>  <span class="fg4">· 2 min ago</span>
+    <span class="anchor fg3">↳</span> <span class="fg1">refactor the SKIP_DIRS list out of chunker.ts so directory_tree</span>
+      <span class="fg1">can reuse it</span>
 </pre>
+    <p class="lede">Body anchor uses the muted <span class="anchor fg3">↳</span> (fg-3) — the user card has no accent color to take from, so the anchor stays neutral.</p>
   </section>
 
   <!-- Reasoning -->
   <section class="section" id="c-reason">
     <h2><span class="num">06</span>Cards · reasoning</h2>
-    <p class="lede">Default <strong>collapsed</strong> — reasoning is opt-in noise. Always italic + dim when expanded so it never competes with primary content.</p>
-    <div class="tag">CARD · <span class="cls">.reasoning</span></div>
-<pre class="mock">  <span class="accent">▎</span> <span class="accent b">◆ Reasoning</span>  <span class="fg4">· 3 paragraphs · 412 tok</span>                              <span class="fg4">▸</span>
-</pre>
-    <div class="tag">EXPANDED · <span class="cls">.reasoning[open]</span></div>
-<pre class="mock">  <span class="accent">▎</span> <span class="accent b">◆ Reasoning</span>  <span class="fg4">· 3 paragraphs · 412 tok</span>                              <span class="fg4">▾</span>
+    <p class="lede"><strong>No collapse / expand</strong> — TUI can't host interactive disclosure cleanly. The card adapts to content size in <strong>four tiers</strong>: streaming (live tail), settled-short (full body), settled-long (head + tail, middle elided), <strong>settled-XL (tail only — head dropped)</strong>. The XL drop is deliberate: at &gt;800 tok the opening is almost always restating the prompt the model has since moved past, while the conclusion carries the actionable synthesis. Header carries two <strong>bg-tinted pills</strong> — a <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span> section pill and a model pill (color = model class). Body is italic + dim so it never competes with primary content. The <span class="anchor">↳</span> anchor marks the absolute beginning of the body — it appears only when that beginning is actually visible (so it's absent in streaming-with-overflow and in XL).</p>
+
+    <div class="tag">HEADER + BODY ANATOMY</div>
+<pre class="mock">  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-pro">&nbsp;v4-pro&nbsp;</span>  <span class="fg4">412 tok · 3 ¶</span>                                  <span class="fg3">3.1s</span>
   <span class="accent">▎</span>
-  <span class="accent">▎</span>   <span class="i fg3">Two paths: replace the hardcoded list when config is set, or merge</span>
-  <span class="accent">▎</span>   <span class="i fg3">user values in. The first matches the explicit "config-driven" ask;</span>
-  <span class="accent">▎</span>   <span class="i fg3">the second is safer default. Going with the first since the user's</span>
-  <span class="accent">▎</span>   <span class="i fg3">words outrank my safety instinct here.</span>
-  <span class="accent">▎</span>
-  <span class="accent">▎</span>   <span class="i fg3">Files to touch: chunker.ts (drop constants, accept resolved config),</span>
-  <span class="accent">▎</span>   <span class="i fg3">filesystem.ts (drop its own copy), and the index command (load + pass).</span>
+  <span class="accent">▎</span>   <span class="anchor">↳</span> <span class="i fg3">first line of body…</span>
+  <span class="accent">▎</span>     <span class="i fg3">subsequent lines align under the anchor's content column</span>
+       <span class="fg4">↑ rule</span>  <span class="fg4">↑ section pill</span>   <span class="fg4">↑ model pill</span>  <span class="fg4">↑ counts</span>                              <span class="fg4">↑ duration</span>
 </pre>
+    <p class="lede">Two pills replace the old <code>◆</code> glyph + emoji prefix. Section pill is accent-purple-tinted bg with accent fg — one fixed style per card type. Model pill uses neutral bg-elev with <strong>fg color = model class</strong>: <span class="pill mdl-flash">&nbsp;v4-flash&nbsp;</span> sky-blue (cheap), <span class="pill mdl-pro">&nbsp;v4-pro&nbsp;</span> purple (premium), <span class="pill mdl-r1">&nbsp;r1&nbsp;</span> violet (reasoner). Color carries the signal — no emoji needed. The <span class="anchor">↳</span> body anchor is a project-wide convention: every card body section opens with one in the card's accent color.</p>
+
+    <div class="tag">STREAMING · <span class="cls">.reasoning .streaming</span> · live tail-3-lines while bytes arrive</div>
+<pre class="mock">  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-r1">&nbsp;r1&nbsp;</span>  <span class="fg4">247 tok</span>                                  <span class="fg3">1.2s · </span><span class="brand">thinking…</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>   <span class="fg4">⋮  earlier lines scrolled past preview window</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>     <span class="i fg3">First weighing two approaches: should I patch the chunker to</span>
+  <span class="accent">▎</span>     <span class="i fg3">accept a config arg, or pull the constants up to a shared</span>
+  <span class="accent">▎</span>     <span class="i fg3">module… going with shared module since it's cleaner.</span><span class="cur"></span>
+</pre>
+    <p class="lede">Tail-3-lines is a fixed window — newer lines push older lines into the dim <span class="fg4">⋮</span> gutter mark. <strong>No <span class="anchor">↳</span> anchor</strong> when overflow is active — the absolute body start has scrolled past, so labelling the visible top as "body begins" would be a lie. The <span class="fg4">⋮</span> gutter is the indicator that content is scrolling past. Block cursor on the live edge. Token count ticks live; duration freezes on stream end. (When streaming starts and content is still under 3 lines, the <span class="anchor">↳</span> appears normally on the absolute first line — it disappears the moment overflow kicks in.)</p>
+
+    <div class="tag">SETTLED · SHORT · <span class="cls">.reasoning .settled .short</span> · ≤ ~4 lines, render in full</div>
+<pre class="mock">  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-pro">&nbsp;v4-pro&nbsp;</span>  <span class="fg4">87 tok · 1 ¶</span>                                  <span class="fg3">1.2s</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>   <span class="anchor">↳</span> <span class="i fg3">The user wants the storm guard to soften, not be removed. Plan: track</span>
+  <span class="accent">▎</span>     <span class="i fg3">first-vs-second storm per turn, only end the turn on the second one.</span>
+  <span class="accent">▎</span>     <span class="i fg3">Keep the warning copy plain.</span>
+</pre>
+    <p class="lede">No elision needed — full reasoning fits in the visual budget. Header gains <span class="fg4">N ¶</span> paragraph count once the stream settles.</p>
+
+    <div class="tag">SETTLED · LONG · <span class="cls">.reasoning .settled .long</span> · &gt; 4 lines OR &gt; 200 tok, head + tail paragraphs · middle elided</div>
+<pre class="mock">  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-r1">&nbsp;r1&nbsp;</span>  <span class="fg4">412 tok · 3 ¶</span>                                  <span class="fg3">3.1s</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>   <span class="anchor">↳</span> <span class="i fg3">Two paths: replace the hardcoded list when config is set, or merge</span>
+  <span class="accent">▎</span>     <span class="i fg3">user values in. The first matches the explicit "config-driven" ask;</span>
+  <span class="accent">▎</span>     <span class="i fg3">the second is safer default.</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>   <span class="fg4">⋯  1 ¶ elided  ·  /reasoning last  ⋯</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>     <span class="i fg3">Files to touch: chunker.ts (drop constants, accept resolved config),</span>
+  <span class="accent">▎</span>     <span class="i fg3">filesystem.ts (drop its own copy), and the index command (load + pass).</span>
+</pre>
+    <p class="lede">First paragraph (thesis — "what I'm trying to do") and last paragraph (conclusion — "what I decided") always render. Middle paragraphs collapse to a single faint elision row that names the count <em>and</em> the slash command to retrieve the full body. The tail paragraph does NOT carry its own <span class="anchor">↳</span> — the anchor only marks the absolute beginning of the body. Vertical budget stays bounded (~9 lines).</p>
+
+    <div class="tag">SETTLED · XL · <span class="cls">.reasoning .settled .xl</span> · &gt; 800 tok OR any single ¶ &gt; 6 lines · TAIL ONLY · head dropped</div>
+<pre class="mock">  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-r1">&nbsp;r1&nbsp;</span>  <span class="fg4">2,847 tok · 7 ¶</span>                                <span class="fg3">8.2s</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>   <span class="fg4">⋯  6 ¶ + ~2,540 tok scrolled past  ·  /reasoning last  to view full  ⋯</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>     <span class="i fg3">All suppressed paths are wired through and the auto-escalate label</span>
+  <span class="accent">▎</span>     <span class="i fg3">flips from "storm-broken" to "repeat-loop". Tests cover both the</span>
+  <span class="accent">▎</span>     <span class="i fg3">bad-args recovery and the second-storm fallback paths.</span>
+</pre>
+    <p class="lede"><strong>Tail-only</strong> — at this scale the head paragraph is almost always restating the prompt or weighing options the model has since moved past. The conclusion is the actionable summary, so we keep that and drop the rest. No <span class="anchor">↳</span> anchor (the absolute body start isn't visible). The <code>⋯</code> elision row reports <em>both</em> paragraph count and approximate tokens scrolled past so the user can judge what they're not seeing — and the <code>/reasoning last</code> command brings up the full body in a pager when they need to. Vertical budget bounded at ~6 lines no matter how big the input. Triggered by total &gt; 800 tok OR any single paragraph that wouldn't fit in 6 lines on its own.</p>
+
+    <div class="tag">EMPTY · <span class="cls">.reasoning .none</span> · model returned non-thinking response</div>
+<pre class="mock">  <span class="fg4">▎</span> <span class="pill sec-reason" style="opacity:.55">&nbsp;REASONING&nbsp;</span>  <span class="fg4">no thinking — direct answer</span>
+</pre>
+    <p class="lede">When the producing model emits an empty <code>reasoning_content</code> (instruct-mode v4 on a simple prompt), surface a single dim line so the absence is explained, not silently missing. Section pill renders at reduced opacity to signal "card type was attempted but skipped". No body, no anchor. Clarifies "did the model skip thinking" vs. "is the panel broken".</p>
   </section>
 
   <!-- Task / Step -->
   <section class="section" id="c-task">
     <h2><span class="num">07</span>Cards · task / step</h2>
-    <p class="lede">A multi-step work unit — wraps tool calls + reasoning under one collapsible header. Default expanded for the active step, collapsed for completed ones.</p>
-    <div class="tag">CARD · <span class="cls">.task .running</span></div>
-<pre class="mock">  <span class="brand">▎</span> <span class="brand b">▶ Step 2 of 5 · Refactor exclude config</span>                <span class="fg3">4.2s · </span><span class="brand">running</span>
-  <span class="brand">▎</span>
-  <span class="brand">▎</span>   <span class="fg2">Pull SKIP_DIRS / SKIP_FILES out of chunker.ts so directory_tree</span>
-  <span class="brand">▎</span>   <span class="fg2">can reuse them.</span>
-  <span class="brand">▎</span>
-  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="fg2">src/index/semantic/chunker.ts</span>      <span class="fg3">0.08s · 250 lines</span>
-  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="fg2">src/tools/filesystem.ts</span>            <span class="fg3">0.07s · 712 lines</span>
-  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">write  </span> <span class="fg2">src/index/config.ts</span>                <span class="fg3">0.12s · created</span>
-  <span class="brand">▎</span>   <span class="brand">▶</span>  <span class="b fg1">edit   </span> <span class="fg2">src/tools/filesystem.ts</span>            <span class="brand">running…</span>
-  <span class="brand">▎</span>   <span class="fg4">○</span>  <span class="b fg3">verify </span> <span class="fg3">npm run typecheck && npm test</span>      <span class="fg4">queued</span>
-</pre>
+    <p class="lede">A multi-step work unit — wraps tool calls + reasoning under one header. The <span class="pill sec-task">&nbsp;TASK&nbsp;</span> section pill recolors with state: <span class="pill sec-task">&nbsp;TASK&nbsp;</span> running (brand), <span class="pill sec-task s-done">&nbsp;TASK&nbsp;</span> done (ok), <span class="pill sec-task s-failed">&nbsp;TASK&nbsp;</span> failed (err). Step counter sits next to the pill so progress is visible without reading title text.</p>
 
-    <div class="tag">CARD · <span class="cls">.task .done .collapsed</span></div>
-<pre class="mock">  <span class="ok">▎</span> <span class="ok b">✓ Step 1 of 5 · Read chunker + filesystem</span>      <span class="fg3">0.4s · 2 tools · </span><span class="ok">done</span>  <span class="fg4">▸</span>
+    <div class="tag">RUNNING · <span class="cls">.task .running</span></div>
+<pre class="mock">  <span class="brand">▎</span> <span class="pill sec-task">&nbsp;TASK&nbsp;</span>  <span class="b fg0">2 / 5  Refactor exclude config</span>                       <span class="fg3">4.2s · </span><span class="brand">running</span>
+  <span class="brand">▎</span>
+  <span class="brand">▎</span>   <span class="anchor brand">↳</span> <span class="fg2">Pull SKIP_DIRS / SKIP_FILES out of chunker.ts so directory_tree</span>
+  <span class="brand">▎</span>     <span class="fg2">can reuse them.</span>
+  <span class="brand">▎</span>
+  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="pill path">&nbsp;src/index/semantic/chunker.ts&nbsp;</span>   <span class="fg3">0.08s · 250 lines</span>
+  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="pill path">&nbsp;src/tools/filesystem.ts&nbsp;</span>          <span class="fg3">0.07s · 712 lines</span>
+  <span class="brand">▎</span>   <span class="ok">✓</span>  <span class="b fg1">write  </span> <span class="pill path">&nbsp;src/index/config.ts&nbsp;</span>              <span class="fg3">0.12s · created</span>
+  <span class="brand">▎</span>   <span class="brand">▶</span>  <span class="b fg1">edit   </span> <span class="pill path">&nbsp;src/tools/filesystem.ts&nbsp;</span>          <span class="brand">running…</span>
+  <span class="brand">▎</span>   <span class="fg4">○</span>  <span class="b fg3">verify </span> <span class="fg3">npm run typecheck && npm test</span>     <span class="fg4">queued</span>
 </pre>
+    <p class="lede">Tool rows inside the task body use the path-pill style for filenames — bg-elev tint, fg-2, regular weight. Reads as data not chrome. Step counter format <code>N / M</code> sits where the title used to start, so glancing at any task row tells you progress at a glance.</p>
 
-    <div class="tag">CARD · <span class="cls">.task .failed</span></div>
-<pre class="mock">  <span class="err">▎</span> <span class="err b">✗ Step 4 of 5 · Sandbox check</span>                       <span class="fg3">0.2s · </span><span class="err">failed</span>  <span class="fg4">▾</span>
+    <div class="tag">DONE · <span class="cls">.task .done</span></div>
+<pre class="mock">  <span class="ok">▎</span> <span class="pill sec-task s-done">&nbsp;TASK&nbsp;</span>  <span class="b fg1">1 / 5  Read chunker + filesystem</span>             <span class="fg3">0.4s · 2 tools · </span><span class="ok">done</span>
+</pre>
+    <p class="lede">Done tasks render as a single header row — body is omitted permanently (not collapsed-but-recallable). The user can recall what happened from the events log if needed.</p>
+
+    <div class="tag">FAILED · <span class="cls">.task .failed</span></div>
+<pre class="mock">  <span class="err">▎</span> <span class="pill sec-task s-failed">&nbsp;TASK&nbsp;</span>  <span class="b fg0">4 / 5  Sandbox check</span>                              <span class="fg3">0.2s · </span><span class="err">failed</span>
   <span class="err">▎</span>
-  <span class="err">▎</span>   <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="fg2">src/sandbox/policy.ts</span>          <span class="fg3">0.04s · 88 lines</span>
-  <span class="err">▎</span>   <span class="err">✗</span>  <span class="b fg1">verify </span> <span class="fg2">policy.allows("rm")</span>             <span class="err">denied</span>
+  <span class="err">▎</span>   <span class="anchor err">↳</span> <span class="ok">✓</span>  <span class="b fg1">read   </span> <span class="pill path">&nbsp;src/sandbox/policy.ts&nbsp;</span>     <span class="fg3">0.04s · 88 lines</span>
+  <span class="err">▎</span>     <span class="err">✗</span>  <span class="b fg1">verify </span> <span class="pill path">&nbsp;policy.allows("rm")&nbsp;</span>        <span class="err">denied</span>
 </pre>
+    <p class="lede">Failed tasks always render their body — the user needs the failure trail visible without recall. Anchor uses err color to match the card.</p>
   </section>
 
   <!-- Tool call -->
   <section class="section" id="c-tool">
     <h2><span class="num">08</span>Cards · tool call</h2>
-    <p class="lede">Single tool invocation. <strong>Collapsed</strong> = one row. <strong>Expanded</strong> = input args summary + output preview inside a sharp-cornered code box.</p>
+    <p class="lede">Single tool invocation. Section pill <span class="pill sec-tool">&nbsp;TOOL&nbsp;</span> uses info-cyan; the tool function name follows in info-bold; the path/target sits in a path-pill. Quick scan order: card type → which tool → what target → how it went.</p>
 
-    <div class="tag">COLLAPSED · <span class="cls">.tool</span></div>
-<pre class="mock">  <span class="info">▎</span> <span class="info b">▣ read_file</span>  <span class="fg2">src/cli/ui/App.tsx</span>                <span class="fg3">0.08s · 1224 lines</span>     <span class="fg4">▸</span>
+    <div class="tag">QUICK · <span class="cls">.tool .quick</span> · single-row, no body — fast read-only ops</div>
+<pre class="mock">  <span class="info">▎</span> <span class="pill sec-tool">&nbsp;TOOL&nbsp;</span>  <span class="b info">read_file</span>  <span class="pill path">&nbsp;src/cli/ui/App.tsx&nbsp;</span>          <span class="fg3">0.08s · 1224 lines · </span><span class="ok">ok</span>
 </pre>
+    <p class="lede">Default state for fast read-only tools (read_file, search_content, directory_tree). No body, no recall — the result is summarized in the metadata strip. If the user wants the file content, the file's at the path; reasonix won't waste rows redrawing it.</p>
 
-    <div class="tag">EXPANDED · <span class="cls">.tool[open]</span></div>
-<pre class="mock">  <span class="info">▎</span> <span class="info b">▣ read_file</span>  <span class="fg2">src/cli/ui/App.tsx</span>                <span class="fg3">0.08s · 1224 lines</span>     <span class="fg4">▾</span>
+    <div class="tag">PREVIEW · <span class="cls">.tool .preview</span> · short body when output ≤ 6 lines and worth surfacing</div>
+<pre class="mock">  <span class="info">▎</span> <span class="pill sec-tool">&nbsp;TOOL&nbsp;</span>  <span class="b info">search_content</span>  <span class="pill path">&nbsp;"stormBreaker"&nbsp;</span>            <span class="fg3">0.21s · 4 hits · </span><span class="ok">ok</span>
   <span class="info">▎</span>
-  <span class="info">▎</span>      <span class="fg4">   1</span>   <span class="fg1">/** App.tsx — primary chat surface, owns log + input. */</span>
-  <span class="info">▎</span>      <span class="fg4">   2</span>
-  <span class="info">▎</span>      <span class="fg4">   3</span>   <span class="fg1">import React, ... from "react";</span>
-  <span class="info">▎</span>      <span class="fg4">   …</span>   <span class="fg3">[1218 lines hidden — press space to load all]</span>
-  <span class="info">▎</span>      <span class="fg4">1224</span>   <span class="fg1">export default App;</span>
+  <span class="info">▎</span>   <span class="anchor info">↳</span> <span class="pill path">&nbsp;src/repair/storm.ts&nbsp;</span><span class="fg3">:13</span>  <span class="fg2">export class StormBreaker {</span>
+  <span class="info">▎</span>     <span class="pill path">&nbsp;src/repair/index.ts&nbsp;</span><span class="fg3">:33</span>  <span class="fg2">private readonly storm: StormBreaker;</span>
+  <span class="info">▎</span>     <span class="pill path">&nbsp;src/repair/index.ts&nbsp;</span><span class="fg3">:38</span>  <span class="fg2">this.storm = new StormBreaker(opts.stormWindow ?? 6, ...);</span>
+  <span class="info">▎</span>     <span class="pill path">&nbsp;tests/repair/storm.test.ts&nbsp;</span><span class="fg3">:2</span>  <span class="fg2">import { StormBreaker } from "...";</span>
 </pre>
+    <p class="lede">Used for grep / search / list outputs where 4-6 hit lines is the answer. Body anchor on the first hit row; subsequent rows align under it.</p>
 
-    <div class="tag">SHELL TOOL · <span class="cls">.tool .shell</span></div>
-<pre class="mock">  <span class="info">▎</span> <span class="info b">▣ run_command</span>  <span class="fg2">npm run verify</span>                 <span class="fg3">23.4s · </span><span class="ok">exit 0</span>      <span class="fg4">▾</span>
+    <div class="tag">SHELL · <span class="cls">.tool .shell</span> · long stdout · tail-window with overflow ⋮</div>
+<pre class="mock">  <span class="info">▎</span> <span class="pill sec-shell">&nbsp;SHELL&nbsp;</span>  <span class="b info">run_command</span>  <span class="pill path">&nbsp;npm run verify&nbsp;</span>             <span class="fg3">23.4s · 1818 lines · </span><span class="ok">exit 0</span>
   <span class="info">▎</span>
-  <span class="info">▎</span>   <span class="fg3">$ npm run verify</span>
-  <span class="info">▎</span>   <span class="fg3">> reasonix@0.17.0 verify</span>
-  <span class="info">▎</span>   <span class="fg3">> npm run lint && npm run typecheck && npm run test --silent</span>
-  <span class="info">▎</span>   <span class="fg3">…</span>
-  <span class="info">▎</span>   <span class="fg1"> Test Files  </span><span class="ok">99 passed (99)</span>
-  <span class="info">▎</span>   <span class="fg1">      Tests  </span><span class="ok">1784 passed (1784)</span>
+  <span class="info">▎</span>   <span class="fg4">⋮  1812 lines streamed past preview window</span>
+  <span class="info">▎</span>
+  <span class="info">▎</span>   <span class="anchor info">↳</span> <span class="fg2">Test Files  </span><span class="ok">115 passed (115)</span>
+  <span class="info">▎</span>     <span class="fg2">     Tests  </span><span class="ok">1818 passed (1818)</span>
+  <span class="info">▎</span>     <span class="fg2">  Duration  </span><span class="fg2">23.81s</span>
 </pre>
+    <p class="lede">Long stdout follows the same tail-window pattern as streaming reasoning — tail-3-lines plus a <span class="fg4">⋮</span> overflow gutter. The full stream is on disk in the events log; recall via <code>/output last</code> if needed.</p>
+
+    <div class="tag">FAILED · <span class="cls">.tool .failed</span> · err-tinted pill, error message inline</div>
+<pre class="mock">  <span class="err">▎</span> <span class="pill sec-tool">&nbsp;TOOL&nbsp;</span>  <span class="b info">edit_file</span>  <span class="pill path">&nbsp;src/loop.ts&nbsp;</span>                   <span class="fg3">0.05s · </span><span class="err">failed</span>
+  <span class="err">▎</span>
+  <span class="err">▎</span>   <span class="anchor err">↳</span> <span class="err">✗</span> <span class="fg1">SEARCH text not found — model emitted `repairCalls` but file</span>
+  <span class="err">▎</span>     <span class="fg1">  has `repairedCalls`. Suggest /retry with corrected name.</span>
+</pre>
+    <p class="lede">Failure cards switch the rule color to err and surface the error inline (not collapsed). Most useful info first: what kind of failure + the actionable hint.</p>
   </section>
 
   <!-- Plan / Todo -->
   <section class="section" id="c-plan">
     <h2><span class="num">09</span>Cards · plan / todo</h2>
-    <p class="lede">Ordered checklist. State per item via the bracket char + color: <span class="ok">[✓]</span> done · <span class="brand">[▶]</span> running · <span class="fg4">[ ]</span> queued · <span class="warn">[!]</span> blocked · <span class="err">[✗]</span> failed. Footer offers revise / skip actions.</p>
+    <p class="lede">Ordered checklist. <span class="pill sec-plan">&nbsp;PLAN&nbsp;</span> pill + plan title + progress fraction in the header. State per item via the bracket char + color: <span class="ok">[✓]</span> done · <span class="brand">[▶]</span> running · <span class="fg4">[ ]</span> queued · <span class="warn">[!]</span> blocked · <span class="err">[✗]</span> failed.</p>
     <div class="tag">CARD · <span class="cls">.plan</span></div>
-<pre class="mock">  <span class="accent">▎</span> <span class="accent b">⊞ Plan · Migrate selection to terminal-native</span>                <span class="fg3">5 of 7 done</span>  <span class="fg4">▾</span>
+<pre class="mock">  <span class="accent">▎</span> <span class="pill sec-plan">&nbsp;PLAN&nbsp;</span>  <span class="b fg0">Migrate selection to terminal-native</span>             <span class="fg3">5 / 7 done</span>
   <span class="accent">▎</span>
-  <span class="accent">▎</span>    <span class="ok">[✓]</span> <span class="fg3">1. Snapshot current selection state</span>
-  <span class="accent">▎</span>    <span class="ok">[✓]</span> <span class="fg3">2. Drop @xterm/headless dep</span>
-  <span class="accent">▎</span>    <span class="ok">[✓]</span> <span class="fg3">3. Remove screen-mirror.ts</span>
-  <span class="accent">▎</span>    <span class="ok">[✓]</span> <span class="fg3">4. Strip LogSelection from log-frame.tsx</span>
-  <span class="accent">▎</span>    <span class="ok">[✓]</span> <span class="fg3">5. Strip drag handlers from App.tsx</span>
-  <span class="accent">▎</span>    <span class="brand">[▶]</span> <span class="b fg0">6. Add /copy slash command</span>          <span class="fg4">←</span> <span class="brand">in progress</span>
-  <span class="accent">▎</span>    <span class="fg4">[ ]</span> <span class="fg2">7. Update CHANGELOG &amp; push</span>
-  <span class="accent">▎</span>
-  <span class="accent">▎</span>    <span class="fg3">[r] revise   [s] skip step   [↵] expand item</span>
+  <span class="accent">▎</span>   <span class="anchor">↳</span> <span class="ok">[✓]</span> <span class="fg3">1. Snapshot current selection state</span>
+  <span class="accent">▎</span>     <span class="ok">[✓]</span> <span class="fg3">2. Drop @xterm/headless dep</span>
+  <span class="accent">▎</span>     <span class="ok">[✓]</span> <span class="fg3">3. Remove screen-mirror.ts</span>
+  <span class="accent">▎</span>     <span class="ok">[✓]</span> <span class="fg3">4. Strip LogSelection from log-frame.tsx</span>
+  <span class="accent">▎</span>     <span class="ok">[✓]</span> <span class="fg3">5. Strip drag handlers from App.tsx</span>
+  <span class="accent">▎</span>     <span class="brand">[▶]</span> <span class="b fg0">6. Add /copy slash command</span>          <span class="fg4">←</span> <span class="brand">in progress</span>
+  <span class="accent">▎</span>     <span class="fg4">[ ]</span> <span class="fg2">7. Update CHANGELOG &amp; push</span>
 </pre>
+    <p class="lede">Body anchor on the first plan item; subsequent items align under it. The footer action row from the previous design is dropped — TUI doesn't host per-item interactive shortcuts cleanly. Plan revision happens via slash commands (<code>/plan revise</code>, <code>/plan skip 4</code>) which are discoverable through <code>/help</code>.</p>
+
+    <div class="tag">XL · <span class="cls">.plan .xl</span> · &gt; 12 items · head + tail with middle elided, same as Reasoning XL</div>
+<pre class="mock">  <span class="accent">▎</span> <span class="pill sec-plan">&nbsp;PLAN&nbsp;</span>  <span class="b fg0">v0.24 release readiness</span>                          <span class="fg3">8 / 18 done</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>   <span class="anchor">↳</span> <span class="ok">[✓]</span> <span class="fg3">1. Bump version + CHANGELOG entry</span>
+  <span class="accent">▎</span>     <span class="ok">[✓]</span> <span class="fg3">2. Run full verify gate</span>
+  <span class="accent">▎</span>     <span class="brand">[▶]</span> <span class="b fg0">3. Update docs/MIGRATION.md</span>           <span class="fg4">←</span> <span class="brand">in progress</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>   <span class="fg4">⋯  12 items elided  ·  /plan view  ⋯</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>     <span class="fg4">[ ]</span> <span class="fg2">17. Tag release</span>
+  <span class="accent">▎</span>     <span class="fg4">[ ]</span> <span class="fg2">18. Publish to npm</span>
+</pre>
+    <p class="lede">Same head + tail elision pattern as Reasoning XL — first 3 items + last 2 items + a middle elision row. The currently-running item is always promoted into the head window even if it would otherwise fall in the elided range, so progress stays visible.</p>
   </section>
 
   <!-- Diff -->
@@ -765,7 +883,7 @@ main { padding: 32px 48px 40px 32px; min-width: 0; }
   <span class="violet">▎</span>   <span class="fg3">Tools  </span> <span class="fg2">read_file, search_content</span>
   <span class="violet">▎</span>
   <span class="violet">▎</span>   <span class="fg3">▸ sub-agent stream</span>
-  <span class="violet">▎</span>   <span class="violet">▎</span> <span class="accent">◆</span> <span class="fg3 i">Reasoning · 2 paragraphs</span>                                <span class="fg4">▸</span>
+  <span class="violet">▎</span>   <span class="violet">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-flash">&nbsp;v4-flash&nbsp;</span>  <span class="fg4">134 tok · 2 ¶</span>
   <span class="violet">▎</span>   <span class="violet">▎</span> <span class="info">▣</span> <span class="b fg1">read_file</span>  <span class="fg2">src/index/config.ts</span>                  <span class="fg3">0.08s</span>
   <span class="violet">▎</span>   <span class="violet">▎</span> <span class="brand">▶</span> <span class="brand">streaming response …</span>
 </pre>
@@ -1230,7 +1348,7 @@ main { padding: 32px 48px 40px 32px; min-width: 0; }
     <span class="fg1">abandon fullscreen mode, switch to inline scrollback</span>
 
 
-  <span class="accent">▎</span> <span class="accent b">◆ Reasoning</span>  <span class="fg4">· 4 paragraphs</span>                                       <span class="fg4">▸</span>
+  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-pro">&nbsp;v4-pro&nbsp;</span>  <span class="fg4">587 tok · 4 ¶</span>                                  <span class="fg3">4.7s</span>
 
 
   <span class="accent">▎</span> <span class="accent b">⊞ Plan · 5 steps</span>                                       <span class="fg3">5 of 5 done</span>  <span class="fg4">▾</span>
@@ -1311,8 +1429,10 @@ main { padding: 32px 48px 40px 32px; min-width: 0; }
 
 </pre>
 
-    <h3 id="s-stream-reason">Streaming reasoning<span class="desc">live italic dim while bytes arrive; settles into the collapsed reasoning card on completion</span></h3>
-<pre class="mock">  <span class="accent">▎</span> <span class="accent b">◆ Reasoning</span>  <span class="fg4">· streaming…</span>                                            <span class="fg4">▾</span>
+    <h3 id="s-stream-reason">Streaming reasoning<span class="desc">live tail-3-lines while bytes arrive; settles into one of the three sized variants in §06 once the stream ends</span></h3>
+<pre class="mock">  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-r1">&nbsp;r1&nbsp;</span>  <span class="fg4">247 tok</span>                                  <span class="fg3">1.2s · </span><span class="brand">thinking…</span>
+  <span class="accent">▎</span>
+  <span class="accent">▎</span>   <span class="fg4">⋮  earlier lines scrolled past preview window</span>
   <span class="accent">▎</span>
   <span class="accent">▎</span>   <span class="i fg3">Two paths: replace the hardcoded list when config is set, or merge</span>
   <span class="accent">▎</span>   <span class="i fg3">user values in. The first matches the explicit "config-driven" ask;</span>
@@ -1342,7 +1462,7 @@ main { padding: 32px 48px 40px 32px; min-width: 0; }
   <span class="violet">▎</span>   <span class="violet">▎</span> <span class="violet b">⌬ Sub-agent · code-reader</span>                                  <span class="violet">running</span>  <span class="fg4">▾</span>
   <span class="violet">▎</span>   <span class="violet">▎</span>
   <span class="violet">▎</span>   <span class="violet">▎</span>   <span class="violet">▎</span> <span class="info b">▣ read_file</span>  <span class="fg2">src/cli/ui/App.tsx</span>           <span class="fg3">0.08s</span>
-  <span class="violet">▎</span>   <span class="violet">▎</span>   <span class="violet">▎</span> <span class="accent">◆</span> <span class="i fg3">Reasoning · 1 paragraph</span>                              <span class="fg4">▸</span>
+  <span class="violet">▎</span>   <span class="violet">▎</span>   <span class="violet">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-flash">&nbsp;v4-flash&nbsp;</span>  <span class="fg4">62 tok · 1 ¶</span>
   <span class="violet">▎</span>   <span class="violet">▎</span>
   <span class="violet">▎</span>   <span class="violet">▎</span>   <span class="brand">▶</span> <span class="brand">summarising findings…</span>
   <span class="violet">▎</span>
@@ -1987,7 +2107,7 @@ main { padding: 32px 48px 40px 32px; min-width: 0; }
   <span class="fg3">▎</span> <span class="b fg2">⌑ Context</span>  <span class="fg3">·  4 user · 2 feedback · 1 reference</span>             <span class="fg3">~1.2K tok</span>  <span class="fg4">▸</span>
 
 
-  <span class="accent">▎</span> <span class="accent b">◆ Reasoning</span>  <span class="fg4">· 3 paragraphs</span>                                       <span class="fg4">▸</span>
+  <span class="accent">▎</span> <span class="pill sec-reason">&nbsp;REASONING&nbsp;</span>  <span class="pill mdl-r1">&nbsp;r1&nbsp;</span>  <span class="fg4">412 tok · 3 ¶</span>                                  <span class="fg3">3.1s</span>
 
 
   <span class="accent">▎</span> <span class="accent b">⊞ Plan · 5 steps</span>                                      <span class="fg3">0 of 5 done</span>  <span class="fg4">▾</span>

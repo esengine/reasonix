@@ -36,3 +36,25 @@ export function clipToCells(s: string, maxCells: number): string {
   }
   return `${out}…`;
 }
+
+/** Wrap to `maxCells`-wide chunks for tail-window semantics — caller can `slice(-N)` to pull true visual last lines. Empty input yields one empty chunk so paragraph breaks survive the round-trip. */
+export function wrapToCells(s: string, maxCells: number): string[] {
+  if (maxCells <= 0) return [];
+  if (s.length === 0) return [""];
+  const out: string[] = [];
+  let cur = "";
+  let cells = 0;
+  for (const g of graphemes(s)) {
+    const w = graphemeWidth(g);
+    if (cells + w > maxCells) {
+      out.push(cur);
+      cur = g;
+      cells = w;
+    } else {
+      cur += g;
+      cells += w;
+    }
+  }
+  if (cur.length > 0 || out.length === 0) out.push(cur);
+  return out;
+}

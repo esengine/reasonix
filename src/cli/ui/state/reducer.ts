@@ -25,7 +25,7 @@ export function reduce(state: AgentState, event: AgentEvent): AgentState {
       );
 
     case "reasoning.start":
-      return appendCard(state, makeReasoningCard(event.id));
+      return appendCard(state, makeReasoningCard(event.id, state.session.model));
 
     case "reasoning.chunk":
       return mutateCard(state, event.id, "reasoning", (c) => ({ ...c, text: c.text + event.text }));
@@ -36,11 +36,12 @@ export function reduce(state: AgentState, event: AgentEvent): AgentState {
         paragraphs: event.paragraphs,
         tokens: event.tokens,
         streaming: false,
+        endedAt: Date.now(),
         ...(event.aborted ? { aborted: true } : {}),
       }));
 
     case "streaming.start":
-      return appendCard(state, makeStreamingCard(event.id));
+      return appendCard(state, makeStreamingCard(event.id, state.session.model));
 
     case "streaming.chunk":
       return mutateCard(state, event.id, "streaming", (c) => ({ ...c, text: c.text + event.text }));
@@ -49,6 +50,7 @@ export function reduce(state: AgentState, event: AgentEvent): AgentState {
       return mutateCard(state, event.id, "streaming", (c) => ({
         ...c,
         done: true,
+        endedAt: Date.now(),
         ...(event.aborted ? { aborted: true } : {}),
       }));
 
@@ -331,7 +333,7 @@ function makeUserCard(text: string): UserCard {
   return { kind: "user", id: nextId("user"), ts: Date.now(), text };
 }
 
-function makeReasoningCard(id: string): ReasoningCard {
+function makeReasoningCard(id: string, model?: string): ReasoningCard {
   return {
     kind: "reasoning",
     id,
@@ -340,11 +342,19 @@ function makeReasoningCard(id: string): ReasoningCard {
     paragraphs: 0,
     tokens: 0,
     streaming: true,
+    ...(model ? { model } : {}),
   };
 }
 
-function makeStreamingCard(id: string): StreamingCard {
-  return { kind: "streaming", id, ts: Date.now(), text: "", done: false };
+function makeStreamingCard(id: string, model?: string): StreamingCard {
+  return {
+    kind: "streaming",
+    id,
+    ts: Date.now(),
+    text: "",
+    done: false,
+    ...(model ? { model } : {}),
+  };
 }
 
 function makeToolCard(id: string, name: string, args: unknown): ToolCard {

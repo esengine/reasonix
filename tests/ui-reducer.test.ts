@@ -40,6 +40,12 @@ describe("ui reducer", () => {
     expect(card.tokens).toBe(12);
   });
 
+  it("snapshots the producing model on reasoning.start so mid-turn escalation doesn't relabel it", () => {
+    const s = run([{ type: "reasoning.start", id: "r1" }]);
+    const card = s.cards[0] as ReasoningCard;
+    expect(card.model).toBe("deepseek-chat");
+  });
+
   it("streams response chunks into a single streaming card", () => {
     const s = run([
       { type: "streaming.start", id: "s1" },

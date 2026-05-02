@@ -17,6 +17,10 @@ export interface ReasoningCard extends CardBase {
   tokens: number;
   streaming: boolean;
   aborted?: boolean;
+  /** Snapshotted at reasoning.start so escalation mid-turn doesn't relabel completed reasoning. */
+  model?: string;
+  /** Stamped at reasoning.end. Drives the duration badge on the settled header. */
+  endedAt?: number;
 }
 
 export interface StreamingCard extends CardBase {
@@ -24,6 +28,10 @@ export interface StreamingCard extends CardBase {
   text: string;
   done: boolean;
   aborted?: boolean;
+  /** Snapshotted at streaming.start so escalation mid-turn doesn't relabel completed output. */
+  model?: string;
+  /** Stamped at streaming.end. */
+  endedAt?: number;
 }
 
 export interface ToolCard extends CardBase {
