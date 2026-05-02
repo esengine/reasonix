@@ -9,6 +9,8 @@ export interface SlashResult {
   info?: string;
   /** Open the SessionPicker modal mid-chat — used by `/sessions` slash. */
   openSessionsPicker?: boolean;
+  /** Open the MCP browser modal — used by `/mcp` slash in interactive contexts. */
+  openMcpBrowser?: boolean;
   /** Exit the app. */
   exit?: boolean;
   /** Clear the visible history. */

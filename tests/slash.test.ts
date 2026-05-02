@@ -733,8 +733,30 @@ describe("handleSlash", () => {
     expect(names).toContain("undo");
   });
 
-  it("/mcp with mcpServers renders per-server tools+resources+prompts", () => {
+  it("/mcp opens the browser modal when servers are attached", () => {
     const r = handleSlash("mcp", [], makeLoop(), {
+      mcpServers: [
+        {
+          label: "fs",
+          spec: "fs=npx -y @scope/fs /tmp",
+          toolCount: 4,
+          report: {
+            protocolVersion: "2024-11-05",
+            serverInfo: { name: "fs-server", version: "1.0.0" },
+            capabilities: { tools: {}, resources: {} },
+            tools: { supported: true, items: [] },
+            resources: { supported: true, items: [] },
+            prompts: { supported: false, reason: "method not found (-32601)" },
+          },
+        },
+      ],
+    });
+    expect(r.openMcpBrowser).toBe(true);
+    expect(r.info).toBeUndefined();
+  });
+
+  it("/mcp text falls through to the printed-card view (non-TTY / replay)", () => {
+    const r = handleSlash("mcp", ["text"], makeLoop(), {
       mcpServers: [
         {
           label: "fs",
@@ -757,6 +779,7 @@ describe("handleSlash", () => {
         },
       ],
     });
+    expect(r.openMcpBrowser).toBeUndefined();
     expect(r.info).toMatch(/\[fs\].*fs-server v1\.0\.0/);
     expect(r.info).toMatch(/tools\s+4/);
     expect(r.info).toMatch(/resources\s+2\s+\[docs, readme\]/);

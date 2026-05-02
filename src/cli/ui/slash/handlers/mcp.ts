@@ -1,16 +1,22 @@
 import type { SlashHandler } from "../dispatch.js";
 import { appendSection } from "../helpers.js";
 
-const mcp: SlashHandler = (_args, loop, ctx) => {
+const mcp: SlashHandler = (args, loop, ctx) => {
   const servers = ctx.mcpServers ?? [];
   const specs = ctx.mcpSpecs ?? [];
   const toolSpecs = loop.prefix.toolSpecs ?? [];
+  // `/mcp text` (or non-TTY) falls through to the printed-card path. The
+  // default `/mcp` opens the interactive browser modal.
+  const wantsTextDump = args[0] === "text";
   if (servers.length === 0 && specs.length === 0 && toolSpecs.length === 0) {
     return {
       info:
         "no MCP servers attached. Run `reasonix setup` to pick some, " +
         'or launch with --mcp "<spec>". `reasonix mcp list` shows the catalog.',
     };
+  }
+  if (!wantsTextDump && servers.length > 0) {
+    return { openMcpBrowser: true };
   }
   // Rich path — we have full inspection reports, so show each server
   // with its tools / resources / prompts grouped together.

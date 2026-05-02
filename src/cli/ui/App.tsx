@@ -74,6 +74,7 @@ import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../tran
 import { AtMentionSuggestions } from "./AtMentionSuggestions.js";
 import { ChoiceConfirm, type ChoiceConfirmChoice } from "./ChoiceConfirm.js";
 import { EditConfirm, type EditReviewChoice } from "./EditConfirm.js";
+import { McpBrowser } from "./McpBrowser.js";
 import { type CheckpointChoice, PlanCheckpointConfirm } from "./PlanCheckpointConfirm.js";
 import { PlanConfirm, type PlanConfirmChoice } from "./PlanConfirm.js";
 import { PlanRefineInput } from "./PlanRefineInput.js";
@@ -545,6 +546,8 @@ function AppInner({
   /** True while the SessionPicker is open mid-chat (triggered by `/sessions`). */
   const [pendingSessionsPicker, setPendingSessionsPicker] = useState(false);
   const [sessionsPickerList, setSessionsPickerList] = useState<ReturnType<typeof listSessions>>([]);
+  /** True while the McpBrowser modal is open (triggered by `/mcp`). */
+  const [pendingMcpBrowser, setPendingMcpBrowser] = useState(false);
   // Stashed plan + intent while the user types free-form feedback
   // (refinement or last instructions on approve). When the picker
   // returns "refine" or "approve", we defer the loop-resume and show
@@ -1258,6 +1261,7 @@ function AppInner({
       !pendingPlan &&
       !pendingReviseEditor &&
       !pendingSessionsPicker &&
+      !pendingMcpBrowser &&
       !stagedInput &&
       !pendingEditReview &&
       !walkthroughActive &&
@@ -1293,6 +1297,7 @@ function AppInner({
       !pendingPlan &&
       !pendingReviseEditor &&
       !pendingSessionsPicker &&
+      !pendingMcpBrowser &&
       !stagedInput &&
       !pendingEditReview &&
       !walkthroughActive &&
@@ -2231,6 +2236,11 @@ function AppInner({
           promptHistory.current.push(text);
           return;
         }
+        if (result.openMcpBrowser) {
+          setPendingMcpBrowser(true);
+          promptHistory.current.push(text);
+          return;
+        }
         const outcome = applySlashResult(result, {
           log,
           stdoutWrite: (chunk) => stdout?.write(chunk),
@@ -3158,6 +3168,7 @@ function AppInner({
           !!pendingPlan ||
           !!pendingReviseEditor ||
           pendingSessionsPicker ||
+          pendingMcpBrowser ||
           !!pendingShell ||
           !!pendingEditReview ||
           walkthroughActive ||
@@ -3201,6 +3212,7 @@ function AppInner({
             !pendingPlan &&
             !pendingReviseEditor &&
             !pendingSessionsPicker &&
+            !pendingMcpBrowser &&
             !stagedInput &&
             !pendingEditReview &&
             !pendingCheckpoint &&
@@ -3213,6 +3225,7 @@ function AppInner({
             !pendingPlan &&
             !pendingReviseEditor &&
             !pendingSessionsPicker &&
+            !pendingMcpBrowser &&
             !stagedInput &&
             !pendingEditReview &&
             !pendingCheckpoint &&
@@ -3225,6 +3238,7 @@ function AppInner({
             !pendingPlan &&
             !pendingReviseEditor &&
             !pendingSessionsPicker &&
+            !pendingMcpBrowser &&
             !stagedInput &&
             !pendingEditReview &&
             !pendingCheckpoint &&
@@ -3239,6 +3253,7 @@ function AppInner({
             !pendingPlan &&
             !pendingReviseEditor &&
             !pendingSessionsPicker &&
+            !pendingMcpBrowser &&
             !stagedInput &&
             !pendingEditReview &&
             !pendingCheckpoint &&
@@ -3261,6 +3276,7 @@ function AppInner({
             !pendingPlan &&
             !pendingReviseEditor &&
             !pendingSessionsPicker &&
+            !pendingMcpBrowser &&
             !stagedInput &&
             !pendingEditReview &&
             !pendingCheckpoint &&
@@ -3364,6 +3380,12 @@ function AppInner({
                   setPendingSessionsPicker(false);
                 }
               }}
+            />
+          ) : pendingMcpBrowser ? (
+            <McpBrowser
+              servers={mcpServers ?? []}
+              configPath={defaultConfigPath()}
+              onClose={() => setPendingMcpBrowser(false)}
             />
           ) : pendingPlan ? (
             <PlanConfirm
