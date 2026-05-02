@@ -40,6 +40,7 @@ import {
 } from "../../config.js";
 import { Eventizer } from "../../core/eventize.js";
 import { type ResolvedHook, formatHookOutcomeMessage, loadHooks, runHooks } from "../../hooks.js";
+import { onLanguageChange } from "../../i18n/index.js";
 import { CacheFirstLoop, DeepSeekClient, ImmutablePrefix } from "../../index.js";
 import type { LoopEvent } from "../../loop.js";
 import {
@@ -309,6 +310,8 @@ function AppInner({
   });
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [languageVersion, setLanguageVersion] = useState(0);
+  useEffect(() => onLanguageChange(() => setLanguageVersion((v) => v + 1)), []);
   // Tracks whether the current turn has been aborted via Esc, so the
   // Esc handler only fires once per turn (repeated presses would yield
   // stacked warning events).
@@ -2246,6 +2249,7 @@ function AppInner({
           postInfo: (text: string) => log.pushInfo(text),
           postDoctor: (checks) => log.showDoctor(checks),
           postUsage: (args) => log.showUsageVerbose(args),
+          dispatch: agentStore.dispatch,
           reloadHooks: () => {
             const fresh = loadHooks({ projectRoot: codeMode ? currentRootDir : undefined });
             setHookList(fresh);
@@ -2265,6 +2269,11 @@ function AppInner({
         if (result.openMcpBrowser) {
           setPendingMcpBrowser(true);
           promptHistory.current.push(text);
+          return;
+        }
+        if (result.openArgPickerFor) {
+          promptHistory.current.push(text);
+          setInput(`/${result.openArgPickerFor} `);
           return;
         }
         const outcome = applySlashResult(result, {
@@ -2659,6 +2668,7 @@ function AppInner({
       model,
       prefixHash,
       log,
+      agentStore.dispatch,
     ],
   );
 
@@ -3227,7 +3237,11 @@ function AppInner({
           surviving past the first turn.
         */}
                 {!hasConversation && !busy && !isStreaming ? (
-                  <WelcomeBanner inCodeMode={!!codeMode} dashboardUrl={dashboardUrl} />
+                  <WelcomeBanner
+                    inCodeMode={!!codeMode}
+                    dashboardUrl={dashboardUrl}
+                    languageVersion={languageVersion}
+                  />
                 ) : null}
                 {/*
           Live rows are hidden while the ShellConfirm modal is up — the

@@ -1,3 +1,4 @@
+import { t } from "../../../../i18n/index.js";
 import {
   DEEPSEEK_CONTEXT_TOKENS,
   DEEPSEEK_PRICING,
@@ -11,27 +12,17 @@ import { compactNum, formatToolList } from "../helpers.js";
 const think: SlashHandler = (_args, loop) => {
   const raw = loop.scratch.reasoning;
   if (!raw || !raw.trim()) {
-    return {
-      info:
-        "no reasoning cached. `/think` shows the full thinking-mode thought for the most recent " +
-        "turn — only thinking-mode models (deepseek-v4-flash / -v4-pro / -reasoner) produce it, " +
-        "and only once the turn completes.",
-    };
+    return { info: t("handlers.observability.thinkEmpty") };
   }
-  return { info: `↳ full thinking (${raw.length} chars):\n\n${raw.trim()}` };
+  return {
+    info: `${t("handlers.observability.thinkInfo", { count: raw.length })}\n\n${raw.trim()}`,
+  };
 };
 
 const tool: SlashHandler = (args, _loop, ctx) => {
-  // ToolCard clips display to a one-line summary; users need the full
-  // text to verify the model isn't hallucinating a file's contents.
-  // `/tool` is the escape hatch.
   const history = ctx.toolHistory?.() ?? [];
   if (history.length === 0) {
-    return {
-      info:
-        "no tool calls yet in this session. `/tool` lists them once the model has actually " +
-        "used a tool; `/tool N` dumps the full (untruncated) output of the Nth-most-recent.",
-    };
+    return { info: t("handlers.observability.toolEmpty") };
   }
   const raw = (args[0] ?? "").toLowerCase();
   if (raw === "" || raw === "list" || raw === "ls") {
@@ -39,21 +30,17 @@ const tool: SlashHandler = (args, _loop, ctx) => {
   }
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n < 1) {
-    return {
-      info: "usage: /tool [N]   (no arg → list; N=1 → most recent result in full, N=2 → previous, …)",
-    };
+    return { info: t("handlers.observability.toolUsage") };
   }
   if (n > history.length) {
-    return {
-      info: `only ${history.length} tool call(s) in history — asked for #${n}. Try /tool with no arg to see the list.`,
-    };
+    return { info: t("handlers.observability.toolOob", { count: history.length, n }) };
   }
   const entry = history[history.length - n];
   if (!entry) {
-    return { info: `could not read tool call #${n}` };
+    return { info: t("handlers.observability.toolNotFound", { n }) };
   }
   return {
-    info: `↳ tool<${entry.toolName}> #${n} (${entry.text.length} chars):\n\n${entry.text}`,
+    info: `${t("handlers.observability.toolInfo", { name: entry.toolName, n, chars: entry.text.length })}\n\n${entry.text}`,
   };
 };
 
@@ -62,7 +49,14 @@ const context: SlashHandler = (_args, loop) => {
   const total =
     breakdown.systemTokens + breakdown.toolsTokens + breakdown.logTokens + breakdown.inputTokens;
   const winPct = breakdown.ctxMax > 0 ? Math.round((total / breakdown.ctxMax) * 100) : 0;
-  const fallbackInfo = `context: ~${compactNum(total)} of ${compactNum(breakdown.ctxMax)} (${winPct}%) · system ${compactNum(breakdown.systemTokens)} · tools ${compactNum(breakdown.toolsTokens)} · log ${compactNum(breakdown.logTokens)}`;
+  const fallbackInfo = t("handlers.observability.contextInfo", {
+    total: compactNum(total),
+    max: compactNum(breakdown.ctxMax),
+    pct: winPct,
+    sys: compactNum(breakdown.systemTokens),
+    tools: compactNum(breakdown.toolsTokens),
+    log: compactNum(breakdown.logTokens),
+  });
   return { info: fallbackInfo, ctxBreakdown: breakdown };
 };
 
@@ -72,61 +66,80 @@ const status: SlashHandler = (_args, loop, ctx) => {
   const summary = loop.stats.summary();
   const lastPromptTokens = summary.lastPromptTokens;
   const ctxPct = ctxMax > 0 ? Math.round((lastPromptTokens / ctxMax) * 100) : 0;
-  // 16-cell context bar — narrower than /context's 48 since /status is
-  // a quick glance, not the deep dive. Same `█/░` characters so the
-  // visual grammar stays consistent across slashes.
   const ctxBar = lastPromptTokens > 0 ? renderTinyBar(ctxPct, 16) : "";
   const ctxLine =
     lastPromptTokens > 0
-      ? `  ctx     ${ctxBar} ${compactNum(lastPromptTokens)}/${compactNum(ctxMax)} (${ctxPct}%)`
-      : "  ctx     no turns yet";
+      ? t("handlers.observability.statusCtx", {
+          bar: ctxBar,
+          used: compactNum(lastPromptTokens),
+          max: compactNum(ctxMax),
+          pct: ctxPct,
+        })
+      : t("handlers.observability.statusCtxNone");
 
-  // Cost / cache hit row — the high-signal numbers from StatsPanel.
-  // Cache pct only shown after the cold-start window so a 0.0% on
-  // turn 1 doesn't read as broken.
   const cost = summary.totalCostUsd;
   const cacheLine =
     summary.turns > 3
       ? (() => {
           const cachePct = Math.round(summary.cacheHitRatio * 100);
-          return `  cost    $${cost.toFixed(4)} · cache ${renderTinyBar(cachePct, 12)} ${cachePct}% · turns ${summary.turns}`;
+          return t("handlers.observability.statusCost", {
+            cost: cost.toFixed(4),
+            bar: renderTinyBar(cachePct, 12),
+            pct: cachePct,
+            turns: summary.turns,
+          });
         })()
-      : `  cost    $${cost.toFixed(4)} · turns ${summary.turns} (cache warming up)`;
+      : t("handlers.observability.statusCostCold", {
+          cost: cost.toFixed(4),
+          turns: summary.turns,
+        });
 
-  // Budget row — only when a cap is set
   const budgetLine =
     typeof loop.budgetUsd === "number"
       ? (() => {
           const pct = Math.round((cost / loop.budgetUsd!) * 100);
           const tag = pct >= 100 ? " ▲ EXHAUSTED" : pct >= 80 ? " ▲ 80%+" : "";
-          return `  budget  $${cost.toFixed(4)} / $${loop.budgetUsd!.toFixed(2)} (${pct}%)${tag}`;
+          return t("handlers.observability.statusBudget", {
+            spent: cost.toFixed(4),
+            cap: loop.budgetUsd!.toFixed(2),
+            pct,
+            tag,
+          });
         })()
       : "";
 
   const pending = ctx.pendingEditCount ?? 0;
   const sessionLine = loop.sessionName
-    ? `  session "${loop.sessionName}" · ${loop.log.length} messages in log (resumed ${loop.resumedMessageCount})`
-    : "  session (ephemeral — no persistence)";
+    ? t("handlers.observability.statusSession", {
+        name: loop.sessionName,
+        count: loop.log.length,
+        resumed: loop.resumedMessageCount,
+      })
+    : t("handlers.observability.statusSessionEphemeral");
   const mcpCount = ctx.mcpSpecs?.length ?? 0;
   const toolCount = loop.prefix.toolSpecs.length;
-  const mcpLine = `  mcp     ${mcpCount} server(s), ${toolCount} tool(s) in registry`;
+  const mcpLine = t("handlers.observability.statusMcp", { servers: mcpCount, tools: toolCount });
   const pendingLine =
-    pending > 0 ? `  edits   ${pending} pending (/apply to commit, /discard to drop)` : "";
-  const planLine = ctx.planMode ? "  plan    ON — writes gated (submit_plan + approval)" : "";
+    pending > 0 ? t("handlers.observability.statusEdits", { count: pending }) : "";
+  const planLine = ctx.planMode ? t("handlers.observability.statusPlan") : "";
   const modeLine =
     ctx.editMode === "yolo"
-      ? "  mode    YOLO — edits + shell auto-run with no prompt (/undo still rolls back · Shift+Tab to flip)"
+      ? t("handlers.observability.statusModeYolo")
       : ctx.editMode === "auto"
-        ? "  mode    AUTO — edits apply immediately (u to undo within 5s · Shift+Tab to flip)"
+        ? t("handlers.observability.statusModeAuto")
         : ctx.editMode === "review"
-          ? "  mode    review — edits queue for /apply or y  (Shift+Tab to flip)"
+          ? t("handlers.observability.statusModeReview")
           : "";
-  const dashLine = ctx.getDashboardUrl?.()
-    ? `  dash    ${ctx.getDashboardUrl?.()} (open in browser · /dashboard stop)`
-    : "";
+  const dashUrl = ctx.getDashboardUrl?.();
+  const dashLine = dashUrl ? t("handlers.observability.statusDash", { url: dashUrl }) : "";
   const lines = [
-    `  model   ${loop.model}`,
-    `  flags   harvest=${loop.harvestEnabled ? "on" : "off"} · branch=${branchBudget > 1 ? branchBudget : "off"} · stream=${loop.stream ? "on" : "off"} · effort=${loop.reasoningEffort}`,
+    t("handlers.observability.statusModel", { model: loop.model }),
+    t("handlers.observability.statusFlags", {
+      harvest: loop.harvestEnabled ? "on" : "off",
+      branch: branchBudget > 1 ? branchBudget : "off",
+      stream: loop.stream ? "on" : "off",
+      effort: loop.reasoningEffort,
+    }),
     cacheLine,
     ctxLine,
     mcpLine,
@@ -148,21 +161,21 @@ function renderTinyBar(pct: number, width: number): string {
 }
 
 const compact: SlashHandler = (args, loop) => {
-  // Manual companion to the automatic 60%/80% auto-compact. Re-applies
-  // token-aware truncation with a tighter cap (default 4000 tokens per
-  // tool result) and rewrites the session file so the shrink persists.
-  // Useful when the ctx gauge in StatsPanel goes yellow/red mid-session
-  // and the user wants to keep chatting without /forget'ing everything.
   const tight = Number.parseInt(args[0] ?? "", 10);
   const cap = Number.isFinite(tight) && tight >= 100 ? tight : 4000;
   const { healedCount, tokensSaved, charsSaved } = loop.compact(cap);
   if (healedCount === 0) {
     return {
-      info: `▸ nothing to compact — no tool result or tool-call args in history exceed ${cap.toLocaleString()} tokens.`,
+      info: t("handlers.observability.compactNone", { cap: cap.toLocaleString() }),
     };
   }
   return {
-    info: `▸ compacted ${healedCount} payload(s) to ${cap.toLocaleString()} tokens each (tool results + tool-call args), saved ${tokensSaved.toLocaleString()} tokens (${charsSaved.toLocaleString()} chars). Session file rewritten.`,
+    info: t("handlers.observability.compactInfo", {
+      count: healedCount,
+      cap: cap.toLocaleString(),
+      tokens: tokensSaved.toLocaleString(),
+      chars: charsSaved.toLocaleString(),
+    }),
   };
 };
 
@@ -170,35 +183,32 @@ const cost: SlashHandler = (args, loop, ctx) => {
   if (args.length > 0) {
     return estimateCost(args.join(" "), loop);
   }
-  const t = loop.stats.turns[loop.stats.turns.length - 1];
-  if (!t) {
-    return { info: "no turn yet — `/cost` shows the most recent turn's token + spend breakdown." };
+  const turn = loop.stats.turns[loop.stats.turns.length - 1];
+  if (!turn) {
+    return { info: t("handlers.observability.costNoTurn") };
   }
   if (!ctx.postUsage) {
-    return { info: "/cost needs a TUI context (postUsage wired)." };
+    return { info: t("handlers.observability.costNeedsTui") };
   }
   const summary = loop.stats.summary();
   const ctxMax = DEEPSEEK_CONTEXT_TOKENS[loop.model] ?? DEFAULT_CONTEXT_TOKENS;
   ctx.postUsage({
-    turn: t.turn,
-    promptTokens: t.usage.promptTokens,
+    turn: turn.turn,
+    promptTokens: turn.usage.promptTokens,
     reasonTokens: 0,
-    outputTokens: t.usage.completionTokens,
+    outputTokens: turn.usage.completionTokens,
     promptCap: ctxMax,
-    cacheHit: t.cacheHitRatio,
-    cost: t.cost,
+    cacheHit: turn.cacheHitRatio,
+    cost: turn.cost,
     sessionCost: summary.totalCostUsd,
   });
   return {};
 };
 
-/** /cost <text> — pre-turn estimate. Pairs with /budget for the cost-aware-prompt loop. */
 function estimateCost(userText: string, loop: import("../../../../loop.js").CacheFirstLoop) {
   const pricing = DEEPSEEK_PRICING[loop.model];
   if (!pricing) {
-    return {
-      info: `▸ /cost: no pricing table for model "${loop.model}". Add one to telemetry/stats.ts.`,
-    };
+    return { info: t("handlers.observability.costNoPricing", { model: loop.model }) };
   }
   const userTokens = countTokens(userText);
   const breakdown = computeCtxBreakdown(loop);
@@ -208,7 +218,7 @@ function estimateCost(userText: string, loop: import("../../../../loop.js").Cach
   const turns = loop.stats.turns;
   const avgOutput =
     turns.length > 0
-      ? Math.round(turns.reduce((s, t) => s + t.usage.completionTokens, 0) / turns.length)
+      ? Math.round(turns.reduce((s, tk) => s + tk.usage.completionTokens, 0) / turns.length)
       : 800;
   const cacheHit = loop.stats.summary().cacheHitRatio;
 
@@ -220,13 +230,28 @@ function estimateCost(userText: string, loop: import("../../../../loop.js").Cach
 
   const fmt = (n: number) => `$${n < 0.01 ? n.toFixed(5) : n.toFixed(4)}`;
   const lines = [
-    `▸ /cost estimate · ${loop.model} · ${promptTokens.toLocaleString()} prompt tokens` +
-      ` (sys ${compactNum(breakdown.systemTokens)} + tools ${compactNum(breakdown.toolsTokens)}` +
-      ` + log ${compactNum(breakdown.logTokens)} + msg ${compactNum(userTokens)})`,
-    `  worst case (full miss): ${fmt(inputUsdMiss)} input + ~${fmt(outputUsd)} output (${avgOutput.toLocaleString()} avg) ≈ ${fmt(inputUsdMiss + outputUsd)}`,
+    t("handlers.observability.costEstimate", {
+      model: loop.model,
+      prompt: promptTokens.toLocaleString(),
+      sys: compactNum(breakdown.systemTokens),
+      tools: compactNum(breakdown.toolsTokens),
+      log: compactNum(breakdown.logTokens),
+      msg: compactNum(userTokens),
+    }),
+    t("handlers.observability.costWorstCase", {
+      input: fmt(inputUsdMiss),
+      output: fmt(outputUsd),
+      avg: avgOutput.toLocaleString(),
+      total: fmt(inputUsdMiss + outputUsd),
+    }),
     turns.length > 0
-      ? `  likely (${Math.round(cacheHit * 100)}% session cache hit): ${fmt(inputUsdLikely)} input + ~${fmt(outputUsd)} output ≈ ${fmt(inputUsdLikely + outputUsd)}`
-      : "  likely: matches worst case until cache fills (no completed turns yet)",
+      ? t("handlers.observability.costLikely", {
+          pct: Math.round(cacheHit * 100),
+          input: fmt(inputUsdLikely),
+          output: fmt(outputUsd),
+          total: fmt(inputUsdLikely + outputUsd),
+        })
+      : t("handlers.observability.costLikelyCold"),
   ];
   return { info: lines.join("\n") };
 }

@@ -1,6 +1,7 @@
 import { marked } from "marked";
 import { useState } from "preact/hooks";
 import { html } from "../lib/html.js";
+import { t, useLang } from "../i18n/index.js";
 import {
   escapeHtml,
   hlLine,
@@ -129,6 +130,7 @@ export function parseToolArgs(raw: string | null | undefined): Record<string, un
 }
 
 export function ToolCard({ msg }: ToolCardProps) {
+  useLang();
   const args = parseToolArgs(msg.toolArgs);
   const name = msg.toolName ?? "tool";
   // Reasonix's filesystem tools emit the path in args.path; MCP-bridged
@@ -247,7 +249,7 @@ export function ToolCard({ msg }: ToolCardProps) {
       </div>
       ${
         args
-          ? html`<details class="tool-card-args"><summary>arguments</summary><pre>${escapeHtml(JSON.stringify(args, null, 2))}</pre></details>`
+          ? html`<details class="tool-card-args"><summary>${t("modal.arguments")}</summary><pre>${escapeHtml(JSON.stringify(args, null, 2))}</pre></details>`
           : null
       }
       <pre class="tool-card-output">${msg.text}</pre>
@@ -301,31 +303,33 @@ export function ModalCard({ accent, icon, title, subtitle, children }: ModalCard
 }
 
 export function ShellModal({ modal, onResolve }: { modal: ShellModalSpec; onResolve: OnResolve }) {
+  useLang();
   const isBg = modal.shellKind === "run_background";
   return html`
     <${ModalCard}
       accent="#f87171"
       icon=${isBg ? "⏱" : "⚡"}
-      title=${isBg ? "background process" : "shell command"}
+      title=${isBg ? t("modal.shellBgTitle") : t("modal.shellTitle")}
       subtitle=${
-        isBg ? "long-running — keeps running after approval" : "model wants to run a shell command"
+        isBg ? t("modal.shellBgSubtitle") : t("modal.shellSubtitle")
       }
     >
       <div class="modal-cmd"><span class="modal-cmd-prompt">$</span> <code>${modal.command}</code></div>
       <div class="modal-actions">
-        <button class="primary" onClick=${() => onResolve("shell", "run_once")}>Run once</button>
-        <button onClick=${() => onResolve("shell", "always_allow")}>Always allow "${modal.allowPrefix}"</button>
-        <button class="danger" onClick=${() => onResolve("shell", "deny")}>Deny</button>
+        <button class="primary" onClick=${() => onResolve("shell", "run_once")}>${t("modal.runOnce")}</button>
+        <button onClick=${() => onResolve("shell", "always_allow")}>${t("modal.alwaysAllow", { prefix: modal.allowPrefix ?? "" })}</button>
+        <button class="danger" onClick=${() => onResolve("shell", "deny")}>${t("modal.deny")}</button>
       </div>
     <//>
   `;
 }
 
 export function ChoiceModal({ modal, onResolve }: { modal: ChoiceModalSpec; onResolve: OnResolve }) {
+  useLang();
   const [custom, setCustom] = useState("");
   const [showCustom, setShowCustom] = useState(false);
   return html`
-    <${ModalCard} accent="#f0abfc" icon="🔀" title="model wants you to pick" subtitle=${modal.question}>
+    <${ModalCard} accent="#f0abfc" icon="🔀" title=${t("modal.choiceTitle")} subtitle=${modal.question}>
       ${modal.options.map(
         (opt: ChoiceOption) => html`
         <button
@@ -345,44 +349,45 @@ export function ChoiceModal({ modal, onResolve }: { modal: ChoiceModalSpec; onRe
             ? html`
             <div class="modal-custom">
               <textarea
-                placeholder="Type a free-form answer…"
+                placeholder=${t("modal.typePlaceholder")}
                 rows="2"
                 value=${custom}
                 onInput=${(e: Event) => setCustom((e.target as HTMLTextAreaElement).value)}
               ></textarea>
               <div class="modal-actions">
-                <button class="primary" onClick=${() => onResolve("choice", { kind: "custom", text: custom })} disabled=${!custom.trim()}>Send</button>
+                <button class="primary" onClick=${() => onResolve("choice", { kind: "custom", text: custom })} disabled=${!custom.trim()}>${t("modal.send")}</button>
                 <button onClick=${() => {
                   setShowCustom(false);
                   setCustom("");
-                }}>Back</button>
+                }}>${t("common.back")}</button>
               </div>
             </div>
           `
             : html`
             <button class="modal-choice-row" onClick=${() => setShowCustom(true)}>
               <span class="modal-choice-id">·</span>
-              <span class="modal-choice-title">Type my own answer</span>
-              <span class="modal-choice-summary">None of the above fits — write a free-form reply.</span>
+              <span class="modal-choice-title">${t("modal.typeOwn")}</span>
+              <span class="modal-choice-summary">${t("modal.typeOwnSummary")}</span>
             </button>
           `
           : null
       }
       <button class="modal-choice-row modal-choice-cancel" onClick=${() => onResolve("choice", { kind: "cancel" })}>
         <span class="modal-choice-id">×</span>
-        <span class="modal-choice-title">Cancel</span>
-        <span class="modal-choice-summary">Drop the question. Model will ask what you actually want.</span>
+        <span class="modal-choice-title">${t("modal.cancel")}</span>
+        <span class="modal-choice-summary">${t("modal.cancelSummary")}</span>
       </button>
     <//>
   `;
 }
 
 export function PlanModal({ modal, onResolve }: { modal: PlanModalSpec; onResolve: OnResolve }) {
+  useLang();
   const [feedback, setFeedback] = useState("");
   const [stage, setStage] = useState<"approve" | "refine" | null>(null);
   const send = () => onResolve("plan", stage, feedback);
   return html`
-    <${ModalCard} accent="#67e8f9" icon="◆" title="plan submitted" subtitle="model proposed a plan; review then pick">
+    <${ModalCard} accent="#67e8f9" icon="◆" title=${t("modal.planTitle")} subtitle=${t("modal.planSubtitle")}>
       <div class="md modal-plan-body" dangerouslySetInnerHTML=${{ __html: marked.parse(modal.body || "") }}></div>
       ${
         stage
@@ -390,26 +395,26 @@ export function PlanModal({ modal, onResolve }: { modal: PlanModalSpec; onResolv
           <textarea
             placeholder=${
               stage === "approve"
-                ? "Optional last instructions / answers to open questions (Enter to send blank)"
-                : "What needs to change? Be specific."
+                ? t("modal.approveInstructions")
+                : t("modal.refinePlaceholder")
             }
             rows="3"
             value=${feedback}
             onInput=${(e: Event) => setFeedback((e.target as HTMLTextAreaElement).value)}
           ></textarea>
           <div class="modal-actions">
-            <button class="primary" onClick=${send}>${stage === "approve" ? "Approve" : "Send refinement"}</button>
+            <button class="primary" onClick=${send}>${stage === "approve" ? t("modal.approve") : t("modal.sendRefinement")}</button>
             <button onClick=${() => {
               setStage(null);
               setFeedback("");
-            }}>Back</button>
+            }}>${t("common.back")}</button>
           </div>
         `
           : html`
           <div class="modal-actions">
-            <button class="primary" onClick=${() => setStage("approve")}>Approve</button>
-            <button onClick=${() => setStage("refine")}>Refine</button>
-            <button class="danger" onClick=${() => onResolve("plan", "cancel")}>Cancel</button>
+            <button class="primary" onClick=${() => setStage("approve")}>${t("modal.approve")}</button>
+            <button onClick=${() => setStage("refine")}>${t("modal.refine")}</button>
+            <button class="danger" onClick=${() => onResolve("plan", "cancel")}>${t("modal.cancel")}</button>
           </div>
         `
       }
@@ -489,6 +494,7 @@ function pairDiffRows(diff: DiffEntry[]): DiffPair[] {
 }
 
 export function EditReviewModal({ modal, onResolve }: { modal: EditReviewSpec; onResolve: OnResolve }) {
+  useLang();
   const search = modal.search ?? "";
   const replace = modal.replace ?? "";
   const lang = langFromPath(modal.path);
@@ -500,16 +506,16 @@ export function EditReviewModal({ modal, onResolve }: { modal: EditReviewSpec; o
     <${ModalCard}
       accent="#86efac"
       icon="◆"
-      title="edit pending review"
-      subtitle=${`${modal.path} · ${modal.remaining} of ${modal.total} blocks remaining`}
+      title=${t("modal.editTitle")}
+      subtitle=${t("modal.editSubtitle", { path: modal.path ?? "", remaining: modal.remaining, total: modal.total })}
     >
       <div class="edit-diff-wrap">
         <div class="edit-diff-head">
           <div class="edit-diff-side edit-diff-side-old">
-            <span class="edit-diff-marker">−</span> before
+            <span class="edit-diff-marker">−</span> ${t("modal.before")}
           </div>
           <div class="edit-diff-side edit-diff-side-new">
-            <span class="edit-diff-marker">+</span> after
+            <span class="edit-diff-marker">+</span> ${t("modal.after")}
           </div>
         </div>
         <div class="edit-diff-body">
@@ -542,33 +548,35 @@ export function EditReviewModal({ modal, onResolve }: { modal: EditReviewSpec; o
         </div>
       </div>
       <div class="modal-actions">
-        <button class="primary" onClick=${() => onResolve("edit-review", "apply")}>Apply (y)</button>
-        <button onClick=${() => onResolve("edit-review", "reject")}>Reject (n)</button>
-        <button onClick=${() => onResolve("edit-review", "apply-rest-of-turn")}>Apply rest (a)</button>
-        <button onClick=${() => onResolve("edit-review", "flip-to-auto")}>Flip to AUTO (A)</button>
+        <button class="primary" onClick=${() => onResolve("edit-review", "apply")}>${t("chat.confirmBtn")}</button>
+        <button onClick=${() => onResolve("edit-review", "reject")}>${t("chat.rejectBtn")}</button>
+        <button onClick=${() => onResolve("edit-review", "apply-rest-of-turn")}>${t("chat.applyRestBtn")}</button>
+        <button onClick=${() => onResolve("edit-review", "flip-to-auto")}>${t("chat.flipAutoBtn")}</button>
       </div>
     <//>
   `;
 }
 
 export function WorkspaceModal({ modal, onResolve }: { modal: WorkspaceSpec; onResolve: OnResolve }) {
+  useLang();
   return html`
     <${ModalCard}
       accent="#fbbf24"
       icon="◇"
-      title="model wants to switch workspace"
-      subtitle="every subsequent file / shell / memory tool resolves against the new root"
+      title=${t("modal.workspaceTitle")}
+      subtitle=${t("modal.workspaceSubtitle")}
     >
       <div class="modal-cmd"><span class="modal-cmd-prompt">→</span> <code>${modal.path}</code></div>
       <div class="modal-actions">
-        <button class="primary" onClick=${() => onResolve("workspace", "switch")}>Switch (Enter)</button>
-        <button class="danger" onClick=${() => onResolve("workspace", "deny")}>Deny (Esc)</button>
+        <button class="primary" onClick=${() => onResolve("workspace", "switch")}>${t("modal.switchBtn")}</button>
+        <button class="danger" onClick=${() => onResolve("workspace", "deny")}>${t("modal.denyBtn")}</button>
       </div>
     <//>
   `;
 }
 
 export function CheckpointModal({ modal, onResolve }: { modal: CheckpointSpec; onResolve: OnResolve }) {
+  useLang();
   const [reviseText, setReviseText] = useState("");
   const [staged, setStaged] = useState(false);
   const label = modal.title ? `${modal.stepId} · ${modal.title}` : modal.stepId;
@@ -577,31 +585,31 @@ export function CheckpointModal({ modal, onResolve }: { modal: CheckpointSpec; o
     <${ModalCard}
       accent="#a5f3fc"
       icon="✓"
-      title=${`step complete${counter}`}
+      title=${t("modal.stepComplete", { counter })}
       subtitle=${label}
     >
       ${
         staged
           ? html`
           <textarea
-            placeholder="What needs to change before the next step? Leave blank to just continue."
+            placeholder=${t("modal.revisePlaceholder")}
             rows="3"
             value=${reviseText}
             onInput=${(e: Event) => setReviseText((e.target as HTMLTextAreaElement).value)}
           ></textarea>
           <div class="modal-actions">
-            <button class="primary" onClick=${() => onResolve("checkpoint", "revise", reviseText)}>Send revision</button>
+            <button class="primary" onClick=${() => onResolve("checkpoint", "revise", reviseText)}>${t("modal.sendRevision")}</button>
             <button onClick=${() => {
               setStaged(false);
               setReviseText("");
-            }}>Back</button>
+            }}>${t("common.back")}</button>
           </div>
         `
           : html`
           <div class="modal-actions">
-            <button class="primary" onClick=${() => onResolve("checkpoint", "continue")}>Continue</button>
-            <button onClick=${() => setStaged(true)}>Revise…</button>
-            <button class="danger" onClick=${() => onResolve("checkpoint", "stop")}>Stop</button>
+            <button class="primary" onClick=${() => onResolve("checkpoint", "continue")}>${t("modal.continueBtn")}</button>
+            <button onClick=${() => setStaged(true)}>${t("modal.reviseBtn")}</button>
+            <button class="danger" onClick=${() => onResolve("checkpoint", "stop")}>${t("modal.stopBtn")}</button>
           </div>
         `
       }
@@ -610,13 +618,14 @@ export function CheckpointModal({ modal, onResolve }: { modal: CheckpointSpec; o
 }
 
 export function RevisionModal({ modal, onResolve }: { modal: RevisionSpec; onResolve: OnResolve }) {
+  useLang();
   const riskColor = (r: string | undefined) =>
     r === "high" ? "#f87171" : r === "med" ? "#fbbf24" : r === "low" ? "#86efac" : "#9ca3af";
   return html`
     <${ModalCard}
       accent="#c4b5fd"
       icon="✎"
-      title="model proposed a plan revision"
+      title=${t("modal.revisionTitle")}
       subtitle=${modal.summary || modal.reason}
     >
       <div class="modal-revise-reason">${modal.reason}</div>
@@ -633,8 +642,8 @@ export function RevisionModal({ modal, onResolve }: { modal: RevisionSpec; onRes
         )}
       </ol>
       <div class="modal-actions">
-        <button class="primary" onClick=${() => onResolve("revision", "accept")}>Accept</button>
-        <button class="danger" onClick=${() => onResolve("revision", "reject")}>Reject</button>
+        <button class="primary" onClick=${() => onResolve("revision", "accept")}>${t("modal.accept")}</button>
+        <button class="danger" onClick=${() => onResolve("revision", "reject")}>${t("modal.reject")}</button>
       </div>
     <//>
   `;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { fmtRelativeTime } from "../lib/format.js";
 import { html } from "../lib/html.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface HookHandler {
   command?: string;
@@ -61,6 +62,7 @@ interface HooksData {
 }
 
 export function HooksPanel() {
+  useLang();
   const [data, setData] = useState<HooksData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -99,7 +101,7 @@ export function HooksPanel() {
       try {
         await api("/hooks/save", { method: "POST", body: { scope, hooks: parsed } });
         await api("/hooks/reload", { method: "POST", body: {} });
-        setInfo(`saved + reloaded ${scope}`);
+        setInfo(t("hooks.savedReloaded", { scope }));
         setTimeout(() => setInfo(null), 3000);
         await load();
       } catch (err) {
@@ -112,7 +114,7 @@ export function HooksPanel() {
   );
 
   if (!data && !error)
-    return html`<div class="card" style="color:var(--fg-3)">loading hooks…</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("hooks.loading")}</div>`;
   if (error && !data) return html`<div class="card accent-err">${error}</div>`;
   if (!data) return null;
 
@@ -132,23 +134,22 @@ export function HooksPanel() {
   return html`
     <div style="display:flex;flex-direction:column;gap:6px">
       <div class="chips">
-        <span class="chip-f active">resolved <span class="ct">${data.resolved.length}</span></span>
+        <span class="chip-f active">${t("hooks.resolved")} <span class="ct">${data.resolved.length}</span></span>
         ${data.events.map((ev) => html`<span class="chip-f">${ev}</span>`)}
       </div>
       ${info ? html`<div><span class="pill ok">${info}</span></div>` : null}
       ${error ? html`<div class="card accent-err">${error}</div>` : null}
 
-      ${sectionH3("Event matrix", `${matrixRows.length} script${matrixRows.length === 1 ? "" : "s"} × ${events.length} event${events.length === 1 ? "" : "s"}`)}
-      ${
+      ${sectionH3(t("hooks.eventMatrix"), t("hooks.matrixSub", { scripts: matrixRows.length, s: matrixRows.length === 1 ? "" : "s", events: events.length }))}${
         matrixRows.length === 0
           ? html`<div class="card" style="color:var(--fg-3)">
-              No hooks configured. Edit the JSON below to add some.
+              ${t("hooks.noHooks")}
             </div>`
           : html`
             <div class="card" style="padding:10px 14px;overflow-x:auto">
               <div class="matrix" style=${`min-width:fit-content`}>
                 <div class="row h" style=${`grid-template-columns:${gridCols}`}>
-                  <div>script</div>
+                  <div>${t("hooks.colScript")}</div>
                   ${events.map((ev) => html`<div>${ev}</div>`)}
                 </div>
                 ${matrixRows.map(
@@ -182,8 +183,7 @@ export function HooksPanel() {
           ${
             scope === "project" && !meta.path
               ? html`<div class="card" style="color:var(--fg-3)">
-                  No active project — open <code class="mono">/dashboard</code> from
-                  <code class="mono">reasonix code</code> to edit project hooks.
+                  ${t("hooks.noProject")}
                 </div>`
               : html`
                 <div class="card">
@@ -196,9 +196,9 @@ export function HooksPanel() {
                   ></textarea>
                   <div style="display:flex;gap:6px;margin-top:8px">
                     <button class="btn primary" disabled=${busy} onClick=${() => saveScope(scope)}>
-                      Save + Reload
+                      ${t("hooks.saveReload")}
                     </button>
-                    <button class="btn ghost" disabled=${busy} onClick=${load}>Discard changes</button>
+                    <button class="btn ghost" disabled=${busy} onClick=${load}>${t("hooks.discard")}</button>
                   </div>
                 </div>
               `
@@ -206,21 +206,21 @@ export function HooksPanel() {
         `;
       })}
 
-      ${sectionH3("Recent runs", `${data.recentRuns?.length ?? 0}`)}
+      ${sectionH3(t("hooks.recentRuns"), `${data.recentRuns?.length ?? 0}`)}
       ${
         !data.recentRuns || data.recentRuns.length === 0
           ? html`<div class="card" style="color:var(--fg-3)">
-              No hook runs in the recent session log.
+              ${t("hooks.noRuns")}
             </div>`
           : html`
             <div class="card" style="padding:0;overflow-x:auto">
               <table class="tbl" style="width:100%;font-family:var(--font-mono);font-size:11.5px">
                 <thead>
                   <tr>
-                    <th style="text-align:left;padding:8px 12px">when</th>
-                    <th style="text-align:left;padding:8px 12px">phase</th>
-                    <th style="text-align:left;padding:8px 12px">hook</th>
-                    <th style="text-align:left;padding:8px 12px">outcome</th>
+                    <th style="text-align:left;padding:8px 12px">${t("hooks.colWhen")}</th>
+                    <th style="text-align:left;padding:8px 12px">${t("hooks.colPhase")}</th>
+                    <th style="text-align:left;padding:8px 12px">${t("hooks.colHook")}</th>
+                    <th style="text-align:left;padding:8px 12px">${t("hooks.colOutcome")}</th>
                   </tr>
                 </thead>
                 <tbody>

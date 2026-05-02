@@ -20,6 +20,7 @@ export type ReasoningEffort = "high" | "max";
 export interface ReasonixConfig {
   apiKey?: string;
   baseUrl?: string;
+  lang?: string;
   preset?: PresetName;
   editMode?: EditMode;
   editModeHintShown?: boolean;
@@ -65,6 +66,18 @@ export function writeConfig(cfg: ReasonixConfig, path: string = defaultConfigPat
   } catch {
     /* ignore on platforms without chmod */
   }
+}
+
+/** Resolve the language from config file. */
+export function loadLanguage(path: string = defaultConfigPath()): any {
+  return readConfig(path).lang;
+}
+
+/** Persist the language so it survives a relaunch. */
+export function saveLanguage(lang: string, path: string = defaultConfigPath()): void {
+  const cfg = readConfig(path);
+  cfg.lang = lang;
+  writeConfig(cfg, path);
 }
 
 /** Resolve the API key from env var first, then the config file. */

@@ -1,6 +1,7 @@
 import { fmtCompactNum, fmtNum, fmtRelativeTime, fmtUsd } from "../lib/format.js";
 import { html } from "../lib/html.js";
 import { usePoll } from "../lib/use-poll.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface CockpitKpi {
   total: number;
@@ -78,47 +79,47 @@ function kpi(label: string, value: unknown, delta?: unknown, deltaTone?: "up" | 
 }
 
 function deltaPctText(deltaPct: number | null): { text: string; tone: "up" | "down" | "flat" } {
-  if (deltaPct === null) return { text: "no prior data", tone: "flat" };
-  if (Math.abs(deltaPct) < 1) return { text: "— stable", tone: "flat" };
+  if (deltaPct === null) return { text: t("overview.noPriorData"), tone: "flat" };
+  if (Math.abs(deltaPct) < 1) return { text: t("overview.stable"), tone: "flat" };
   const arrow = deltaPct > 0 ? "▲" : "▼";
   return {
-    text: `${arrow} ${Math.abs(deltaPct).toFixed(0)}% vs prior`,
+    text: t("overview.vsPrior", { arrow, pct: Math.abs(deltaPct).toFixed(0) }),
     tone: deltaPct > 0 ? "up" : "down",
   };
 }
 
 function deltaPpText(deltaPp: number | null): { text: string; tone: "up" | "down" | "flat" } {
-  if (deltaPp === null) return { text: "no prior data", tone: "flat" };
-  if (Math.abs(deltaPp) < 0.5) return { text: "— stable", tone: "flat" };
+  if (deltaPp === null) return { text: t("overview.noPriorData"), tone: "flat" };
+  if (Math.abs(deltaPp) < 0.5) return { text: t("overview.stable"), tone: "flat" };
   const arrow = deltaPp > 0 ? "▲" : "▼";
   return { text: `${arrow} ${Math.abs(deltaPp).toFixed(1)}pp`, tone: deltaPp > 0 ? "up" : "down" };
 }
 
 function deltaCountText(delta: number | null): { text: string; tone: "up" | "down" | "flat" } {
-  if (delta === null || delta === 0) return { text: "— stable", tone: "flat" };
+  if (delta === null || delta === 0) return { text: t("overview.stable"), tone: "flat" };
   const arrow = delta > 0 ? "▲" : "▼";
   return { text: `${arrow} ${Math.abs(delta)}`, tone: delta > 0 ? "up" : "down" };
 }
 
 function balanceKpi(c: CockpitData) {
-  if (!c.balance) return kpi("balance", "—", "open in TUI", "flat");
+  if (!c.balance) return kpi(t("overview.balance"), "—", "open in TUI", "flat");
   const symbol = c.balance.currency === "CNY" ? "¥" : c.balance.currency === "USD" ? "$" : "";
-  return kpi("balance", `${symbol}${c.balance.total}`, c.balance.currency, "flat");
+  return kpi(t("overview.balance"), `${symbol}${c.balance.total}`, c.balance.currency, "flat");
 }
 
 function tokens7dKpi(c: CockpitData) {
-  if (!c.tokens7d) return kpi("tokens · 7d", "—", "no usage yet", "flat");
+  if (!c.tokens7d) return kpi(t("overview.tokens7d"), "—", t("overview.noUsageYet"), "flat");
   const d = deltaPctText(c.tokens7d.deltaPct);
-  return kpi("tokens · 7d", fmtCompactNum(c.tokens7d.total), d.text, d.tone);
+  return kpi(t("overview.tokens7d"), fmtCompactNum(c.tokens7d.total), d.text, d.tone);
 }
 
 function cacheHitKpi(c: CockpitData) {
-  if (!c.cacheHit7d) return kpi("cache hit", "—", "no usage yet", "flat");
+  if (!c.cacheHit7d) return kpi(t("overview.cacheHit"), "—", t("overview.noUsageYet"), "flat");
   const pct = (c.cacheHit7d.ratio * 100).toFixed(0);
   const d = deltaPpText(c.cacheHit7d.deltaPp);
   return html`
     <div class="kpi cock-w-1">
-      <div class="label">cache hit</div>
+      <div class="label">${t("overview.cacheHit")}</div>
       <div class="value">${pct}<span class="unit">%</span></div>
       <div class=${`delta ${d.tone}`}>${d.text}</div>
     </div>
@@ -126,18 +127,18 @@ function cacheHitKpi(c: CockpitData) {
 }
 
 function toolCallsKpi(c: CockpitData) {
-  if (!c.toolCalls24h) return kpi("tool calls · 24h", "—", "no events", "flat");
+  if (!c.toolCalls24h) return kpi(t("overview.toolCalls24h"), "—", t("overview.noToolCalls"), "flat");
   const d = deltaCountText(c.toolCalls24h.delta);
-  return kpi("tool calls · 24h", fmtNum(c.toolCalls24h.total), d.text, d.tone);
+  return kpi(t("overview.toolCalls24h"), fmtNum(c.toolCalls24h.total), d.text, d.tone);
 }
 
 function currentSessionBlock(c: CockpitData) {
   if (!c.currentSession) {
     return html`
       <div class="cock-list cock-w-2">
-        <div class="ch"><span class="ttl">current session</span></div>
+        <div class="ch"><span class="ttl">${t("overview.currentSession")}</span></div>
         <div style="color:var(--fg-3);font-size:12.5px;padding:8px 0">
-          No live session — <code class="mono">/dashboard</code> from inside <code class="mono">reasonix code</code> to attach.
+          ${t("overview.noSession")}
         </div>
       </div>
     `;
@@ -145,14 +146,14 @@ function currentSessionBlock(c: CockpitData) {
   const s = c.currentSession;
   return html`
     <div class="cock-list cock-w-2">
-      <div class="ch"><span class="ttl">current session</span></div>
+      <div class="ch"><span class="ttl">${t("overview.currentSession")}</span></div>
       <div class="card accent-brand" style="margin:0 0 8px;background:transparent;border:none;padding:0">
         <div class="card-h"><span class="glyph">◆</span><span class="title">${s.id}</span><span class="meta">${s.turns} turn${s.turns === 1 ? "" : "s"}</span></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;font-family:var(--font-mono);font-size:11px">
-        <div><span style="color:var(--fg-3)">prompt tok</span><div style="color:var(--fg-0);font-size:13px;font-weight:600">${fmtNum(s.lastPromptTokens)}</div></div>
-        <div><span style="color:var(--fg-3)">completion tok</span><div style="color:var(--fg-0);font-size:13px;font-weight:600">${fmtNum(s.completionTokens)}</div></div>
-        <div><span style="color:var(--fg-3)">cost</span><div style="color:var(--fg-0);font-size:13px;font-weight:600">${fmtUsd(s.totalCostUsd)}</div></div>
+        <div><span style="color:var(--fg-3)">${t("overview.promptTok")}</span><div style="color:var(--fg-0);font-size:13px;font-weight:600">${fmtNum(s.lastPromptTokens)}</div></div>
+        <div><span style="color:var(--fg-3)">${t("overview.completionTok")}</span><div style="color:var(--fg-0);font-size:13px;font-weight:600">${fmtNum(s.completionTokens)}</div></div>
+        <div><span style="color:var(--fg-3)">${t("overview.cost")}</span><div style="color:var(--fg-0);font-size:13px;font-weight:600">${fmtUsd(s.totalCostUsd)}</div></div>
       </div>
     </div>
   `;
@@ -162,8 +163,8 @@ function costTrendSpark(c: CockpitData) {
   if (!c.costTrend14d || c.costTrend14d.length === 0) {
     return html`
       <div class="chart cock-w-2">
-        <div class="chart-h"><span class="title">cost · 14 day</span></div>
-        <div class="chart-v" style="color:var(--fg-4)">—<span class="unit">no usage yet</span></div>
+        <div class="chart-h"><span class="title">${t("overview.costTrend")}</span></div>
+        <div class="chart-v" style="color:var(--fg-4)">—<span class="unit">${t("overview.noUsageYet")}</span></div>
       </div>
     `;
   }
@@ -183,8 +184,8 @@ function costTrendSpark(c: CockpitData) {
   const avg = total / days.length;
   return html`
     <div class="chart cock-w-2">
-      <div class="chart-h"><span class="title">cost · 14 day</span></div>
-      <div class="chart-v">${fmtUsd(avg)}<span class="unit">/day avg</span></div>
+      <div class="chart-h"><span class="title">${t("overview.costTrend")}</span></div>
+      <div class="chart-v">${fmtUsd(avg)}<span class="unit">${t("overview.dayAvg")}</span></div>
       <div class="chart-spark">
         <svg viewBox=${`0 0 ${w} ${h}`} preserveAspectRatio="none">
           <polyline fill="none" stroke="var(--c-brand)" stroke-width="1.5" points=${points} />
@@ -198,10 +199,10 @@ function costTrendSpark(c: CockpitData) {
 function recentPlansRail(c: CockpitData) {
   return html`
     <div class="cock-list cock-w-2">
-      <div class="ch"><span class="ttl">recent plans</span></div>
+      <div class="ch"><span class="ttl">${t("overview.recentPlans")}</span></div>
       ${
         !c.recentPlans || c.recentPlans.length === 0
-          ? html`<div style="color:var(--fg-3);font-size:12.5px;padding:8px 0">No plans yet — submit one with <code class="mono">submit_plan</code>.</div>`
+          ? html`<div style="color:var(--fg-3);font-size:12.5px;padding:8px 0">${t("overview.noPlans")}</div>`
           : c.recentPlans.map(
               (p) => html`
                 <div class=${`rail-step ${p.status === "done" ? "done" : "active"}`}>
@@ -219,10 +220,10 @@ function recentPlansRail(c: CockpitData) {
 function toolActivityFeed(c: CockpitData) {
   return html`
     <div class="cock-list cock-w-2">
-      <div class="ch"><span class="ttl">tool activity</span></div>
+      <div class="ch"><span class="ttl">${t("overview.toolActivity")}</span></div>
       ${
         !c.toolActivity || c.toolActivity.length === 0
-          ? html`<div style="color:var(--fg-3);font-size:12.5px;padding:8px 0">No tool calls yet.</div>`
+          ? html`<div style="color:var(--fg-3);font-size:12.5px;padding:8px 0">${t("overview.noToolCalls")}</div>`
           : c.toolActivity.map(
               (r) => html`
                 <div class=${`feed-row ${r.level}`}>
@@ -238,10 +239,11 @@ function toolActivityFeed(c: CockpitData) {
 }
 
 export function OverviewPanel() {
+  useLang();
   const { data, error, loading } = usePoll<OverviewData>("/overview", 2500);
   if (loading && !data)
-    return html`<div class="card" style="color:var(--fg-3)">loading overview…</div>`;
-  if (error) return html`<div class="card accent-err">overview failed: ${error.message}</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("overview.loading")}</div>`;
+  if (error) return html`<div class="card accent-err">${t("overview.failed", { error: error.message })}</div>`;
   if (!data) return null;
   const o = data;
   const c: CockpitData = o.cockpit ?? {
@@ -256,7 +258,7 @@ export function OverviewPanel() {
   };
   const upToDate = o.latestVersion ? o.latestVersion === o.version : null;
   const versionDelta =
-    upToDate === null ? "checking" : upToDate ? "latest" : `latest: ${o.latestVersion}`;
+    upToDate === null ? t("overview.checking") : upToDate ? t("overview.latest") : `latest: ${o.latestVersion}`;
   const versionTone: "up" | "down" | "flat" = upToDate === false ? "down" : "flat";
 
   return html`
@@ -265,18 +267,17 @@ export function OverviewPanel() {
         o.mode === "standalone"
           ? html`<div class="card accent-warn">
               <div class="card-h">
-                <span class="title" style="color:var(--c-warn)">Standalone mode</span>
+                <span class="title" style="color:var(--c-warn)">${t("overview.standaloneTitle")}</span>
               </div>
               <div class="card-b">
-                Read-only disk view. Start <code class="mono">/dashboard</code> from inside
-                <code class="mono">reasonix code</code> for live session state, MCP, and tools.
+                ${t("overview.standaloneDesc")}
               </div>
             </div>`
           : null
       }
 
       <h3 style="margin:0;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
-        Cockpit
+        ${t("overview.cockpit")}
       </h3>
       <div class="cockpit">
         ${balanceKpi(c)}
@@ -290,17 +291,17 @@ export function OverviewPanel() {
         ${recentPlansRail(c)}
         ${toolActivityFeed(c)}
 
-        ${kpi("tools loaded", fmtNum(o.toolCount), o.toolCount ? "active" : "—", "flat")}
-        ${kpi("mcp servers", fmtNum(o.mcpServerCount), o.mcpServerCount ? "all up" : "—", o.mcpServerCount ? "up" : "flat")}
-        ${kpi("edit mode", o.editMode ?? "—", o.editMode === "yolo" ? "all prompts bypassed" : null, o.editMode === "yolo" ? "down" : "flat")}
-        ${kpi("Reasonix", o.version ?? "—", versionDelta, versionTone)}
+        ${kpi(t("overview.toolsLoaded"), fmtNum(o.toolCount), o.toolCount ? t("overview.active") : "—", "flat")}
+        ${kpi(t("overview.mcpServers"), fmtNum(o.mcpServerCount), o.mcpServerCount ? t("overview.allUp") : "—", o.mcpServerCount ? "up" : "flat")}
+        ${kpi(t("overview.editMode"), o.editMode ?? "—", o.editMode === "yolo" ? t("overview.yoloWarning") : null, o.editMode === "yolo" ? "down" : "flat")}
+        ${kpi(t("overview.version"), o.version ?? "—", versionDelta, versionTone)}
       </div>
 
       <h3 style="margin:0;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
-        Working directory
+        ${t("overview.workingDir")}
       </h3>
       <div class="card">
-        <div class="card-h"><span class="title">project root</span></div>
+        <div class="card-h"><span class="title">${t("overview.projectRoot")}</span></div>
         <code class="mono" style="color:var(--fg-2);font-size:12px">${o.cwd ?? "—"}</code>
       </div>
     </div>

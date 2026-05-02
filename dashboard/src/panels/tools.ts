@@ -1,5 +1,6 @@
 import { html } from "../lib/html.js";
 import { usePoll } from "../lib/use-poll.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface ToolEntry {
   name: string;
@@ -21,47 +22,48 @@ interface ToolsError {
 }
 
 export function ToolsPanel() {
+  useLang();
   const { data, error, loading } = usePoll<ToolsData>("/tools", 4000);
   if (loading && !data)
-    return html`<div class="card" style="color:var(--fg-3)">loading tools…</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("tools.loading")}</div>`;
   const e = error as ToolsError | null;
   if (e?.status === 503) {
-    return html`<div class="card accent-warn">${e.body?.error ?? "live tools view requires an attached session"}</div>`;
+    return html`<div class="card accent-warn">${e.body?.error ?? t("common.loadingFailed", { name: "tools", error: "" })}</div>`;
   }
-  if (e) return html`<div class="card accent-err">tools failed: ${e.message}</div>`;
+  if (e) return html`<div class="card accent-err">${t("common.loadingFailed", { name: "tools", error: e.message })}</div>`;
   if (!data) return null;
-  const t = data;
+  const d = data;
 
   return html`
     <div style="display:flex;flex-direction:column;gap:14px">
       <div class="chips">
-        <span class="chip-f active">all <span class="ct">${t.total}</span></span>
-        ${t.planMode ? html`<span class="chip-f" style="border-color:var(--c-warn);color:var(--c-warn)">plan mode — writes gated</span>` : null}
+        <span class="chip-f active">${t("common.all")} <span class="ct">${d.total}</span></span>
+        ${d.planMode ? html`<span class="chip-f" style="border-color:var(--c-warn);color:var(--c-warn)">${t("tools.planMode")}</span>` : null}
       </div>
 
       ${
-        t.tools.length === 0
-          ? html`<div class="card" style="color:var(--fg-3)">No tools registered.</div>`
+        d.tools.length === 0
+          ? html`<div class="card" style="color:var(--fg-3)">${t("tools.noTools")}</div>`
           : html`
             <div class="card" style="padding:0;overflow:hidden">
               <table class="tbl">
                 <thead>
                   <tr>
-                    <th>tool</th>
-                    <th>flags</th>
-                    <th>description</th>
+                    <th>${t("tools.colTool")}</th>
+                    <th>${t("tools.colFlags")}</th>
+                    <th>${t("tools.colDesc")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${t.tools.map(
+                  ${d.tools.map(
                     (tool) => html`
                       <tr>
                         <td><code class="mono">${tool.name}</code></td>
                         <td>
                           ${tool.readOnly
-                            ? html`<span class="pill ok">read-only</span>`
-                            : html`<span class="pill acc">write</span>`}
-                          ${tool.flattened ? html` <span class="pill">flat</span>` : null}
+                            ? html`<span class="pill ok">${t("tools.readOnly")}</span>`
+                            : html`<span class="pill acc">${t("tools.write")}</span>`}
+                          ${tool.flattened ? html` <span class="pill">${t("tools.flat")}</span>` : null}
                         </td>
                         <td class="dim">${tool.description ?? ""}</td>
                       </tr>

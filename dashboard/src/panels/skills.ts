@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { html } from "../lib/html.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface SkillEntry {
   name: string;
@@ -18,6 +19,7 @@ interface SkillsData {
 type Scope = "project" | "global" | "builtin";
 
 export function SkillsPanel() {
+  useLang();
   const [data, setData] = useState<SkillsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<{ scope: Scope; name: string } | null>(null);
@@ -64,7 +66,7 @@ export function SkillsPanel() {
         method: "POST",
         body: { body },
       });
-      setInfo(`saved ${open.scope}/${open.name}`);
+      setInfo(t("skills.saved", { scope: open.scope, name: open.name }));
       setTimeout(() => setInfo(null), 3000);
       await load();
     } catch (err) {
@@ -76,7 +78,7 @@ export function SkillsPanel() {
 
   const remove = useCallback(async () => {
     if (!open) return;
-    if (!confirm(`Delete skill ${open.scope}/${open.name}?`)) return;
+    if (!confirm(t("skills.deleteConfirm", { scope: open.scope, name: open.name }))) return;
     setBusy(true);
     try {
       await api(`/skills/${open.scope}/${encodeURIComponent(open.name)}`, { method: "DELETE" });
@@ -109,7 +111,7 @@ export function SkillsPanel() {
   }, [newName, newScope, load, openSkill]);
 
   if (!data && !error)
-    return html`<div class="card" style="color:var(--fg-3)">loading skills…</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("skills.loading")}</div>`;
   if (error && !data) return html`<div class="card accent-err">${error}</div>`;
   if (!data) return null;
 
@@ -132,17 +134,17 @@ export function SkillsPanel() {
         <div class="ssl-h">
           <input
             type="text"
-            placeholder="filter skills"
+            placeholder=${t("skills.filterPlaceholder")}
             value=${filter}
             onInput=${(e: Event) => setFilter((e.target as HTMLInputElement).value)}
             style="flex:1"
           />
         </div>
         <div class="chips" style="padding:0 12px 8px">
-          <span class="chip-f active">all <span class="ct">${allWith.length}</span></span>
-          <span class="chip-f">project <span class="ct">${data.project.length}</span></span>
-          <span class="chip-f">global <span class="ct">${data.global.length}</span></span>
-          <span class="chip-f">builtin <span class="ct">${data.builtin.length}</span></span>
+          <span class="chip-f active">${t("common.all")} <span class="ct">${allWith.length}</span></span>
+          <span class="chip-f">${t("skills.project")} <span class="ct">${data.project.length}</span></span>
+          <span class="chip-f">${t("skills.global")} <span class="ct">${data.global.length}</span></span>
+          <span class="chip-f">${t("skills.builtin")} <span class="ct">${data.builtin.length}</span></span>
         </div>
 
         <div style="padding:0 12px 8px;display:flex;gap:6px;flex-wrap:wrap">
@@ -151,12 +153,12 @@ export function SkillsPanel() {
             onChange=${(e: Event) => setNewScope((e.target as HTMLSelectElement).value as "global" | "project")}
             style="flex:0 0 auto;font-size:11.5px;padding:5px 6px"
           >
-            <option value="global">global</option>
-            ${data.paths.project ? html`<option value="project">project</option>` : null}
+            <option value="global">${t("skills.global")}</option>
+            ${data.paths.project ? html`<option value="project">${t("skills.project")}</option>` : null}
           </select>
           <input
             type="text"
-            placeholder="new skill"
+            placeholder=${t("skills.newSkill")}
             value=${newName}
             onInput=${(e: Event) => setNewName((e.target as HTMLInputElement).value)}
             style="flex:1;min-width:0"
@@ -174,13 +176,13 @@ export function SkillsPanel() {
               >
                 <span class="name">
                   ${s.name}
-                  ${s.scope === "builtin" ? html`<span class="pill">builtin</span>` : null}
+                  ${s.scope === "builtin" ? html`<span class="pill">${t("skills.builtin")}</span>` : null}
                 </span>
-                <span class="preview">${s.description ?? "(no description)"}</span>
+                <span class="preview">${s.description ?? t("skills.noDescription")}</span>
                 <span class="meta">
                   ${
                     typeof s.runs7d === "number" && s.runs7d > 0
-                      ? html`<span><span class="v">${s.runs7d}</span> runs · 7d</span>`
+                      ? html`<span><span class="v">${s.runs7d}</span> ${t("skills.runs7d")}</span>`
                       : null
                   }
                   <span class="dim">${s.scope}</span>
@@ -195,7 +197,7 @@ export function SkillsPanel() {
         ${
           open == null
             ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
-                Pick a skill on the left, or create a new one above.
+                ${t("skills.pickHint")}
               </div>`
             : open.scope === "builtin"
               ? (() => {
@@ -203,16 +205,16 @@ export function SkillsPanel() {
                   return html`
                     <div class="sessions-detail-h">
                       <span class="name">${open.scope}/${open.name}</span>
-                      <span class="ws"><span class="pill">read-only · builtin</span></span>
+                      <span class="ws"><span class="pill">${t("skills.readOnlyBuiltin")}</span></span>
                       <span class="actions">
-                        <button class="btn ghost" onClick=${() => setOpen(null)}>← back</button>
+                        <button class="btn ghost" onClick=${() => setOpen(null)}>${t("common.back")}</button>
                       </span>
                     </div>
                     <div style="color:var(--fg-2);font-size:13px;line-height:1.6">
-                      ${builtin?.description ?? "(no description)"}
+                      ${builtin?.description ?? t("skills.noDescription")}
                     </div>
                     <div style="margin-top:14px;color:var(--fg-3);font-size:11.5px">
-                      Built-in skills ship with Reasonix; the model picks them up automatically. To customize, create a project- or global-scoped skill with the same name.
+                      ${t("skills.builtinDesc")}
                     </div>
                   `;
                 })()
@@ -221,10 +223,10 @@ export function SkillsPanel() {
                   <span class="name">${open.scope}/${open.name}</span>
                   <span class="ws">${body.length.toLocaleString()} chars</span>
                   <span class="actions">
-                    <button class="btn primary" disabled=${busy} onClick=${save}>Save</button>
+                    <button class="btn primary" disabled=${busy} onClick=${save}>${t("common.save")}</button>
                     <button class="btn" disabled=${busy} onClick=${remove}
-                      style="border-color:var(--c-err);color:var(--c-err)">Delete</button>
-                    <button class="btn ghost" onClick=${() => setOpen(null)}>← back</button>
+                      style="border-color:var(--c-err);color:var(--c-err)">${t("common.delete")}</button>
+                    <button class="btn ghost" onClick=${() => setOpen(null)}>${t("common.back")}</button>
                   </span>
                 </div>
                 ${info ? html`<div style="margin-bottom:8px"><span class="pill ok">${info}</span></div>` : null}
@@ -236,7 +238,7 @@ export function SkillsPanel() {
                   disabled=${busy}
                 ></textarea>
                 <div style="margin-top:8px;color:var(--fg-3);font-size:11.5px">
-                  re-loaded on next <code class="mono">/new</code> or session restart
+                  ${t("skills.reloadHint")}
                 </div>
               `
         }

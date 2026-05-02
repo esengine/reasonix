@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { fmtNum, fmtPct, fmtUsd } from "../lib/format.js";
 import { html } from "../lib/html.js";
 import { usePoll } from "../lib/use-poll.js";
+import { t, useLang } from "../i18n/index.js";
 
 type UPlotInstance = {
   destroy(): void;
@@ -132,6 +133,7 @@ interface UsageSummary {
 }
 
 export function UsagePanel() {
+  useLang();
   const { data: summary, error, loading } = usePoll<UsageSummary>("/usage", 5000);
   const [series, setSeries] = useState<UsageDay[] | null>(null);
 
@@ -145,7 +147,7 @@ export function UsagePanel() {
         /* keep null; chart hides */
       }
     })();
-    const t = setInterval(async () => {
+    const interval = setInterval(async () => {
       try {
         const s = await api<{ days?: UsageDay[] }>("/usage/series");
         if (!cancelled) setSeries(s.days ?? []);
@@ -155,13 +157,13 @@ export function UsagePanel() {
     }, 30_000);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      clearInterval(interval);
     };
   }, []);
 
   if (loading && !summary)
-    return html`<div class="card" style="color:var(--fg-3)">loading usage…</div>`;
-  if (error) return html`<div class="card accent-err">usage failed: ${error.message}</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("usage.loading")}</div>`;
+  if (error) return html`<div class="card accent-err">${t("common.loadingFailed", { name: "usage", error: error.message })}</div>`;
   if (!summary) return null;
   const u = summary;
 
@@ -172,7 +174,7 @@ export function UsagePanel() {
   return html`
     <div style="display:flex;flex-direction:column;gap:6px">
       <div class="chips">
-        <span class="chip-f active">${u.recordCount.toLocaleString()} records</span>
+        <span class="chip-f active">${t("usage.records", { count: u.recordCount.toLocaleString() })}</span>
         <span class="chip-f">${u.logSize}</span>
       </div>
 
@@ -181,8 +183,8 @@ export function UsagePanel() {
           ? html`
             <div class="card" style="padding:18px">
               <div class="card-h">
-                <span class="title">Daily usage</span>
-                <span class="meta">cost · cache saved · turns</span>
+                <span class="title">${t("usage.dailyUsage")}</span>
+                <span class="meta">${t("usage.dailyMeta")}</span>
               </div>
               <${UsageChart} days=${series} />
             </div>
@@ -193,22 +195,21 @@ export function UsagePanel() {
       ${
         u.recordCount === 0
           ? html`<div class="card" style="color:var(--fg-3);margin-top:8px">
-              No usage data yet — run a turn in <code class="mono">reasonix chat</code> /
-              <code class="mono">code</code> / <code class="mono">run</code> and refresh.
+              ${t("usage.noData")}
             </div>`
           : html`
-              ${sectionH3("Rolling windows")}
+              ${sectionH3(t("usage.windows"))}
               <div class="card" style="padding:0;overflow:hidden">
                 <table class="tbl">
                   <thead>
                     <tr>
                       <th></th>
-                      <th>turns</th>
-                      <th>cache hit</th>
-                      <th>cost (USD)</th>
-                      <th>cache saved</th>
-                      <th>vs Claude</th>
-                      <th>saved</th>
+                      <th>${t("usage.colTurns")}</th>
+                      <th>${t("usage.colCacheHit")}</th>
+                      <th>${t("usage.colCost")}</th>
+                      <th>${t("usage.colCacheSaved")}</th>
+                      <th>${t("usage.colVsClaude")}</th>
+                      <th>${t("usage.colSaved")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -240,13 +241,13 @@ export function UsagePanel() {
       ${
         u.byModel.length > 0
           ? html`
-              ${sectionH3("Most used models")}
+              ${sectionH3(t("usage.mostUsed"))}
               <div class="card" style="padding:0;overflow:hidden">
                 <table class="tbl">
                   <thead>
                     <tr>
-                      <th>model</th>
-                      <th>turns</th>
+                      <th>${t("usage.colModel")}</th>
+                      <th>${t("usage.colTurns")}</th>
                     </tr>
                   </thead>
                   <tbody>

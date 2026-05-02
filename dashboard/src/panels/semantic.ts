@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { fmtBytes, fmtNum, fmtRelativeTime } from "../lib/format.js";
 import { html } from "../lib/html.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface SemanticData {
   attached?: boolean;
@@ -50,6 +51,7 @@ interface SemanticJob {
 }
 
 export function SemanticPanel() {
+  useLang();
   const [data, setData] = useState<SemanticData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -81,7 +83,7 @@ export function SemanticPanel() {
       setInfo(null);
       try {
         await api("/semantic/start", { method: "POST", body: { rebuild: !!rebuild } });
-        setInfo(rebuild ? "rebuild started" : "incremental index started");
+        setInfo(rebuild ? t("semantic.rebuildStarted") : t("semantic.incrementalStarted"));
         await load();
       } catch (err) {
         setError((err as Error).message);
@@ -97,7 +99,7 @@ export function SemanticPanel() {
     setError(null);
     try {
       await api("/semantic/stop", { method: "POST", body: {} });
-      setInfo("stopping requested — current chunk batch will finish first");
+      setInfo(t("semantic.stopRequested"));
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -109,11 +111,11 @@ export function SemanticPanel() {
   const startDaemon = useCallback(async () => {
     setBusy(true);
     setError(null);
-    setInfo("starting ollama daemon (15s timeout)…");
+    setInfo(t("semantic.startingDaemon"));
     try {
       const r = await api<{ ready: boolean }>("/semantic/ollama/start", { method: "POST", body: {} });
       setInfo(
-        r.ready ? "daemon is up" : "daemon didn't come up in time — check `ollama serve` manually",
+        r.ready ? t("semantic.daemonUp") : t("semantic.daemonTimeout"),
       );
       await load();
     } catch (err) {
@@ -127,7 +129,7 @@ export function SemanticPanel() {
     async (model: string) => {
       setBusy(true);
       setError(null);
-      setInfo(`pulling ${model} — this may take a few minutes on first install`);
+      setInfo(t("semantic.pullingModel", { model }));
       try {
         await api("/semantic/ollama/pull", { method: "POST", body: { model } });
         await load();
@@ -141,14 +143,14 @@ export function SemanticPanel() {
   );
 
   if (!data && !error)
-    return html`<div class="card" style="color:var(--fg-3)">loading semantic status…</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("common.loading")}</div>`;
   if (error && !data) return html`<div class="card accent-err">${error}</div>`;
   if (!data) return null;
 
   if (!data.attached) {
     return html`
       <div class="card" style="color:var(--fg-3)">
-        <div class="card-h"><span class="title">Semantic — code-mode required</span></div>
+        <div class="card-h"><span class="title">${t("semantic.codeRequired")}</span></div>
         <div class="card-b">${data.reason}</div>
       </div>
     `;
@@ -178,12 +180,12 @@ export function SemanticPanel() {
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
         <div class="chips">
           <span class=${`chip-f ${idx?.exists ? "active" : ""}`}>
-            ${idx?.exists ? "index built" : "no index yet"}
+            ${idx?.exists ? t("semantic.indexBuilt") : t("semantic.noIndex")}
           </span>
           ${
             ready
-              ? html`<span class="chip-f" style="border-color:var(--c-ok);color:var(--c-ok)">ready</span>`
-              : html`<span class="chip-f" style="border-color:var(--c-warn);color:var(--c-warn)">setup needed</span>`
+              ? html`<span class="chip-f" style="border-color:var(--c-ok);color:var(--c-ok)">${t("semantic.ready")}</span>`
+              : html`<span class="chip-f" style="border-color:var(--c-warn);color:var(--c-warn)">${t("semantic.setupNeeded")}</span>`
           }
         </div>
         ${info ? html`<div><span class="pill info">${info}</span></div>` : null}
@@ -195,14 +197,14 @@ export function SemanticPanel() {
           !binaryFound
             ? html`
               <div class="card">
-                <div class="card-h"><span class="title">Install Ollama</span></div>
+                <div class="card-h"><span class="title">${t("semantic.installOllama")}</span></div>
                 <div class="card-b" style="font-size:13px">
-                  Reasonix doesn't run package managers for you. Install Ollama first, then come back:
+                  ${t("semantic.installOllamaDesc")}
                   <ul style="margin:10px 0 4px 18px;padding:0">
-                    <li><strong>macOS / Windows:</strong> download from <a href="https://ollama.com/download" target="_blank" rel="noreferrer">ollama.com/download</a></li>
-                    <li><strong>Linux:</strong> <code class="mono">curl -fsSL https://ollama.com/install.sh | sh</code></li>
+                    <li><strong>${t("semantic.macWindows")}</strong> ${t("semantic.download")} <a href="https://ollama.com/download" target="_blank" rel="noreferrer">ollama.com/download</a></li>
+                    <li><strong>${t("semantic.linux")}</strong> <code class="mono">curl -fsSL https://ollama.com/install.sh | sh</code></li>
                   </ul>
-                  <div style="color:var(--fg-3);margin-top:8px">Refresh after install — this panel will offer to start the daemon and pull <code class="mono">${modelName}</code>.</div>
+                  <div style="color:var(--fg-3);margin-top:8px">${t("semantic.refreshHint", { model: modelName })}</div>
                 </div>
               </div>
             `
@@ -212,12 +214,12 @@ export function SemanticPanel() {
           binaryFound && !daemonRunning
             ? html`
               <div class="card">
-                <div class="card-h"><span class="title">Daemon</span></div>
+                <div class="card-h"><span class="title">${t("semantic.daemon")}</span></div>
                 <div class="card-b" style="font-size:13px">
-                  <code class="mono">ollama</code> is on your PATH but the HTTP daemon isn't reachable.
+                  ${t("semantic.daemonDesc")}
                   <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
-                    <button class="primary" disabled=${busy} onClick=${startDaemon}>Start daemon</button>
-                    <span style="color:var(--fg-3);font-size:12px">runs <code class="mono">ollama serve</code> detached</span>
+                    <button class="primary" disabled=${busy} onClick=${startDaemon}>${t("semantic.startDaemon")}</button>
+                    <span style="color:var(--fg-3);font-size:12px">${t("semantic.runsOllama")}</span>
                   </div>
                 </div>
               </div>
@@ -228,12 +230,12 @@ export function SemanticPanel() {
           daemonRunning && !modelPulled
             ? html`
               <div class="card">
-                <div class="card-h"><span class="title">Model</span></div>
+                <div class="card-h"><span class="title">${t("semantic.model")}</span></div>
                 <div class="card-b" style="font-size:13px">
-                  <code class="mono">${modelName}</code> isn't installed yet.${pulling ? "" : " ~270 MB on first pull."}
+                  ${t("semantic.modelMissing", { model: modelName })}${pulling ? "" : ` ${t("semantic.modelSize")}`}
                   <div style="display:flex;gap:8px;margin-top:10px">
                     <button class="primary" disabled=${busy || pulling} onClick=${() => pullModel(modelName)}>
-                      ${pulling ? "pulling…" : `Pull ${modelName}`}
+                      ${pulling ? t("semantic.pulling") : t("semantic.pullModel", { model: modelName })}
                     </button>
                   </div>
                   ${
@@ -256,7 +258,7 @@ export function SemanticPanel() {
         ${
           job
             ? html`
-              ${sectionH3("Job")}
+              ${sectionH3(t("semantic.job"))}
               <${SemanticJobView} job=${job} running=${running} />
             `
             : null
@@ -266,55 +268,55 @@ export function SemanticPanel() {
       <aside style="display:flex;flex-direction:column;gap:10px">
         <div class="card">
           <div class="card-h">
-            <span class="title">index status</span>
+            <span class="title">${t("semantic.indexStatus")}</span>
             <span class="meta">
               ${
                 idx?.exists
-                  ? html`<span class="pill ok">● built</span>`
-                  : html`<span class="pill">none</span>`
+                  ? html`<span class="pill ok">${t("semantic.builtStatus")}</span>`
+                  : html`<span class="pill">${t("system.none")}</span>`
               }
             </span>
           </div>
           ${
             idx?.exists
               ? html`
-                <div class="rail-kv"><span class="k">chunks</span><span class="v">${fmtNum(idx.chunks)}</span></div>
-                <div class="rail-kv"><span class="k">files</span><span class="v">${fmtNum(idx.files)}</span></div>
-                <div class="rail-kv"><span class="k">model</span><span class="v" style="font-size:11px">${idx.model ?? modelName}</span></div>
-                <div class="rail-kv"><span class="k">dim</span><span class="v">${fmtNum(idx.dim)}</span></div>
-                <div class="rail-kv"><span class="k">size</span><span class="v">${fmtBytes(idx.sizeBytes)}</span></div>
-                <div class="rail-kv"><span class="k">last build</span><span class="v">${fmtRelativeTime(idx.lastBuiltMs ?? null)}</span></div>
+                <div class="rail-kv"><span class="k">${t("semantic.chunks")}</span><span class="v">${fmtNum(idx.chunks)}</span></div>
+                <div class="rail-kv"><span class="k">${t("semantic.files")}</span><span class="v">${fmtNum(idx.files)}</span></div>
+                <div class="rail-kv"><span class="k">${t("semantic.model")}</span><span class="v" style="font-size:11px">${idx.model ?? modelName}</span></div>
+                <div class="rail-kv"><span class="k">${t("semantic.dim")}</span><span class="v">${fmtNum(idx.dim)}</span></div>
+                <div class="rail-kv"><span class="k">${t("semantic.size")}</span><span class="v">${fmtBytes(idx.sizeBytes)}</span></div>
+                <div class="rail-kv"><span class="k">${t("semantic.lastBuild")}</span><span class="v">${fmtRelativeTime(idx.lastBuiltMs ?? null)}</span></div>
               `
               : html`
                 <div style="color:var(--fg-3);font-size:12.5px;padding:6px 0">
-                  Run an index to enable <code class="mono">semantic_search</code>.
+                  ${t("semantic.runIndexHint")}
                 </div>
               `
           }
           <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
-            <button class="primary" disabled=${busy || running || !ready} onClick=${() => start(false)}>${idx?.exists ? "Re-index" : "Build"}</button>
+            <button class="primary" disabled=${busy || running || !ready} onClick=${() => start(false)}>${idx?.exists ? t("semantic.reIndex") : t("semantic.build")}</button>
             ${
               idx?.exists
-                ? html`<button disabled=${busy || running || !ready} onClick=${() => start(true)}>Rebuild</button>`
+                ? html`<button disabled=${busy || running || !ready} onClick=${() => start(true)}>${t("semantic.rebuild")}</button>`
                 : null
             }
-            ${running ? html`<button onClick=${stop} style="border-color:var(--c-err);color:var(--c-err)">Stop</button>` : null}
+            ${running ? html`<button onClick=${stop} style="border-color:var(--c-err);color:var(--c-err)">${t("semantic.stop")}</button>` : null}
           </div>
         </div>
 
         <div class="card">
-          <div class="card-h"><span class="title">ollama</span></div>
+          <div class="card-h"><span class="title">${t("semantic.ollama")}</span></div>
           <div class="rail-kv">
-            <span class="k">binary</span>
-            <span class="v">${binaryFound ? html`<span class="pill ok">found</span>` : html`<span class="pill err">missing</span>`}</span>
+            <span class="k">${t("semantic.binary")}</span>
+            <span class="v">${binaryFound ? html`<span class="pill ok">${t("semantic.found")}</span>` : html`<span class="pill err">${t("semantic.missing")}</span>`}</span>
           </div>
           <div class="rail-kv">
-            <span class="k">daemon</span>
-            <span class="v">${daemonRunning ? html`<span class="pill ok">up</span>` : html`<span class="pill warn">down</span>`}</span>
+            <span class="k">${t("semantic.daemonStatus")}</span>
+            <span class="v">${daemonRunning ? html`<span class="pill ok">${t("semantic.up")}</span>` : html`<span class="pill warn">${t("semantic.down")}</span>`}</span>
           </div>
           <div class="rail-kv">
-            <span class="k">model</span>
-            <span class="v">${modelPulled ? html`<span class="pill ok">pulled</span>` : html`<span class="pill warn">missing</span>`}</span>
+            <span class="k">${t("semantic.model")}</span>
+            <span class="v">${modelPulled ? html`<span class="pill ok">${t("semantic.pulled")}</span>` : html`<span class="pill warn">${t("semantic.missing")}</span>`}</span>
           </div>
         </div>
 
@@ -369,6 +371,7 @@ interface SearchResponse {
 }
 
 function SemanticSearchSection() {
+  useLang();
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [meta, setMeta] = useState<{ elapsedMs: number; model: string } | null>(null);
@@ -403,7 +406,7 @@ function SemanticSearchSection() {
           type="text"
           class="mono"
           style="width:100%;padding:10px 14px 10px 38px;font-size:13.5px;background:var(--bg-input);border:1px solid var(--bd);border-radius:var(--r);color:var(--fg-0);outline:none"
-          placeholder="describe what to find — 'where do we handle abort signals'"
+          placeholder=${t("semantic.searchPlaceholder")}
           value=${query}
           disabled=${busy}
           onInput=${(e: Event) => setQuery((e.target as HTMLInputElement).value)}
@@ -420,11 +423,11 @@ function SemanticSearchSection() {
           ? html`
             <div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin:8px 0 6px;display:flex;align-items:center;gap:8px">
               ${busy
-                ? html`<span>searching…</span>`
+                ? html`<span>${t("semantic.searching")}</span>`
                 : error
                 ? html`<span style="color:var(--c-err)">${error}</span>`
                 : hits
-                ? html`<span>${hits.length} result${hits.length === 1 ? "" : "s"} · ${meta?.elapsedMs ?? 0}ms · ${meta?.model ?? ""}</span>`
+                ? html`<span>${t("semantic.results", { count: hits.length, s: hits.length === 1 ? "" : "s", ms: meta?.elapsedMs ?? 0, model: meta?.model ?? "" })}</span>`
                 : null}
             </div>
             ${
@@ -446,7 +449,7 @@ function SemanticSearchSection() {
                   </div>
                 `
                 : hits && hits.length === 0 && !busy
-                ? html`<div class="card" style="color:var(--fg-3);font-size:12px">No matches above the score threshold.</div>`
+                ? html`<div class="card" style="color:var(--fg-3);font-size:12px">${t("semantic.noMatches")}</div>`
                 : null
             }
           `
@@ -485,6 +488,7 @@ function fromDraft(d: ExcludeDraft): IndexConfig {
 }
 
 function SemanticExcludesCard() {
+  useLang();
   const [data, setData] = useState<IndexConfigResponse | null>(null);
   const [draft, setDraft] = useState<ExcludeDraft | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
@@ -522,7 +526,7 @@ function SemanticExcludesCard() {
         method: "POST",
         body: payload,
       });
-      setInfo(`saved · ${r.changed.length || 0} fields updated · re-run index to apply`);
+      setInfo(t("semantic.savedConfig", { count: r.changed.length || 0 }));
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -535,7 +539,7 @@ function SemanticExcludesCard() {
     if (!draft) return;
     setBusy(true);
     setError(null);
-    setInfo("running dry walk against project root…");
+    setInfo(t("semantic.runningPreview"));
     try {
       const payload = fromDraft(draft);
       const r = await api<PreviewData>("/index-config/preview", {
@@ -555,8 +559,8 @@ function SemanticExcludesCard() {
   if (!draft) {
     return html`
       <div class="card">
-        <div class="card-h"><span class="title">index config</span></div>
-        <div style="color:var(--fg-3);font-size:12.5px">loading…</div>
+        <div class="card-h"><span class="title">${t("semantic.indexConfig")}</span></div>
+        <div style="color:var(--fg-3);font-size:12.5px">${t("common.loading")}</div>
       </div>
     `;
   }
@@ -564,39 +568,39 @@ function SemanticExcludesCard() {
   return html`
     <div class="card">
       <div class="card-h">
-        <span class="title">index config</span>
+        <span class="title">${t("semantic.indexConfig")}</span>
         <span class="meta">
           <a
             class="mono"
             style="color:var(--c-brand);text-decoration:none;font-size:11px;cursor:pointer"
             onClick=${reset}
-          >reset</a>
+          >${t("semantic.reset")}</a>
         </span>
       </div>
       ${info ? html`<div style="margin-bottom:8px"><span class="pill ok">${info}</span></div>` : null}
       ${error ? html`<div class="card accent-err" style="margin-bottom:8px">${error}</div>` : null}
 
       <${ChipFormRow}
-        label="exclude dirs"
+        label=${t("semantic.excludeDirs")}
         value=${draft.excludeDirs}
         onChange=${(v: string[]) => setDraft({ ...draft, excludeDirs: v })}
         placeholder="dist"
       />
       <${ChipFormRow}
-        label="exclude files"
+        label=${t("semantic.excludeFiles")}
         value=${draft.excludeFiles}
         onChange=${(v: string[]) => setDraft({ ...draft, excludeFiles: v })}
         placeholder="package-lock.json"
       />
       <${ChipFormRow}
-        label="exclude exts"
+        label=${t("semantic.excludeExts")}
         value=${draft.excludeExts}
         onChange=${(v: string[]) => setDraft({ ...draft, excludeExts: v })}
         placeholder=".lock"
       />
       <${ChipFormRow}
-        label="exclude patterns"
-        sub="glob"
+        label=${t("semantic.excludePatterns")}
+        sub=${t("semantic.glob")}
         value=${draft.excludePatterns}
         onChange=${(v: string[]) => setDraft({ ...draft, excludePatterns: v })}
         placeholder="**/*.test.ts"
@@ -608,11 +612,11 @@ function SemanticExcludesCard() {
         onClick=${() => setDraft({ ...draft, respectGitignore: !draft.respectGitignore })}
       >
         <span class=${`box ${draft.respectGitignore ? "on" : ""}`}>${draft.respectGitignore ? "✓" : ""}</span>
-        <span>respect <code class="mono">.gitignore</code></span>
+        <span>${t("semantic.respectGitignore")}</span>
       </div>
 
       <div class="form-row" style="margin-top:10px">
-        <span class="lbl">max file bytes</span>
+        <span class="lbl">${t("semantic.maxFileBytes")}</span>
         <input
           class="input mono"
           type="number"
@@ -623,14 +627,14 @@ function SemanticExcludesCard() {
             setDraft({ ...draft, maxFileBytes: Number((e.target as HTMLInputElement).value) || 0 })}
           style="font-size:12px"
         />
-        <span class="help">skip files larger than ~${(draft.maxFileBytes / 1024 / 1024).toFixed(1)} MiB</span>
+        <span class="help">${t("semantic.skipLarger", { size: (draft.maxFileBytes / 1024 / 1024).toFixed(1) })}</span>
       </div>
 
       <div style="display:flex;gap:6px;margin-top:10px">
         <button class="btn ghost" style="flex:1" disabled=${busy} onClick=${runPreview}>
-          <span class="g">⊕</span><span>Preview</span>
+          <span class="g">⊕</span><span>${t("semantic.preview")}</span>
         </button>
-        <button class="btn primary" style="flex:1" disabled=${busy} onClick=${save}>Save</button>
+        <button class="btn primary" style="flex:1" disabled=${busy} onClick=${save}>${t("common.save")}</button>
       </div>
 
       ${preview ? html`<div style="margin-top:10px"><${ExcludesPreview} preview=${preview} /></div>` : null}
@@ -639,6 +643,7 @@ function SemanticExcludesCard() {
 }
 
 function ExcludesPreview({ preview }: { preview: PreviewData }) {
+  useLang();
   const buckets = preview.skipBuckets || {};
   const samples = preview.skipSamples || {};
   const totalSkipped = Object.values(buckets).reduce((a, b) => a + (b || 0), 0);
@@ -655,11 +660,11 @@ function ExcludesPreview({ preview }: { preview: PreviewData }) {
   return html`
     <div class="excludes-preview">
       <div class="summary">
-        Preview — would index <strong>${preview.filesIncluded}</strong> file(s), skip <strong>${totalSkipped}</strong>
+        ${t("semantic.previewSummary", { included: preview.filesIncluded, skipped: totalSkipped })}
       </div>
       ${
         reasons.length === 0
-          ? html`<div style="color:var(--fg-3)">nothing skipped — all walked files would be indexed.</div>`
+          ? html`<div style="color:var(--fg-3)">${t("semantic.nothingSkipped")}</div>`
           : reasons.map(
               (r) => html`
                 <details>
@@ -680,7 +685,7 @@ function ExcludesPreview({ preview }: { preview: PreviewData }) {
         preview.sampleIncluded?.length
           ? html`
             <details>
-              <summary>first ${preview.sampleIncluded.length} included file(s)</summary>
+              <summary>${t("semantic.firstIncluded", { count: preview.sampleIncluded.length })}</summary>
               <ul>
                 ${preview.sampleIncluded.map((p) => html`<li><code>${p}</code></li>`)}
               </ul>
@@ -751,13 +756,14 @@ function ChipFormRow({
 }
 
 function SemanticJobView({ job, running }: { job: SemanticJob; running: boolean }) {
+  useLang();
   const phaseLabel =
     ({
-      scan: "scanning files",
-      embed: "embedding chunks",
-      write: "writing index",
-      done: "done",
-      error: "error",
+      scan: t("semantic.phaseScan"),
+      embed: t("semantic.phaseEmbed"),
+      write: t("semantic.phaseWrite"),
+      done: t("semantic.phaseDone"),
+      error: t("semantic.phaseError"),
     } as Record<string, string>)[job.phase] ?? job.phase;
   const total = job.chunksTotal ?? 0;
   const doneN = job.chunksDone ?? 0;
@@ -768,21 +774,21 @@ function SemanticJobView({ job, running }: { job: SemanticJob; running: boolean 
     <div class="kv">
       <div><span class="kv-key">phase</span>
         <span class=${`pill ${job.phase === "error" ? "pill-err" : running ? "pill-active" : "pill-dim"}`}>${phaseLabel}</span>
-        ${job.aborted ? html`<span class="pill warn" style="margin-left: 6px;">stopping</span>` : null}
+        ${job.aborted ? html`<span class="pill warn" style="margin-left: 6px;">${t("semantic.stopping")}</span>` : null}
         <span style="color:var(--fg-3);margin-left:8px">${elapsed}s</span>
       </div>
       ${
         job.filesScanned !== null && job.filesScanned !== undefined
-          ? html`<div><span class="kv-key">files</span>scanned ${job.filesScanned}${
-              job.filesChanged != null ? ` · changed ${job.filesChanged}` : ""
-            }${job.filesSkipped ? ` · skipped ${job.filesSkipped}` : ""}</div>`
+          ? html`<div><span class="kv-key">${t("semantic.files")}</span>${t("semantic.scanned", { count: job.filesScanned })}${
+              job.filesChanged != null ? ` · ${t("semantic.changed", { count: job.filesChanged })}` : ""
+            }${job.filesSkipped ? ` · ${t("semantic.skipped", { count: job.filesSkipped })}` : ""}</div>`
           : null
       }
       ${
         total > 0
           ? html`
             <div>
-              <span class="kv-key">chunks</span>${doneN} / ${total} (${(ratio * 100).toFixed(0)}%)
+              <span class="kv-key">${t("semantic.chunks")}</span>${t("semantic.chunksProgress", { done: doneN, total, pct: (ratio * 100).toFixed(0) })}
             </div>
             <div class="bar" style="margin-top: 4px;">
               <div class="fill" style=${`width: ${(ratio * 100).toFixed(1)}%; background: var(--primary);`}></div>
@@ -792,13 +798,13 @@ function SemanticJobView({ job, running }: { job: SemanticJob; running: boolean 
       }
       ${
         job.error
-          ? html`<div><span class="kv-key">error</span><span class="err">${job.error}</span></div>`
+          ? html`<div><span class="kv-key">${t("semantic.phaseError")}</span><span class="err">${job.error}</span></div>`
           : null
       }
       ${
         job.result
-          ? html`<div><span class="kv-key">result</span>added ${job.result.chunksAdded} · removed ${job.result.chunksRemoved}${
-              job.result.chunksSkipped ? ` · failed ${job.result.chunksSkipped}` : ""
+          ? html`<div><span class="kv-key">${t("semantic.result")}</span>${t("semantic.added", { count: job.result.chunksAdded })} · ${t("semantic.removed", { count: job.result.chunksRemoved })}${
+              job.result.chunksSkipped ? ` · ${t("semantic.failed", { count: job.result.chunksSkipped })}` : ""
             } · ${(job.result.durationMs / 1000).toFixed(1)}s</div>`
           : null
       }
@@ -812,6 +818,7 @@ function SemanticJobView({ job, running }: { job: SemanticJob; running: boolean 
 }
 
 function SkipBucketsView({ buckets }: { buckets: Record<string, number> }) {
+  useLang();
   const order: [string, string][] = [
     ["gitignore", "gitignore"],
     ["pattern", "pattern"],
@@ -827,5 +834,5 @@ function SkipBucketsView({ buckets }: { buckets: Record<string, number> }) {
   const parts = order
     .filter(([k]) => (buckets[k] || 0) > 0)
     .map(([k, label]) => `${label}: ${buckets[k]}`);
-  return html`<div><span class="kv-key">skipped</span>${total} files <span style="color:var(--fg-3)">(${parts.join(", ")})</span></div>`;
+  return html`<div><span class="kv-key">${t("semantic.skipped")}</span>${t("semantic.skippedFiles", { total, details: parts.join(", ") })}</div>`;
 }

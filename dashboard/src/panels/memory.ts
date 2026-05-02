@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { fmtBytes, fmtRelativeTime } from "../lib/format.js";
 import { html } from "../lib/html.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface MemoryFile {
   name: string;
@@ -18,6 +19,7 @@ interface MemoryTree {
 type Scope = "project" | "global" | "project-mem";
 
 export function MemoryPanel() {
+  useLang();
   const [tree, setTree] = useState<MemoryTree | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<{ scope: Scope; name?: string } | null>(null);
@@ -63,7 +65,7 @@ export function MemoryPanel() {
           ? "/memory/project"
           : `/memory/${open.scope}/${encodeURIComponent(open.name ?? "")}`;
       await api(path, { method: "POST", body: { body } });
-      setInfo(`saved ${open.scope}${open.name ? `/${open.name}` : ""}`);
+      setInfo(t("memory.saved", { scope: open.scope + (open.name ? `/${open.name}` : "") }));
       setTimeout(() => setInfo(null), 3000);
       await load();
     } catch (err) {
@@ -74,7 +76,7 @@ export function MemoryPanel() {
   }, [open, body, load]);
 
   if (!tree && !error)
-    return html`<div class="card" style="color:var(--fg-3)">loading memory…</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("memory.loading")}</div>`;
   if (error && !tree) return html`<div class="card accent-err">${error}</div>`;
   if (!tree) return null;
 
@@ -95,15 +97,16 @@ export function MemoryPanel() {
     `;
   };
 
+  const totalFiles =
+    (tree.project.path ? 1 : 0) +
+    tree.global.files.length +
+    tree.projectMem.files.length;
+
   return html`
     <div class="sessions-grid">
       <div class="sessions-list">
         <div class="ssl-h" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
-          memory · ${
-            (tree.project.path ? 1 : 0) +
-            tree.global.files.length +
-            tree.projectMem.files.length
-          } files
+          ${t("memory.files", { count: totalFiles })}
         </div>
         <div class="ssl-rows">
           ${
@@ -117,8 +120,8 @@ export function MemoryPanel() {
                     REASONIX.md
                     ${
                       tree.project.exists
-                        ? html`<span class="pill ok">exists</span>`
-                        : html`<span class="pill">create</span>`
+                        ? html`<span class="pill ok">${t("memory.exists")}</span>`
+                        : html`<span class="pill">${t("memory.create")}</span>`
                     }
                   </span>
                   <span class="preview">${tree.project.path}</span>
@@ -134,7 +137,7 @@ export function MemoryPanel() {
               tree.projectMem.files.length === 0 &&
               !tree.project.path)
               ? html`<div style="color:var(--fg-3);padding:14px;font-size:12px">
-                  No memory files yet.
+                  ${t("memory.noFiles")}
                 </div>`
               : null
           }
@@ -145,10 +148,9 @@ export function MemoryPanel() {
         ${
           open == null
             ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
-                Pick a memory file on the left.
+                ${t("memory.pickHint")}
                 <div style="margin-top:12px;font-size:11.5px">
-                  Project REASONIX.md is committable; global notes live in
-                  <code class="mono">~/.reasonix/memory/</code>.
+                  ${t("memory.pickDesc")}
                 </div>
               </div>`
             : html`
@@ -156,10 +158,10 @@ export function MemoryPanel() {
                   <span class="name">
                     ${open.scope}${open.name ? `/${open.name}` : ""}
                   </span>
-                  <span class="ws">${body.length.toLocaleString()} chars</span>
+                  <span class="ws">${t("memory.chars", { count: body.length.toLocaleString() })}</span>
                   <span class="actions">
-                    <button class="btn primary" disabled=${busy} onClick=${save}>Save</button>
-                    <button class="btn ghost" onClick=${() => setOpen(null)}>← back</button>
+                    <button class="btn primary" disabled=${busy} onClick=${save}>${t("common.save")}</button>
+                    <button class="btn ghost" onClick=${() => setOpen(null)}>${t("common.back")}</button>
                   </span>
                 </div>
                 ${info ? html`<div style="margin-bottom:8px"><span class="pill ok">${info}</span></div>` : null}
@@ -171,7 +173,7 @@ export function MemoryPanel() {
                   disabled=${busy}
                 ></textarea>
                 <div style="margin-top:8px;color:var(--fg-3);font-size:11.5px">
-                  re-applied on next <code class="mono">/new</code> or session restart
+                  ${t("memory.reloadHint")}
                 </div>
               `
         }

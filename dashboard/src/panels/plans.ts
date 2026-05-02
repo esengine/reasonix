@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import { fmtPct, fmtRelativeTime } from "../lib/format.js";
 import { html } from "../lib/html.js";
 import { usePoll } from "../lib/use-poll.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface PlanStep {
   id: string;
@@ -26,25 +27,25 @@ interface PlansData {
 }
 
 function statusPill(p: ArchivedPlan) {
-  if (p.completionRatio >= 1) return html`<span class="pill ok">done</span>`;
-  if (p.completionRatio > 0) return html`<span class="pill info">active</span>`;
+  if (p.completionRatio >= 1) return html`<span class="pill ok">${t("plans.done")}</span>`;
+  if (p.completionRatio > 0) return html`<span class="pill info">${t("plans.active")}</span>`;
   return html`<span class="pill">idle</span>`;
 }
 
 export function PlansPanel() {
+  useLang();
   const { data, error, loading } = usePoll<PlansData>("/plans", 8000);
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [filter, setFilter] = useState("");
 
   if (loading && !data)
-    return html`<div class="card" style="color:var(--fg-3)">loading plans…</div>`;
-  if (error) return html`<div class="card accent-err">plans failed: ${error.message}</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("plans.loading")}</div>`;
+  if (error) return html`<div class="card accent-err">${t("common.loadingFailed", { name: "plans", error: error.message })}</div>`;
   const plans = data?.plans ?? [];
 
   if (plans.length === 0)
     return html`<div class="card" style="color:var(--fg-3)">
-      No archived plans yet — run a turn that calls <code class="mono">submit_plan</code>
-      and <code class="mono">mark_step_complete</code>.
+      ${t("plans.noPlans")}
     </div>`;
 
   const filtered = filter.trim()
@@ -63,20 +64,20 @@ export function PlansPanel() {
         <div class="ssl-h">
           <input
             type="text"
-            placeholder="filter plans"
+            placeholder=${t("plans.filterPlaceholder")}
             value=${filter}
             onInput=${(e: Event) => setFilter((e.target as HTMLInputElement).value)}
             style="flex:1"
           />
         </div>
         <div class="chips" style="padding:0 12px 8px">
-          <span class="chip-f active">all <span class="ct">${plans.length}</span></span>
+          <span class="chip-f active">${t("common.all")} <span class="ct">${plans.length}</span></span>
           <span class="chip-f">
-            active
+            ${t("plans.active")}
             <span class="ct">${plans.filter((p) => p.completionRatio > 0 && p.completionRatio < 1).length}</span>
           </span>
           <span class="chip-f">
-            done <span class="ct">${plans.filter((p) => p.completionRatio >= 1).length}</span>
+            ${t("plans.done")} <span class="ct">${plans.filter((p) => p.completionRatio >= 1).length}</span>
           </span>
         </div>
         <div class="ssl-rows">
@@ -92,7 +93,7 @@ export function PlansPanel() {
                     : null
                 }
                 <span class="meta">
-                  <span><span class="v">${p.totalSteps}</span> steps</span>
+                  <span><span class="v">${p.totalSteps}</span> ${t("plans.steps")}</span>
                   <span><span class="v">${p.completedSteps} / ${p.totalSteps}</span> · ${fmtPct(p.completionRatio)}</span>
                   <span>${fmtRelativeTime(p.completedAt)}</span>
                 </span>
@@ -106,19 +107,19 @@ export function PlansPanel() {
         ${
           open == null
             ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
-                Pick a plan on the left.
+                ${t("plans.pickHint")}
               </div>`
             : html`
                 <div class="sessions-detail-h">
-                  <span class="name">${open.summary ?? "(no title)"}</span>
+                  <span class="name">${open.summary ?? t("plans.noTitle")}</span>
                   <span class="ws">${open.session} · ${fmtRelativeTime(open.completedAt)}</span>
                   <span class="actions">
-                    <button class="btn ghost" onClick=${() => setOpenIdx(null)}>← back</button>
+                    <button class="btn ghost" onClick=${() => setOpenIdx(null)}>${t("common.back")}</button>
                   </span>
                 </div>
 
                 <h3 style="margin:0 0 6px;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
-                  Step timeline · ${open.completedSteps} / ${open.totalSteps}
+                  ${t("plans.stepTimeline", { done: open.completedSteps, total: open.totalSteps })}
                 </h3>
                 <div class="plan-timeline" style="margin-bottom:14px">
                   ${open.steps.map((step, i) => {
@@ -126,7 +127,7 @@ export function PlansPanel() {
                     const cls = done ? "done" : i === open.completedSteps ? "active" : "";
                     return html`
                       <div class=${`plan-step ${cls}`}>
-                        <span class="lbl">step ${i + 1}</span>
+                        <span class="lbl">${t("plans.step", { n: i + 1 })}</span>
                         <span class="name">${step.title}</span>
                         ${step.action ? html`<span class="meta">${step.action}</span>` : null}
                         ${
