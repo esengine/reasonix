@@ -11,13 +11,15 @@ export type McpLifecycleEvent =
       ms: number;
     }
   | { state: "failed"; name: string; reason: string }
-  | { state: "disabled"; name: string };
+  | { state: "disabled"; name: string }
+  | { state: "reconnect"; name: string };
 
 const STATE: Record<McpLifecycleEvent["state"], { glyph: string; label: string }> = {
   handshake: { glyph: "↻", label: "handshake…" },
   connected: { glyph: "✓", label: "connected" },
   failed: { glyph: "✖", label: "failed" },
   disabled: { glyph: "○", label: "disabled" },
+  reconnect: { glyph: "↻", label: "reconnect…" },
 };
 
 const NAME_COL = 22;
@@ -35,6 +37,7 @@ function describeDetail(ev: McpLifecycleEvent): string {
   if (ev.state === "handshake") return "initialise → tools/list → resources/list";
   if (ev.state === "failed") return ev.reason;
   if (ev.state === "disabled") return `via /mcp disable ${ev.name}`;
+  if (ev.state === "reconnect") return "tearing down · re-handshake · listing tools";
   const parts: string[] = [`${ev.tools} tools`];
   if (ev.resources && ev.resources > 0) parts.push(`${ev.resources} resources`);
   if (ev.prompts && ev.prompts > 0) parts.push(`${ev.prompts} prompts`);

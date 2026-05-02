@@ -161,14 +161,7 @@ export async function handleMcpBrowseSlash(
       );
       return;
     }
-    const client: McpClient | undefined = server.client;
-    if (!client) {
-      log.pushWarning(
-        `server [${server.label}] is not connected (display-only)`,
-        "Resource read requires a live MCP client.",
-      );
-      return;
-    }
+    const client: McpClient = server.host.client;
     try {
       const result = await client.readResource(arg);
       log.pushInfo(formatResourceContents(arg, result));
@@ -187,14 +180,7 @@ export async function handleMcpBrowseSlash(
     );
     return;
   }
-  const client: McpClient | undefined = server.client;
-  if (!client) {
-    log.pushWarning(
-      `server [${server.label}] is not connected (display-only)`,
-      "Prompt fetch requires a live MCP client.",
-    );
-    return;
-  }
+  const client: McpClient = server.host.client;
   try {
     const result = await client.getPrompt(arg);
     log.pushInfo(formatPromptMessages(arg, result));

@@ -2,7 +2,8 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { McpClient } from "../src/mcp/client.js";
-import { bridgeMcpTools } from "../src/mcp/registry.js";
+import { reconnectMcpServer } from "../src/mcp/reconnect.js";
+import { type McpClientHost, bridgeMcpTools } from "../src/mcp/registry.js";
 import { StdioTransport } from "../src/mcp/stdio.js";
 import { ToolRegistry } from "../src/tools.js";
 
@@ -70,6 +71,37 @@ describe("MCP integration — real subprocess against bundled demo server", () =
     const out = await registry.dispatch("demo_add", JSON.stringify({ a: 100, b: 1 }));
     expect(out).toContain("101");
   }, 30_000);
+
+  it("host indirection: bridged tool calls follow host.client when it's swapped out", async () => {
+    // Without invoking reconnect (which adds parseMcpSpec / shell quoting
+    // concerns on Windows paths with spaces), prove the indirection layer
+    // alone: bridge with a host, manually swap host.client to a fresh
+    // McpClient pointing at a second demo subprocess, confirm the existing
+    // registered tool routes through the new client.
+    const tA = new StdioTransport({ command: NODE_CMD, args: DEMO_SERVER_ARGS, shell: false });
+    const a = new McpClient({ transport: tA, requestTimeoutMs: 15_000 });
+    await a.initialize();
+    const host: McpClientHost = { client: a };
+    const { registry } = await bridgeMcpTools(a, {
+      registry: new ToolRegistry(),
+      namePrefix: "demo_",
+      host,
+    });
+    const okBefore = await registry.dispatch("demo_add", JSON.stringify({ a: 1, b: 1 }));
+    expect(okBefore).toContain("2");
+
+    // Spin up a fresh subprocess and swap host.client.
+    const tB = new StdioTransport({ command: NODE_CMD, args: DEMO_SERVER_ARGS, shell: false });
+    const b = new McpClient({ transport: tB, requestTimeoutMs: 15_000 });
+    await b.initialize();
+    host.client = b;
+    await a.close();
+
+    // Same registered tool, now serviced by the new client.
+    const okAfter = await registry.dispatch("demo_add", JSON.stringify({ a: 7, b: 8 }));
+    expect(okAfter).toContain("15");
+    await b.close();
+  }, 60_000);
 
   it("bridges two MCP servers into a shared registry with different prefixes", async () => {
     // Two instances of the same demo server, namespaced `a_` and `b_`.

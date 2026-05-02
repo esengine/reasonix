@@ -50,10 +50,16 @@ function makeFakeLog() {
   return { rows, log };
 }
 
-function server(partial: Partial<McpServerSummary> & { label: string }): McpServerSummary {
+function server(
+  partial: Partial<McpServerSummary> & { label: string; client?: unknown },
+): McpServerSummary {
+  // Tests pass a stubbed `client` for convenience; wrap it in the host shape
+  // the bridge expects.
+  const { client, ...rest } = partial;
   return {
     spec: partial.spec ?? `fake://${partial.label}`,
     toolCount: partial.toolCount ?? 0,
+    host: rest.host ?? { client: client as never },
     report: partial.report ?? {
       protocolVersion: "2024-11-05",
       serverInfo: { name: partial.label, version: "1.0" },
@@ -62,7 +68,7 @@ function server(partial: Partial<McpServerSummary> & { label: string }): McpServ
       resources: { supported: true, items: [] },
       prompts: { supported: true, items: [] },
     },
-    ...partial,
+    ...rest,
   };
 }
 
