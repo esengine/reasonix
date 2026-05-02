@@ -469,6 +469,43 @@ describe("filesystem tools (built-in, sandbox-enforced)", () => {
       );
       expect(out).toMatch(/search cannot be empty/);
     });
+
+    it("matches LF search against a CRLF file and preserves CRLF after write", async () => {
+      await fs.writeFile(join(root, "a.txt"), "hello world\r\ngoodbye world\r\n");
+      const out = await tools.dispatch(
+        "edit_file",
+        JSON.stringify({ path: "a.txt", search: "hello world", replace: "hello WORLD" }),
+      );
+      expect(out).toMatch(/edited/);
+      const disk = await fs.readFile(join(root, "a.txt"), "utf8");
+      expect(disk).toBe("hello WORLD\r\ngoodbye world\r\n");
+    });
+
+    it("matches LF multi-line search against a CRLF file and preserves CRLF", async () => {
+      await fs.writeFile(join(root, "a.txt"), "line one\r\nline two\r\nline three\r\n");
+      const out = await tools.dispatch(
+        "edit_file",
+        JSON.stringify({
+          path: "a.txt",
+          search: "line one\nline two",
+          replace: "line ONE\nline TWO",
+        }),
+      );
+      expect(out).toMatch(/edited/);
+      const disk = await fs.readFile(join(root, "a.txt"), "utf8");
+      expect(disk).toBe("line ONE\r\nline TWO\r\nline three\r\n");
+    });
+
+    it("refuses duplicate match in a CRLF file when search adapted to CRLF", async () => {
+      await fs.writeFile(join(root, "a.txt"), "dup\r\ndup\r\nunique\r\n");
+      const out = await tools.dispatch(
+        "edit_file",
+        JSON.stringify({ path: "a.txt", search: "dup", replace: "fixed" }),
+      );
+      expect(out).toMatch(/multiple times/);
+      const disk = await fs.readFile(join(root, "a.txt"), "utf8");
+      expect(disk).toBe("dup\r\ndup\r\nunique\r\n");
+    });
   });
 
   describe("create_directory + move_file", () => {

@@ -93,7 +93,10 @@ export function applyEditBlock(block: EditBlock, rootDir: string): ApplyResult {
         message: "empty SEARCH only creates new files — this file already exists",
       };
     }
-    const idx = content.indexOf(block.search);
+    const le = lineEndingOf(content);
+    const adaptedSearch = block.search.replace(/\r?\n/g, le);
+    const adaptedReplace = block.replace.replace(/\r?\n/g, le);
+    const idx = content.indexOf(adaptedSearch);
     if (idx === -1) {
       return {
         path: block.path,
@@ -106,7 +109,7 @@ export function applyEditBlock(block: EditBlock, rootDir: string): ApplyResult {
     // more surrounding context). Auto-expanding to replace-all is a
     // footgun when the same string legitimately appears in several
     // unrelated places.
-    const replaced = `${content.slice(0, idx)}${block.replace}${content.slice(idx + block.search.length)}`;
+    const replaced = `${content.slice(0, idx)}${adaptedReplace}${content.slice(idx + adaptedSearch.length)}`;
     writeFileSync(absTarget, replaced, "utf8");
     return { path: block.path, status: "applied" };
   } catch (err) {
@@ -199,4 +202,8 @@ export function restoreSnapshots(snapshots: EditSnapshot[], rootDir: string): Ap
 /** Platform separator — `\` on Windows, `/` elsewhere. */
 function sep(): string {
   return process.platform === "win32" ? "\\" : "/";
+}
+
+function lineEndingOf(text: string): string {
+  return text.includes("\r\n") ? "\r\n" : "\n";
 }

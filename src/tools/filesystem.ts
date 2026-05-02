@@ -533,27 +533,26 @@ Prefer \`list_directory\` for a single-level view, \`search_files\` to find spec
       if (args.search.length === 0) {
         throw new Error("edit_file: search cannot be empty");
       }
-      const firstIdx = before.indexOf(args.search);
+      const le = before.includes("\r\n") ? "\r\n" : "\n";
+      const adaptedSearch = args.search.replace(/\r?\n/g, le);
+      const adaptedReplace = args.replace.replace(/\r?\n/g, le);
+      const firstIdx = before.indexOf(adaptedSearch);
       if (firstIdx < 0) {
         throw new Error(`edit_file: search text not found in ${pathMod.relative(rootDir, abs)}`);
       }
-      const nextIdx = before.indexOf(args.search, firstIdx + 1);
+      const nextIdx = before.indexOf(adaptedSearch, firstIdx + 1);
       if (nextIdx >= 0) {
         throw new Error(
           `edit_file: search text appears multiple times in ${pathMod.relative(rootDir, abs)} — include more context to disambiguate`,
         );
       }
       const after =
-        before.slice(0, firstIdx) + args.replace + before.slice(firstIdx + args.search.length);
+        before.slice(0, firstIdx) + adaptedReplace + before.slice(firstIdx + adaptedSearch.length);
       await fs.writeFile(abs, after, "utf8");
       const rel = pathMod.relative(rootDir, abs);
-      const header = `edited ${rel} (${args.search.length}→${args.replace.length} chars)`;
-      // Starting line number of the search block in the original
-      // file. `split/length` on the prefix gives a 1-based line
-      // count where the match begins, matching git-diff's @@ -N,M
-      // +N,M @@ header convention.
+      const header = `edited ${rel} (${adaptedSearch.length}→${adaptedReplace.length} chars)`;
       const startLine = before.slice(0, firstIdx).split(/\r?\n/).length;
-      const diff = renderEditDiff(args.search, args.replace, startLine);
+      const diff = renderEditDiff(adaptedSearch, adaptedReplace, startLine);
       return `${header}\n${diff}`;
     },
   });

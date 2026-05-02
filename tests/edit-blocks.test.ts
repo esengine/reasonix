@@ -165,6 +165,26 @@ describe("applyEditBlock", () => {
     // First "foo" replaced, second left alone.
     expect(readFileSync(join(root, "a.txt"), "utf8")).toBe("FOO bar foo\n");
   });
+
+  it("matches LF search against CRLF file content", () => {
+    writeFileSync(join(root, "crlf.txt"), "hello\r\nworld\r\n", "utf8");
+    const result = applyEditBlock(
+      { path: "crlf.txt", search: "hello\nworld", replace: "goodbye\nworld", offset: 0 },
+      root,
+    );
+    expect(result.status).toBe("applied");
+    expect(readFileSync(join(root, "crlf.txt"), "utf8")).toBe("goodbye\r\nworld\r\n");
+  });
+
+  it("preserves LF line endings when file uses LF", () => {
+    writeFileSync(join(root, "lf.txt"), "line1\nline2\n", "utf8");
+    const result = applyEditBlock(
+      { path: "lf.txt", search: "line1\nline2", replace: "LINE1\nLINE2", offset: 0 },
+      root,
+    );
+    expect(result.status).toBe("applied");
+    expect(readFileSync(join(root, "lf.txt"), "utf8")).toBe("LINE1\nLINE2\n");
+  });
 });
 
 describe("snapshotBeforeEdits + restoreSnapshots", () => {
