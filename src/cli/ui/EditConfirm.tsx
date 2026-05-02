@@ -1,4 +1,4 @@
-import { Box, Text, useStdout } from "ink";
+import { Box, Text } from "ink";
 import React, { useMemo, useState } from "react";
 import { formatEditBlockSplit } from "../../code/diff-preview.js";
 import type { EditBlock } from "../../code/edit-blocks.js";
@@ -6,6 +6,7 @@ import { DenyContextInput } from "./DenyContextInput.js";
 import { SplitDiff } from "./SplitDiff.js";
 import { ApprovalCard } from "./cards/ApprovalCard.js";
 import { useKeystroke } from "./keystroke-context.js";
+import { useReserveRows, useTotalRows } from "./layout/viewport-budget.js";
 
 export type EditReviewChoice = "apply" | "reject" | "apply-rest-of-turn" | "flip-to-auto";
 
@@ -21,9 +22,14 @@ const REVIEW_FOOTER =
   "[y/Enter] apply  ·  [n] reject with reason  ·  [a] apply rest  ·  [A] flip AUTO  ·  [↑↓/Space] scroll  ·  [Esc] abort";
 
 export function EditConfirm({ block, onChoose }: EditConfirmProps) {
-  const { stdout } = useStdout();
-  const rows = stdout?.rows ?? 40;
-  const budget = Math.max(MIN_DIFF_ROWS, rows - MODAL_OVERHEAD_ROWS);
+  const rows = useTotalRows();
+  // Modal zone is highest priority. Min = chrome + minimum useful diff;
+  // max leaves a few rows for the toast rail / streaming-card footer above.
+  const allocated = useReserveRows("modal", {
+    min: MODAL_OVERHEAD_ROWS + MIN_DIFF_ROWS,
+    max: Math.max(MODAL_OVERHEAD_ROWS + MIN_DIFF_ROWS, rows - 4),
+  });
+  const budget = Math.max(MIN_DIFF_ROWS, allocated - MODAL_OVERHEAD_ROWS);
 
   const allRows = useMemo(
     () => formatEditBlockSplit(block, { contextLines: 2, maxLines: 100_000 }),

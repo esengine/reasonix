@@ -2,12 +2,12 @@ import { Box, Text, useStdout } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
 import React from "react";
 import { clipToCells } from "../../../frame/width.js";
+import { useReserveRows } from "../layout/viewport-budget.js";
 import { Markdown } from "../markdown.js";
 import { BarRow, CursorBlock } from "../primitives/BarRow.js";
 import type { StreamingCard as StreamingCardData } from "../state/cards.js";
 import { FG, TONE } from "../theme/tokens.js";
 
-const RESERVED_CHROME_ROWS = 14;
 const BODY_INDENT_CELLS = 5;
 
 export function StreamingCard({ card }: { card: StreamingCardData }): React.ReactElement {
@@ -22,11 +22,13 @@ export function StreamingCard({ card }: { card: StreamingCardData }): React.Reac
   }
 
   const { stdout } = useStdout();
-  const rows = stdout?.rows ?? 40;
   const cols = stdout?.columns ?? 80;
   const lineCells = Math.max(20, cols - BODY_INDENT_CELLS - 1);
   const allLines = card.text.length > 0 ? card.text.split("\n") : [""];
-  const budget = Math.max(8, rows - RESERVED_CHROME_ROWS);
+  // Stream zone soaks whatever rows the higher-priority modal/plan-card/input
+  // didn't claim. Min 4 keeps a "▶ + 3 lines" footer visible even when a modal
+  // takes the whole viewport.
+  const budget = useReserveRows("stream", { min: 4, max: Number.POSITIVE_INFINITY });
   const reserved = (card.aborted ? 2 : 0) + 1;
   const lineSlots = Math.max(4, budget - reserved);
   const overflows = !card.done && allLines.length > lineSlots;

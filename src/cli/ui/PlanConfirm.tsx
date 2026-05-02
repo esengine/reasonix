@@ -7,6 +7,7 @@ import type { PlanStep } from "../../tools/plan.js";
 import { PlanStepList } from "./PlanStepList.js";
 import { SingleSelect } from "./Select.js";
 import { ApprovalCard } from "./cards/ApprovalCard.js";
+import { useReserveRows } from "./layout/viewport-budget.js";
 import { CARD, TONE } from "./theme/tokens.js";
 
 export type PlanConfirmChoice = "approve" | "refine" | "revise" | "cancel";
@@ -21,6 +22,9 @@ export interface PlanConfirmProps {
 }
 
 function PlanConfirmInner({ plan, steps, onChoose }: PlanConfirmProps) {
+  const stepRows = steps?.length ?? 0;
+  useReserveRows("modal", { min: 10, max: Math.max(16, stepRows + 14) });
+
   const hasOpenQuestions =
     /^#{1,6}\s*(open[-\s]?questions?|risks?|unknowns?|assumptions?|unclear)/im.test(plan) ||
     /^#{1,6}\s*(待确认|开放问题|风险|未知|假设|不确定)/im.test(plan);

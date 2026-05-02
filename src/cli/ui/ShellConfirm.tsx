@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { DenyContextInput } from "./DenyContextInput.js";
 import { SingleSelect } from "./Select.js";
 import { ApprovalCard } from "./cards/ApprovalCard.js";
+import { useReserveRows } from "./layout/viewport-budget.js";
 import { FG, TONE } from "./theme/tokens.js";
 
 export type ShellConfirmChoice = "run_once" | "always_allow" | "deny";
@@ -18,6 +19,11 @@ export interface ShellConfirmProps {
 }
 
 export function ShellConfirm({ command, allowPrefix, kind, onChoose }: ShellConfirmProps) {
+  // Claim modal zone so the streaming card above clamps. Header/footer + 3
+  // options + spacing → ~12 rows max; deny phase swaps to DenyContextInput
+  // which is similar height.
+  useReserveRows("modal", { min: 8, max: 14 });
+
   const isBackground = kind === "run_background";
   const subtitle = isBackground
     ? "long-running process — keeps running after approval, /kill to stop"
