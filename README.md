@@ -3,22 +3,20 @@
 </p>
 
 <p align="center">
-  <em>Cache-first agent loop for DeepSeek V4 — terminal-native, MCP first-class, no LangChain.</em>
-</p>
-
-<p align="center">
   <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a> · <a href="https://esengine.github.io/reasonix/">Website</a>
 </p>
 
-# Reasonix
+<p align="center">
+  <a href="https://www.npmjs.com/package/reasonix"><img src="https://img.shields.io/npm/v/reasonix.svg" alt="npm version"/></a>
+  <a href="https://github.com/esengine/reasonix/actions/workflows/ci.yml"><img src="https://github.com/esengine/reasonix/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/reasonix.svg" alt="license"/></a>
+  <a href="https://www.npmjs.com/package/reasonix"><img src="https://img.shields.io/npm/dm/reasonix.svg" alt="downloads"/></a>
+  <a href="./package.json"><img src="https://img.shields.io/node/v/reasonix.svg" alt="node"/></a>
+</p>
 
-[![npm version](https://img.shields.io/npm/v/reasonix.svg)](https://www.npmjs.com/package/reasonix)
-[![CI](https://github.com/esengine/reasonix/actions/workflows/ci.yml/badge.svg)](https://github.com/esengine/reasonix/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/reasonix.svg)](./LICENSE)
-[![downloads](https://img.shields.io/npm/dm/reasonix.svg)](https://www.npmjs.com/package/reasonix)
-[![node](https://img.shields.io/node/v/reasonix.svg)](./package.json)
-
-**A DeepSeek-native AI coding agent for your terminal.** Engineered around DeepSeek's prefix-cache, so the savings are real and the loop stays cheap enough to leave on.
+<p align="center">
+  <strong>A DeepSeek-native AI coding agent for your terminal.</strong> Engineered around DeepSeek's prefix-cache, so the savings are real and the loop stays cheap enough to leave on.
+</p>
 
 <p align="center">
   <img src="docs/hero-stats.svg" alt="94% live prefix-cache hit · ~30× cheaper per task vs Claude Code · MIT terminal-native" width="860"/>
@@ -30,16 +28,14 @@
 
 ```bash
 cd my-project
-npx reasonix code
+npx reasonix code   # paste a DeepSeek API key on first run; persists after
 ```
-
-First run: paste a [DeepSeek API key](https://platform.deepseek.com/api_keys), pick a preset, optionally select MCP servers. Every run after drops you straight in.
 
 <p align="center">
   <img src="docs/hero-terminal.svg" alt="Reasonix code mode — assistant proposes a SEARCH/REPLACE edit; nothing on disk until /apply" width="860"/>
 </p>
 
-Requires Node ≥ 22. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal). For per-session prompt customization see `reasonix code --help`.
+Requires Node ≥ 22. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal). Get a [DeepSeek API key →](https://platform.deepseek.com/api_keys) · `reasonix code --help` for flags.
 
 ---
 
@@ -101,15 +97,7 @@ Reasonix is solo-maintained but designed to grow. Scoped starter tickets — eac
 - [#21 · Dashboard design](https://github.com/esengine/reasonix/discussions/21) — react against the [proposed mockup](https://esengine.github.io/reasonix/design/agent-dashboard.html)
 - [#22 · Future feature wishlist](https://github.com/esengine/reasonix/discussions/22) — what would you build into Reasonix next?
 
-**Before your first PR**: read [`CONTRIBUTING.md`](./CONTRIBUTING.md). Short, strict project rules (comments, errors, libraries-over-hand-rolled); `tests/comment-policy.test.ts` enforces the comment ones and `npm run verify` is the pre-push gate.
-
-```bash
-git clone https://github.com/esengine/reasonix.git
-cd reasonix
-npm install
-npm run dev code        # run from source via tsx
-npm run verify          # lint + typecheck + tests
-```
+**Before your first PR**: read [`CONTRIBUTING.md`](./CONTRIBUTING.md) — short, strict project rules (comments, errors, libraries-over-hand-rolled). `tests/comment-policy.test.ts` enforces the comment ones; `npm run verify` is the pre-push gate.
 
 ---
 
