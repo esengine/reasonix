@@ -3,6 +3,10 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- fix(code): `reasonix code` now reads configured MCP servers from `~/.reasonix/config.json`. Previously only `reasonix chat` loaded `config.mcp`; `reasonix code` silently skipped them, so servers defined in config were never bridged into code-mode sessions.
+
 ## [0.17.1] — 2026-04-29
 
 **Headline:** Fix a render crash in the dashboard's Editor that triggered
