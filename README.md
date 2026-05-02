@@ -45,21 +45,16 @@ Requires Node ≥ 22. Tested on macOS, Linux, and Windows (PowerShell, Git Bash,
 
 ## How it compares
 
-|                                  | Reasonix         | Claude Code     | Cursor             | Aider            |
-|----------------------------------|------------------|-----------------|--------------------|------------------|
-| Backend                          | DeepSeek V4      | Anthropic       | OpenAI / Anthropic | any (OpenRouter) |
-| **Cost / typical task**          | **~¥0.01–0.04**  | ~¥0.40–4        | ¥150/mo + usage    | varies           |
-| Surface                          | terminal         | terminal + IDE  | IDE (Electron)     | terminal         |
-| License                          | **MIT**          | closed          | closed             | Apache 2         |
-| **DeepSeek prefix-cache hit**    | **94%** (live)   | n/a             | n/a                | ~33% (baseline)  |
-| Plan mode (read-only audit gate) | yes              | yes             | —                  | yes              |
-| Edit review (`/apply`, no auto-write) | yes         | yes             | partial            | yes              |
-| MCP servers                      | first-class      | first-class     | —                  | —                |
-| User-authored skills             | yes              | yes             | —                  | —                |
-| Embedded web dashboard           | yes              | —               | n/a (IDE)          | —                |
-| Hooks (`PreToolUse`, etc.)       | yes              | yes             | —                  | —                |
-| Sandbox boundary                 | strict           | yes             | partial            | yes              |
-| Persistent per-workspace sessions | yes             | partial         | n/a                | —                |
+|                                   | Reasonix         | Claude Code     | Cursor             | Aider            |
+|-----------------------------------|------------------|-----------------|--------------------|------------------|
+| Backend                           | DeepSeek V4      | Anthropic       | OpenAI / Anthropic | any (OpenRouter) |
+| **Cost / typical task**           | **~¥0.01–0.04**  | ~¥0.40–4        | ¥150/mo + usage    | varies           |
+| License                           | **MIT**          | closed          | closed             | Apache 2         |
+| **DeepSeek prefix-cache hit**     | **94%** (live)   | n/a             | n/a                | ~33% (baseline)  |
+| Embedded web dashboard            | yes              | —               | n/a (IDE)          | —                |
+| Persistent per-workspace sessions | yes              | partial         | n/a                | —                |
+
+Plan mode, edit review, MCP, skills, hooks, and sandboxing are all `yes` for Reasonix and most peers — see the feature grid below for what they actually do here.
 
 Numbers from `benchmarks/tau-bench-lite` (8 multi-turn tasks × 3 repeats, live `deepseek-chat`). [Committed transcripts →](./benchmarks/)
 
