@@ -28,7 +28,7 @@ export interface StreamableHttpMcpSpec {
 
 export type McpSpec = StdioMcpSpec | SseMcpSpec | StreamableHttpMcpSpec;
 
-const NAME_PREFIX = /^([a-zA-Z_][a-zA-Z0-9_]*)=(.*)$/;
+const NAME_PREFIX = /^([a-zA-Z_][a-zA-Z0-9_-]*)=(.*)$/;
 const HTTP_URL = /^https?:\/\//i;
 const STREAMABLE_PREFIX = /^streamable\+(https?:\/\/.+)$/i;
 
