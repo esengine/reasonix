@@ -149,5 +149,4 @@ None of this is personal — it's how the codebase stays small.
 
 ## Reporting security issues
 
-Don't open a public issue. Email <359807859@qq.com> with details and
-a reproduction; we'll respond within a few days.
+See [`SECURITY.md`](./SECURITY.md). Short version: don't open a public issue, email the maintainer privately.

@@ -12,6 +12,8 @@
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/reasonix.svg" alt="license"/></a>
   <a href="https://www.npmjs.com/package/reasonix"><img src="https://img.shields.io/npm/dm/reasonix.svg" alt="downloads"/></a>
   <a href="./package.json"><img src="https://img.shields.io/node/v/reasonix.svg" alt="node"/></a>
+  <a href="https://github.com/esengine/reasonix/stargazers"><img src="https://img.shields.io/github/stars/esengine/reasonix.svg?style=flat&logo=github&label=stars" alt="GitHub stars"/></a>
+  <a href="https://github.com/esengine/reasonix/discussions"><img src="https://img.shields.io/github/discussions/esengine/reasonix.svg?logo=github&label=discussions" alt="Discussions"/></a>
 </p>
 
 <p align="center">
@@ -97,7 +99,13 @@ Reasonix is solo-maintained but designed to grow. Scoped starter tickets — eac
 - [#21 · Dashboard design](https://github.com/esengine/reasonix/discussions/21) — react against the [proposed mockup](https://esengine.github.io/reasonix/design/agent-dashboard.html)
 - [#22 · Future feature wishlist](https://github.com/esengine/reasonix/discussions/22) — what would you build into Reasonix next?
 
-**Before your first PR**: read [`CONTRIBUTING.md`](./CONTRIBUTING.md) — short, strict project rules (comments, errors, libraries-over-hand-rolled). `tests/comment-policy.test.ts` enforces the comment ones; `npm run verify` is the pre-push gate.
+**Before your first PR**: read [`CONTRIBUTING.md`](./CONTRIBUTING.md) — short, strict project rules (comments, errors, libraries-over-hand-rolled). `tests/comment-policy.test.ts` enforces the comment ones; `npm run verify` is the pre-push gate. By participating you agree to the [Code of Conduct](./CODE_OF_CONDUCT.md). Security issues → [SECURITY.md](./SECURITY.md).
+
+### Contributors
+
+<a href="https://github.com/esengine/reasonix/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=esengine/reasonix" alt="Contributors to esengine/reasonix"/>
+</a>
 
 ---
 
