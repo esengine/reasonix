@@ -129,14 +129,7 @@ src/users.ts
 
 ## 参与贡献
 
-Reasonix 现在主要是单人维护，但是为协作设计的。给新手准备的几个 issue：
-
-- [#15 — 给 `reasonix doctor` 加 `--json` flag](https://github.com/esengine/reasonix/issues/15) · CLI · 2-3 小时
-- [#16 — 让 `web_search` / `web_fetch` 的错误信息可执行](https://github.com/esengine/reasonix/issues/16) · tools · 2-3 小时
-- [#17 — Slash 命令的 "did you mean?" 建议](https://github.com/esengine/reasonix/issues/17) · TUI · 2-3 小时
-- [#18 — `clipboard.ts` 的单元测试](https://github.com/esengine/reasonix/issues/18) · 测试 · 2-3 小时
-
-每个 issue 都有背景说明、代码定位、验收标准、提示。所有 [`good first issue`](https://github.com/esengine/reasonix/labels/good%20first%20issue) 在这。
+Reasonix 现在主要是单人维护，但是为协作设计的。给新手准备的入门 issue —— 每个都带背景说明、代码定位、验收标准、提示 —— 全部挂在 [`good first issue`](https://github.com/esengine/reasonix/labels/good%20first%20issue) 标签下。挑任意一个还没人认领的就行。
 
 **正在征集意见的 Discussions：**
 - [#20 · CLI / TUI 设计](https://github.com/esengine/reasonix/discussions/20) — 哪里坏了、哪里少东西、哪里你会怎么改？

@@ -141,14 +141,7 @@ Two layers: project-scoped `REASONIX.md` (committed, repo conventions) and user-
 
 ## Contributing
 
-Reasonix is solo-maintained but designed to grow. Scoped starter issues:
-
-- [#15 — `reasonix doctor --json` flag](https://github.com/esengine/reasonix/issues/15) · CLI · 2-3h
-- [#16 — `web_search` / `web_fetch` actionable error messages](https://github.com/esengine/reasonix/issues/16) · tools · 2-3h
-- [#17 — Slash command "did you mean?" suggestion](https://github.com/esengine/reasonix/issues/17) · TUI · 2-3h
-- [#18 — Unit tests for `clipboard.ts`](https://github.com/esengine/reasonix/issues/18) · tests · 2-3h
-
-Each has background, code pointers, acceptance criteria, hints. Browse all [`good first issue`](https://github.com/esengine/reasonix/labels/good%20first%20issue)s.
+Reasonix is solo-maintained but designed to grow. Scoped starter tickets — each with background, code pointers, acceptance criteria, and hints — live under the [`good first issue`](https://github.com/esengine/reasonix/labels/good%20first%20issue) label. Pick anything open.
 
 **Open Discussions** — opinions wanted:
 - [#20 · CLI / TUI design](https://github.com/esengine/reasonix/discussions/20) — what's broken, what's missing, what would you change?
