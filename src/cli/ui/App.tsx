@@ -324,11 +324,11 @@ function AppInner({
   // "▸ tool<X> running…" pulse-spinner row so long tool calls don't
   // look like the app hung.
   const [ongoingTool, setOngoingTool] = useState<{ name: string; args?: string } | null>(null);
-  // Sidebar visibility — persisted in config; auto-init opens on cols ≥ 120.
+  // Sidebar visibility — persisted in config; default on (panel self-hides when no plan is active).
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     const stored = loadSidebarOpen();
     if (typeof stored === "boolean") return stored;
-    return (process.stdout.columns ?? 80) >= 120;
+    return true;
   });
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((cur) => {

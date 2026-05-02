@@ -5,7 +5,7 @@ import { Box, Text } from "ink";
 import React from "react";
 import type { Card, PlanStep } from "../state/cards.js";
 import { useAgentState } from "../state/provider.js";
-import { CARD, FG, TONE, formatCNY } from "../theme/tokens.js";
+import { CARD, FG, TONE } from "../theme/tokens.js";
 
 export const SIDEBAR_WIDTH = 28;
 /** Below this terminal width, sidebar refuses to render so the main column has room to breathe. */
@@ -19,18 +19,19 @@ export interface SidebarPanelProps {
 export function SidebarPanel({
   ongoingTool,
   subagentActivity,
-}: SidebarPanelProps): React.ReactElement {
+}: SidebarPanelProps): React.ReactElement | null {
   const cards = useAgentState((s) => s.cards);
   const activePlan = findActivePlan(cards);
-  const lastUsage = findLastUsage(cards);
+
+  // No plan = no sidebar. Tools/usage alone aren't worth eating 28 cols.
+  if (!activePlan) return null;
 
   return (
     <Box flexDirection="column" width={SIDEBAR_WIDTH} marginLeft={1} paddingX={1}>
-      {activePlan ? <PlanSection card={activePlan} /> : null}
+      <PlanSection card={activePlan} />
       {ongoingTool || subagentActivity ? (
         <RunningSection tool={ongoingTool} subagent={subagentActivity} />
       ) : null}
-      {lastUsage ? <UsageSection card={lastUsage} /> : null}
     </Box>
   );
 }
@@ -39,14 +40,6 @@ function findActivePlan(cards: ReadonlyArray<Card>) {
   for (let i = cards.length - 1; i >= 0; i--) {
     const c = cards[i];
     if (c?.kind === "plan" && c.variant === "active") return c;
-  }
-  return null;
-}
-
-function findLastUsage(cards: ReadonlyArray<Card>) {
-  for (let i = cards.length - 1; i >= 0; i--) {
-    const c = cards[i];
-    if (c?.kind === "usage") return c;
   }
   return null;
 }
@@ -155,40 +148,6 @@ function RunningSection({
       ) : null}
     </>
   );
-}
-
-function UsageSection({
-  card,
-}: {
-  card: {
-    tokens: { prompt: number; reason: number; output: number; promptCap: number };
-    cost: number;
-  };
-}) {
-  const totalTok = card.tokens.prompt + card.tokens.reason + card.tokens.output;
-  const ctxPct =
-    card.tokens.promptCap > 0 ? Math.round((card.tokens.prompt / card.tokens.promptCap) * 100) : 0;
-  return (
-    <>
-      <Box marginTop={1}>
-        <Text color={CARD.usage.color} bold>{`${CARD.usage.glyph} Last turn`}</Text>
-      </Box>
-      <Divider />
-      <Box>
-        <Text color={FG.body}>{`${formatCNY(card.cost, 4)} · ${formatTok(totalTok)} tok`}</Text>
-      </Box>
-      {card.tokens.promptCap > 0 ? (
-        <Box>
-          <Text color={ctxPct > 80 ? TONE.warn : FG.sub}>{`ctx ${ctxPct}% used`}</Text>
-        </Box>
-      ) : null}
-    </>
-  );
-}
-
-function formatTok(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
 }
 
 function truncate(s: string, max: number): string {
