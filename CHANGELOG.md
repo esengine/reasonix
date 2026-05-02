@@ -3,6 +3,48 @@
 All notable changes to Reasonix. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] — 2026-05-02
+
+**Headline:** MCP CLI surfaces realigned with `docs/design/agent-tui-terminal.html`
+sections 24, 32, and 37. Lifecycle messages get the documented vocabulary
+(`↻ handshake…` / `✓ connected` / `✖ failed` / `○ disabled`), `/mcp` opens
+an interactive browser modal instead of dumping text to scrollback, named
+servers can be skipped on launch via `/mcp disable <name>`, and a per-server
+p95 latency tracker emits a one-line warn toast when a server consistently
+goes slow.
+
+**MCP UX:**
+
+- feat(mcp): lifecycle line cards now match design §37 byte-for-byte —
+  `⌘ MCP · <name>          ✓ connected    12 tools · 8 resources · 142ms`
+  on bridge success, `↻ handshake…` before initialise, `✖ failed` with
+  reason in the catch path. New `src/cli/ui/mcp-lifecycle.ts` is the
+  single formatter shared by `chat` and `run`. (#106)
+- feat(mcp): `/mcp` opens a keyboard-driven browser modal per design §24,
+  showing server name + health badge + tool / resource / prompt counts +
+  capability list under the active row. `/mcp text` keeps the printed-card
+  form for non-TTY / replay contexts. (#107)
+- feat(mcp): `/mcp disable <name>` and `/mcp enable <name>` slash
+  subcommands persist a `mcpDisabled` list to `~/.reasonix/config.json`.
+  Disabled named servers are skipped on the next launch and surface as
+  `⌘ MCP · <name>          ○ disabled     via /mcp disable <name>` in
+  startup output. Anonymous servers (no `name=`) aren't toggleable, by
+  design. (#108)
+- feat(mcp): per-server p95 latency tracker fires a one-line warn toast
+  once when p95 over the last five calls crosses `mcpSlowThresholdMs`
+  (default 4000) — `⚠ MCP \`<name>\` slow · 8.4s p95 over the last 5
+  calls`. Idempotent: re-fires only after p95 dips below and crosses
+  back. New `src/mcp/latency.ts` + `src/cli/ui/mcp-toast.ts`. (#109)
+
+**Deferred:**
+
+- `/mcp reconnect <name>` (live tool-list teardown) split out as RFC #110.
+  The naïve implementation breaks the byte-stable prompt prefix when the
+  reconnected server's tool surface drifts; needs a design call between
+  refuse-on-drift / permissive-with-warn / `--force` flag before code.
+  The `r` keybind in the `/mcp` browser is a labelled stub waiting for
+  this RFC.
+
 ## [0.20.0] — 2026-05-02
 
 **Headline:** Drops Node 20 support (EOL'd 2026-04-30). The README has been
