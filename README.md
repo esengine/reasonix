@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/hero-stats.svg" alt="94% live prefix-cache hit · ~30× cheaper per task vs Claude Code · MIT terminal-native" width="860"/>
+  <img src="docs/assets/hero-stats.svg" alt="94% live prefix-cache hit · ~30× cheaper per task vs Claude Code · MIT terminal-native" width="860"/>
 </p>
 
 ---
@@ -34,7 +34,7 @@ npx reasonix code   # paste a DeepSeek API key on first run; persists after
 ```
 
 <p align="center">
-  <img src="docs/hero-terminal.svg" alt="Reasonix code mode — assistant proposes a SEARCH/REPLACE edit; nothing on disk until /apply" width="860"/>
+  <img src="docs/assets/hero-terminal.svg" alt="Reasonix code mode — assistant proposes a SEARCH/REPLACE edit; nothing on disk until /apply" width="860"/>
 </p>
 
 Requires Node ≥ 22. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal). Get a [DeepSeek API key →](https://platform.deepseek.com/api_keys) · `reasonix code --help` for flags.
@@ -83,7 +83,7 @@ Cache stability isn't a feature you turn on; it's an invariant the loop is desig
 ## What's in the box
 
 <p align="center">
-  <img src="docs/feature-grid.svg" alt="Feature grid — cache-first loop, plan mode, MCP first-class, sessions and dashboard, hooks, memory and skills" width="860"/>
+  <img src="docs/assets/feature-grid.svg" alt="Feature grid — cache-first loop, plan mode, MCP first-class, sessions and dashboard, hooks, memory and skills" width="860"/>
 </p>
 
 Permissions (`allow` / `ask` / `deny`), tool-call repair (flatten · scavenge · truncation · storm), and `/effort` for cheap turns round out the loop. [Architecture →](./docs/ARCHITECTURE.md) · [Dashboard mockup →](https://esengine.github.io/reasonix/design/agent-dashboard.html) · [TUI mockup →](https://esengine.github.io/reasonix/design/agent-tui-terminal.html) · [Website →](https://esengine.github.io/reasonix/)

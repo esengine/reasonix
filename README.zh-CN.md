@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/hero-stats.zh-CN.svg" alt="94% 实测前缀缓存命中 · 单任务比 Claude Code 便宜 ~30 倍 · MIT 终端原生" width="860"/>
+  <img src="docs/assets/hero-stats.zh-CN.svg" alt="94% 实测前缀缓存命中 · 单任务比 Claude Code 便宜 ~30 倍 · MIT 终端原生" width="860"/>
 </p>
 
 ---
@@ -34,7 +34,7 @@ npx reasonix code   # 首次运行粘贴 DeepSeek API Key，之后会记住
 ```
 
 <p align="center">
-  <img src="docs/hero-terminal.zh-CN.svg" alt="Reasonix code 模式预览 — 助手提出 SEARCH/REPLACE 编辑，未 /apply 不落盘" width="860"/>
+  <img src="docs/assets/hero-terminal.zh-CN.svg" alt="Reasonix code 模式预览 — 助手提出 SEARCH/REPLACE 编辑，未 /apply 不落盘" width="860"/>
 </p>
 
 要求 Node ≥ 22。已在 macOS、Linux、Windows（PowerShell · Git Bash · Windows Terminal）测过。[去拿 DeepSeek API Key →](https://platform.deepseek.com/api_keys) · 完整 flag 看 `reasonix code --help`。
@@ -83,7 +83,7 @@ npx reasonix code   # 首次运行粘贴 DeepSeek API Key，之后会记住
 ## 功能一览
 
 <p align="center">
-  <img src="docs/feature-grid.zh-CN.svg" alt="功能一览 — 缓存优先循环、计划模式、MCP 一等公民、会话与仪表盘、Hooks、Memory 与 Skills" width="860"/>
+  <img src="docs/assets/feature-grid.zh-CN.svg" alt="功能一览 — 缓存优先循环、计划模式、MCP 一等公民、会话与仪表盘、Hooks、Memory 与 Skills" width="860"/>
 </p>
 
 权限系统（`allow` / `ask` / `deny`）、tool-call repair（flatten · scavenge · truncation · storm）、`/effort` 给便宜回合降档——一起把整个 loop 兜起来。[架构文档 →](./docs/ARCHITECTURE.md) · [Dashboard 设计稿 →](https://esengine.github.io/reasonix/design/agent-dashboard.html) · [TUI 设计稿 →](https://esengine.github.io/reasonix/design/agent-tui-terminal.html) · [官网 →](https://esengine.github.io/reasonix/)
