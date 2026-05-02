@@ -19,7 +19,7 @@ describe("StormBreaker", () => {
     sb.inspect(call("x", "{}"));
     const verdict = sb.inspect(call("x", "{}"));
     expect(verdict.suppress).toBe(true);
-    expect(verdict.reason).toMatch(/call-storm/);
+    expect(verdict.reason).toMatch(/repeat-loop guard/);
   });
 
   it("distinguishes different args as different calls", () => {

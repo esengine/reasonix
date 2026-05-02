@@ -172,6 +172,7 @@ export class CacheFirstLoop {
   private _escalateThisTurn = false;
   private _turnFailureCount = 0;
   private _turnFailureTypes: Record<string, number> = {};
+  private _turnSelfCorrected = false;
 
   constructor(opts: CacheFirstLoopOptions) {
     this.client = opts.client;
@@ -236,7 +237,12 @@ export class CacheFirstLoop {
       }
       return def.readOnly !== true;
     };
-    this.repair = new ToolCallRepair({ allowedToolNames: allowedNames, isMutating });
+    this.repair = new ToolCallRepair({
+      allowedToolNames: allowedNames,
+      isMutating,
+      stormThreshold: parsePositiveIntEnv(process.env.REASONIX_STORM_THRESHOLD),
+      stormWindow: parsePositiveIntEnv(process.env.REASONIX_STORM_WINDOW),
+    });
 
     // Heal-on-load: oversized tool results would 400 the next call before the user types.
     this.sessionName = opts.session ?? null;
@@ -332,6 +338,23 @@ export class CacheFirstLoop {
         appendSessionMessage(this.sessionName, message);
       } catch {
         /* disk full or permission denied shouldn't kill the chat */
+      }
+    }
+  }
+
+  /** Swap the just-appended assistant entry — used by self-correction to restore the original tool_calls without dropping reasoning_content. */
+  private replaceTailAssistantMessage(message: ChatMessage): void {
+    const entries = this.log.entries;
+    const tail = entries[entries.length - 1];
+    if (!tail || tail.role !== "assistant") return;
+    const kept = entries.slice(0, -1);
+    kept.push(message);
+    this.log.compactInPlace(kept);
+    if (this.sessionName) {
+      try {
+        rewriteSession(this.sessionName, kept);
+      } catch {
+        /* disk issue shouldn't block the in-memory swap */
       }
     }
   }
@@ -454,7 +477,7 @@ export class CacheFirstLoop {
     if (repair) {
       if (repair.scavenged > 0) bump("scavenged", repair.scavenged);
       if (repair.truncationsFixed > 0) bump("truncated", repair.truncationsFixed);
-      if (repair.stormsBroken > 0) bump("storm-broken", repair.stormsBroken);
+      if (repair.stormsBroken > 0) bump("repeat-loop", repair.stormsBroken);
     }
     if (
       bumped &&
@@ -550,6 +573,7 @@ export class CacheFirstLoop {
     // unless the user re-arms or mid-turn escalation triggers).
     this._turnFailureCount = 0;
     this._turnFailureTypes = {};
+    this._turnSelfCorrected = false;
     this._escalateThisTurn = false;
     let armedConsumed = false;
     if (this._proArmedForNextTurn) {
@@ -1083,18 +1107,46 @@ export class CacheFirstLoop {
         };
       }
 
-      // Loud signal when the storm breaker caught a repeat pattern.
-      // The `repair` field on assistant_final already carries the
-      // count as a subtext on the assistant row, but a dedicated
-      // warning row is far more noticeable — and critical when ALL
-      // calls were suppressed, because the turn then ends with no
-      // visible explanation of why nothing happened.
+      const allSuppressed =
+        report.stormsBroken > 0 && repairedCalls.length === 0 && toolCalls.length > 0;
+
+      // First all-suppressed storm: rewrite tail with the original tool_calls
+      // (so the next prompt shows what was attempted), stub tool responses to
+      // keep the API contract, and continue the iter — model gets one shot to
+      // self-correct before the loud-warning path takes over.
+      if (allSuppressed && !this._turnSelfCorrected) {
+        this._turnSelfCorrected = true;
+        this.replaceTailAssistantMessage(
+          this.assistantMessage(
+            assistantContent,
+            toolCalls,
+            this.modelForCurrentCall(),
+            reasoningContent,
+          ),
+        );
+        for (const call of toolCalls) {
+          this.appendAndPersist({
+            role: "tool",
+            tool_call_id: call.id ?? "",
+            name: call.function?.name ?? "",
+            content:
+              "[repeat-loop guard] this call was suppressed because it was identical to a previous call in this turn. Earlier results for it are above — try a meaningfully different approach, or stop and answer if you have enough.",
+          });
+        }
+        yield {
+          turn: this._turn,
+          role: "warning",
+          content:
+            "Caught a repeated tool call — let the model see the issue and retry with a different approach.",
+        };
+        continue;
+      }
+
       if (report.stormsBroken > 0) {
         const noteTail = report.notes.length ? ` — ${report.notes[report.notes.length - 1]}` : "";
-        const allSuppressed = repairedCalls.length === 0 && toolCalls.length > 0;
         const phrase = allSuppressed
-          ? `stopped the model from calling the same tool with identical args repeatedly (all ${toolCalls.length} call(s) this turn were already in the recent-repeat window). Likely a stuck retry — reword your instruction, rule out the underlying blocker, or try /retry after fixing it`
-          : `suppressed ${report.stormsBroken} repeat tool call(s) that had fired 3+ times with identical args in a sliding window`;
+          ? "Stopped a stuck retry loop — the model kept calling the same tool with identical args after a self-correction nudge. Try /retry, rephrase, or rule out the underlying blocker."
+          : `Suppressed ${report.stormsBroken} repeated tool call(s) — same name + args fired 3+ times.`;
         yield {
           turn: this._turn,
           role: "warning",
@@ -1103,17 +1155,6 @@ export class CacheFirstLoop {
       }
 
       if (repairedCalls.length === 0) {
-        // Two sub-cases here:
-        //   (a) Model legitimately produced ZERO tool calls — final
-        //       prose answer, terminate the loop.
-        //   (b) Model emitted tool calls but storm-breaker ate them
-        //       all (allSuppressed). The user sees only the warning
-        //       row and a silent stop, which feels like the agent
-        //       gave up. Route through the forced-summary path so
-        //       the model gets one no-tools call to explain what it
-        //       tried, what blocked it, and what would unblock —
-        //       turning a silent dead-end into actionable feedback.
-        const allSuppressed = report.stormsBroken > 0 && toolCalls.length > 0;
         if (allSuppressed) {
           yield* this.forceSummaryAfterIterLimit({ reason: "stuck" });
           return;
@@ -1450,6 +1491,12 @@ export function stripHallucinatedToolMarkup(s: string): string {
   // different line (seen when R1 truncates mid-call).
   out = out.replace(/<｜DSML｜[\s\S]*$/g, "");
   return out.trim();
+}
+
+function parsePositiveIntEnv(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 function safeParseToolArgs(raw: string): unknown {

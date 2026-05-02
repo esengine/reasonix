@@ -43,7 +43,7 @@ export class StormBreaker {
     if (count >= this.threshold - 1) {
       return {
         suppress: true,
-        reason: `call-storm suppressed: ${name} called with identical args ${count + 1} times within window=${this.windowSize}`,
+        reason: `${name} called with identical args ${count + 1} times — repeat-loop guard tripped`,
       };
     }
     this.recent.push({ name, args, readOnly });
