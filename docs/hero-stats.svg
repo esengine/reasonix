@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 140" role="img" aria-label="Reasonix headline numbers — 94% live prefix-cache hit, ~30× cheaper per task vs Claude Code, MIT terminal-native">
+  <title>Reasonix headline numbers</title>
+  <defs>
+    <style>
+      .sans { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif; font-weight: 800; }
+      .lbl  { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif; font-weight: 500; }
+    </style>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#5eead4"/>
+      <stop offset="50%" stop-color="#93c5fd"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+  </defs>
+
+  <text x="146" y="68" text-anchor="middle" class="sans" font-size="56" fill="url(#g)">94%</text>
+  <text x="146" y="106" text-anchor="middle" class="lbl"  font-size="14" fill="#8b949e">live prefix-cache hit</text>
+
+  <text x="440" y="68" text-anchor="middle" class="sans" font-size="56" fill="url(#g)">~30×</text>
+  <text x="440" y="106" text-anchor="middle" class="lbl"  font-size="14" fill="#8b949e">cheaper per task vs Claude Code</text>
+
+  <text x="734" y="68" text-anchor="middle" class="sans" font-size="56" fill="url(#g)">MIT</text>
+  <text x="734" y="106" text-anchor="middle" class="lbl"  font-size="14" fill="#8b949e">terminal-native, no IDE lock-in</text>
+</svg>

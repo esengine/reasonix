@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" role="img" aria-label="Reasonix 功能一览 — 缓存优先循环、计划模式、MCP、会话、Hooks、Memory 与 Skills">
+  <title>Reasonix 功能一览</title>
+  <defs>
+    <style>
+      .sans  { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+      .ic    { font-family: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; }
+      .ttl   { font-weight: 700; }
+    </style>
+    <linearGradient id="ig" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#5eead4"/>
+      <stop offset="50%" stop-color="#93c5fd"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(10, 10)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">◈</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">缓存优先的循环</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">prompt 前缀字节稳定。</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">tau-bench 上 94% 实测命中。</text>
+  </g>
+
+  <g transform="translate(300, 10)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">✎</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">计划模式 · 编辑审查</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">写盘前先过只读审计闸。</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">不 /apply 一行都不改。</text>
+  </g>
+
+  <g transform="translate(590, 10)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">⊕</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">MCP 一等公民</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">stdio · SSE · Streamable HTTP。</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">和原生工具一样保缓存。</text>
+  </g>
+
+  <g transform="translate(10, 170)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">⌨</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">会话 · 仪表盘</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">按工作区持久化日志。</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">/dashboard 开浏览器镜像 TUI。</text>
+  </g>
+
+  <g transform="translate(300, 170)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">⚙</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">Hooks</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">Pre/Post tool 时跑 shell 脚本。</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">6 个生命周期事件，由 harness 触发。</text>
+  </g>
+
+  <g transform="translate(590, 170)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">¶</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">Memory · Skills</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">REASONIX.md 加用户私有 memory。</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">Skill 包可起 sub-agent 执行。</text>
+  </g>
+</svg>

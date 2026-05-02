@@ -18,7 +18,11 @@
 [![downloads](https://img.shields.io/npm/dm/reasonix.svg)](https://www.npmjs.com/package/reasonix)
 [![node](https://img.shields.io/node/v/reasonix.svg)](./package.json)
 
-**DeepSeek 原生的终端 AI 编程代理。** 单次任务成本约为 Claude Code 的 1/30，整个循环围绕 DeepSeek 的前缀缓存机制打造，所以省钱是真省（94% 真实命中率，不是理论值）。MIT 许可，不绑 IDE，原生支持 MCP。
+**DeepSeek 原生的终端 AI 编程代理。** 围绕 DeepSeek 的前缀缓存机制打造——省钱是真省，loop 便宜到可以一直开着。
+
+<p align="center">
+  <img src="docs/hero-stats.zh-CN.svg" alt="94% 实测前缀缓存命中 · 单任务比 Claude Code 便宜 ~30 倍 · MIT 终端原生" width="860"/>
+</p>
 
 ---
 
@@ -35,7 +39,7 @@ npx reasonix code
   <img src="docs/hero-terminal.zh-CN.svg" alt="Reasonix code 模式预览 — 助手提出 SEARCH/REPLACE 编辑，未 /apply 不落盘" width="860"/>
 </p>
 
-不 `/apply`，磁盘不会被改。要求 Node ≥ 22。已在 macOS、Linux、Windows（PowerShell · Git Bash · Windows Terminal）测过。
+要求 Node ≥ 22。已在 macOS、Linux、Windows（PowerShell · Git Bash · Windows Terminal）测过。需要按会话注入额外 prompt 看 `reasonix code --help`。
 
 ---
 
@@ -85,31 +89,11 @@ npx reasonix code
 
 ## 功能一览
 
-### 缓存优先的 agent 循环
-跨工具调用保持前缀稳定。支持 R1 风格的推理，配 `scavenge` pass 把逃逸到 `<think>` 块里的 tool call 拉回来。`ToolCallRepair` 在 dispatch 前修复畸形参数。`/effort` 让你给便宜回合降推理深度。
+<p align="center">
+  <img src="docs/feature-grid.zh-CN.svg" alt="功能一览 — 缓存优先循环、计划模式、MCP 一等公民、会话与仪表盘、Hooks、Memory 与 Skills" width="860"/>
+</p>
 
-### 工具注册表
-原生：`read_file`、`write_file`、`edit_file`（SEARCH/REPLACE）、`list_directory`、`search_files`、`grep_files`、`run_command`、`run_background`、`web_search`、`web_fetch`。全部沙箱在启动目录内。**MCP 一等公民** —— `--mcp 'name=cmd args'` 加外部服务器（stdio / Streamable HTTP / SSE），工具按前缀合入注册表。
-
-### 计划模式 + 编辑审查
-`/plan` 进只读审计闸，模型在你批准书面计划之前不能下发编辑。编辑以 SEARCH/REPLACE 块的形式出现；不 `/apply` 不落盘。`/walk` 一次过一处编辑。`/discard` 全部丢弃。
-
-### 工作区作用域的会话
-会话存在 `~/.reasonix/sessions/`，按启动目录过滤。`--new` 会用时间戳保留旧会话；`--resume` 找最新的。会话中途用 `/sessions` 切换，不必退出。
-
-### 内嵌 web 仪表盘
-`/dashboard` 打开一个本地 SPA，镜像运行中的 TUI —— chat（在老 PowerShell 上 TUI 渲染崩了时也能完整接管）、editor（文件树 + CodeMirror）、Sessions / Plans / Usage / Tools / MCP / Memory / Hooks / Settings。token 鉴权、CSRF 校验、临时端口。[设计稿 →](./design/agent-dashboard.html)
-
-### Hooks
-可配置的 shell 脚本，在 `PreToolUse`、`PostToolUse`、`UserPromptSubmit`、`Stop`、`Notification`、`SessionEnd` 触发。配置在 `.reasonix/settings.json`（项目级）或 `~/.reasonix/settings.json`（用户级）。harness 来执行，不是模型。
-
-### Memory + Skills
-两层：项目作用域的 `REASONIX.md`（提交进 git，写仓库约定），和用户作用域的 `~/.reasonix/memory/`（私有，模型可以通过 `remember` 工具自己写）。Skills 是用户编写的 prompt 包，可选用 sub-agent 执行。
-
-### 权限
-`allow` / `ask` / `deny` 模式匹配命令和工具。`npm publish` 默认 `ask`；`rm -rf *` 和 `git push --force *` 默认 `deny`。"批准一次"的决定可以按前缀记住。
-
-[官网完整文档 →](https://esengine.github.io/reasonix/) · [架构文档 →](./docs/ARCHITECTURE.md) · [TUI 设计稿 →](./design/agent-tui-terminal.html)
+权限系统（`allow` / `ask` / `deny`）、tool-call repair（flatten · scavenge · truncation · storm）、`/effort` 给便宜回合降档——一起把整个 loop 兜起来。[架构文档 →](./docs/ARCHITECTURE.md) · [Dashboard 设计稿 →](./design/agent-dashboard.html) · [TUI 设计稿 →](./design/agent-tui-terminal.html) · [官网 →](https://esengine.github.io/reasonix/)
 
 ---
 
@@ -129,7 +113,7 @@ git clone https://github.com/esengine/reasonix.git
 cd reasonix
 npm install
 npm run dev code        # 用 tsx 从源码跑
-npm run verify          # lint + typecheck + 1665 个测试
+npm run verify          # lint + typecheck + 测试
 ```
 
 ---

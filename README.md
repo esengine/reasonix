@@ -18,7 +18,11 @@
 [![downloads](https://img.shields.io/npm/dm/reasonix.svg)](https://www.npmjs.com/package/reasonix)
 [![node](https://img.shields.io/node/v/reasonix.svg)](./package.json)
 
-**A DeepSeek-native AI coding agent for your terminal.** ~30× cheaper per task than Claude Code, engineered around DeepSeek's prefix-cache so the savings are real (94% live cache hit, not theoretical). MIT-licensed, no IDE lock-in, MCP first-class.
+**A DeepSeek-native AI coding agent for your terminal.** Engineered around DeepSeek's prefix-cache, so the savings are real and the loop stays cheap enough to leave on.
+
+<p align="center">
+  <img src="docs/hero-stats.svg" alt="94% live prefix-cache hit · ~30× cheaper per task vs Claude Code · MIT terminal-native" width="860"/>
+</p>
 
 ---
 
@@ -35,22 +39,10 @@ First run: paste a [DeepSeek API key](https://platform.deepseek.com/api_keys), p
   <img src="docs/hero-terminal.svg" alt="Reasonix code mode — assistant proposes a SEARCH/REPLACE edit; nothing on disk until /apply" width="860"/>
 </p>
 
-Edits stay in memory until you type `/apply` — nothing hits disk by default. Requires Node ≥ 22. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal).
-
-### Appending code-mode system instructions
-
-`reasonix code` supports append-only system prompt customization for users who want to layer personal workflow rules on top of the default Reasonix Code prompt.
-
-```sh
-reasonix code --system-append "Always inspect relevant files before editing."
-reasonix code --system-append-file ./agent-instructions.md
-```
-
-Both options may be used together. When both are provided, the inline `--system-append` text is added first, followed by the `--system-append-file` contents, under a `# User System Append` heading at the end of the generated system prompt.
-
-These options do not replace the default code prompt. They append additional instructions after Reasonix Code's built-in tool-use and edit-protocol instructions. There is no `--system` override for `reasonix code`.
+Requires Node ≥ 22. Tested on macOS, Linux, and Windows (PowerShell, Git Bash, Windows Terminal). For per-session prompt customization see `reasonix code --help`.
 
 ---
+
 ## How it compares
 
 |                                  | Reasonix         | Claude Code     | Cursor             | Aider            |
@@ -97,31 +89,11 @@ Cache stability isn't a feature you turn on; it's an invariant the loop is desig
 
 ## What's in the box
 
-### Cache-first agent loop
-Loop preserves prefix stability across tool dispatches. R1-style reasoning supported, with a scavenge pass that pulls escaped tool calls back out of `<think>` blocks. Tool-call repair handles malformed args before they hit dispatch. `/effort` lets you step reasoning depth down for cheap turns.
+<p align="center">
+  <img src="docs/feature-grid.svg" alt="Feature grid — cache-first loop, plan mode, MCP first-class, sessions and dashboard, hooks, memory and skills" width="860"/>
+</p>
 
-### Tool registry
-Native: `read_file`, `write_file`, `edit_file` (SEARCH/REPLACE), `list_directory`, `search_files`, `grep_files`, `run_command`, `run_background`, `web_search`, `web_fetch`. All sandboxed to the launch directory. **MCP first-class** — `--mcp 'name=cmd args'` adds external servers (stdio / Streamable HTTP / SSE), tools merge into the registry under a prefix.
-
-### Plan mode + edit review
-`/plan` enters a read-only audit gate where the model can't dispatch edits until you approve a written plan. Edits emerge as SEARCH/REPLACE blocks; nothing hits disk until `/apply`. `/walk` steps through pending edits one at a time. `/discard` drops them all.
-
-### Sessions, scoped per workspace
-Sessions persist in `~/.reasonix/sessions/` and are filtered by launch directory. `--new` preserves the previous session under a timestamped name; `--resume` finds the latest. `/sessions` switches mid-chat without quitting.
-
-### Embedded web dashboard
-`/dashboard` opens a localhost SPA mirroring the running TUI — chat (with full composer fallback when the TUI's renderer breaks down on legacy PowerShell), editor (file tree + CodeMirror), Sessions / Plans / Usage / Tools / MCP / Memory / Hooks / Settings. Token-gated, CSRF-checked, ephemeral. [Design mockup →](./design/agent-dashboard.html)
-
-### Hooks
-Configurable shell scripts that fire on `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop`, `Notification`, `SessionEnd`. Lives in `.reasonix/settings.json` (per-project) or `~/.reasonix/settings.json` (per-user). The harness executes them — not the model.
-
-### Memory + skills
-Two layers: project-scoped `REASONIX.md` (committed, repo conventions) and user-scoped `~/.reasonix/memory/` (per-user, the model can write to it via the `remember` tool). Skills are user-authored prompt packs with optional sub-agent execution.
-
-### Permissions
-`allow` / `ask` / `deny` patterns on commands and tools. `npm publish` defaults to `ask`; `rm -rf *` and `git push --force *` default to `deny`. Approved-once decisions can be remembered for a prefix.
-
-[Full feature docs on the website →](https://esengine.github.io/reasonix/) · [Architecture →](./docs/ARCHITECTURE.md) · [TUI design mockup →](./design/agent-tui-terminal.html)
+Permissions (`allow` / `ask` / `deny`), tool-call repair (flatten · scavenge · truncation · storm), and `/effort` for cheap turns round out the loop. [Architecture →](./docs/ARCHITECTURE.md) · [Dashboard mockup →](./design/agent-dashboard.html) · [TUI mockup →](./design/agent-tui-terminal.html) · [Website →](https://esengine.github.io/reasonix/)
 
 ---
 
@@ -141,7 +113,7 @@ git clone https://github.com/esengine/reasonix.git
 cd reasonix
 npm install
 npm run dev code        # run from source via tsx
-npm run verify          # lint + typecheck + 1665 tests
+npm run verify          # lint + typecheck + tests
 ```
 
 ---

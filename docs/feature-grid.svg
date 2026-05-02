@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" role="img" aria-label="Reasonix feature grid — six cards covering cache-first loop, plan mode, MCP, sessions, hooks, memory and skills">
+  <title>Reasonix feature grid</title>
+  <defs>
+    <style>
+      .sans  { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+      .ic    { font-family: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; }
+      .ttl   { font-weight: 700; }
+    </style>
+    <linearGradient id="ig" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#5eead4"/>
+      <stop offset="50%" stop-color="#93c5fd"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(10, 10)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">◈</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">Cache-first loop</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">Byte-stable prompt prefix.</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">94% live cache hit on tau-bench.</text>
+  </g>
+
+  <g transform="translate(300, 10)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">✎</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">Plan mode · edit review</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">Read-only audit gate before</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">writes. Nothing on disk until /apply.</text>
+  </g>
+
+  <g transform="translate(590, 10)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">⊕</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">MCP first-class</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">stdio · SSE · Streamable HTTP.</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">Same cache-safety as native tools.</text>
+  </g>
+
+  <g transform="translate(10, 170)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">⌨</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">Sessions · dashboard</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">Per-workspace persistent log.</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">/dashboard opens a TUI mirror.</text>
+  </g>
+
+  <g transform="translate(300, 170)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">⚙</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">Hooks</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">Shell scripts on Pre/Post tool.</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">6 lifecycle events, harness-run.</text>
+  </g>
+
+  <g transform="translate(590, 170)">
+    <rect width="280" height="140" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+    <text x="22" y="44" class="ic" font-size="24" fill="url(#ig)">¶</text>
+    <text x="56" y="42" class="sans ttl" font-size="15" fill="#e6edf3">Memory · skills</text>
+    <text x="22" y="78" class="sans" font-size="13" fill="#8b949e">REASONIX.md + private user mem.</text>
+    <text x="22" y="98" class="sans" font-size="13" fill="#8b949e">Skill packs spawn sub-agents.</text>
+  </g>
+</svg>
