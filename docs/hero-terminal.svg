@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 460" role="img" aria-label="Reasonix code-mode preview — assistant proposes a SEARCH/REPLACE edit; nothing on disk until /apply">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" role="img" aria-label="Reasonix code-mode preview — assistant queues a unified diff; nothing on disk until /apply">
   <title>Reasonix code mode preview</title>
   <defs>
     <style>
@@ -11,7 +11,7 @@
     </linearGradient>
   </defs>
 
-  <rect x="0.5" y="0.5" width="879" height="459" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+  <rect x="0.5" y="0.5" width="879" height="359" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
 
   <rect x="0.5" y="0.5" width="879" height="34" rx="10" ry="10" fill="#11141a"/>
   <rect x="0.5" y="24" width="879" height="11" fill="#11141a"/>
@@ -22,7 +22,7 @@
   <circle cx="62" cy="17.5" r="6" fill="#7ee787"/>
   <text x="440" y="22" text-anchor="middle" class="mono" font-size="12" fill="url(#ttl)">reasonix code</text>
 
-  <g class="mono" font-size="14">
+  <g class="mono" font-size="14" xml:space="preserve">
     <text x="28" y="72">
       <tspan fill="#79c0ff">reasonix code › </tspan><tspan fill="#c9d1d9">fix the case-sensitivity bug in findByEmail</tspan>
     </text>
@@ -36,16 +36,14 @@
       <tspan fill="#79c0ff">  ▸ </tspan><tspan fill="#8b949e">tool&lt;</tspan><tspan fill="#c9d1d9">read_file</tspan><tspan fill="#8b949e">&gt;    → src/users.ts (412 chars)</tspan>
     </text>
 
-    <text x="28" y="202" fill="#f0b07d">src/users.ts</text>
-    <text x="28" y="224" fill="#ff8b81">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH</text>
-    <text x="28" y="246" fill="#c9d1d9">  return users.find(u =&gt; u.email === email);</text>
-    <text x="28" y="268" fill="#8b949e">=======</text>
-    <text x="28" y="290" fill="#7ee787">  const needle = email.toLowerCase();</text>
-    <text x="28" y="312" fill="#7ee787">  return users.find(u =&gt; u.email.toLowerCase() === needle);</text>
-    <text x="28" y="334" fill="#7ee787">&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</text>
-
-    <text x="28" y="402">
-      <tspan fill="#f0b07d">▸ 1 pending edit</tspan><tspan fill="#8b949e"> · /apply to write · /discard to drop</tspan>
+    <text x="28" y="202">
+      <tspan fill="#f0b07d">▸ 1 pending edit block(s)</tspan><tspan fill="#8b949e"> — /apply (or y) to commit · /discard (or n) to drop</tspan>
     </text>
+    <text x="28" y="224">
+      <tspan fill="#c9d1d9">      src/users.ts  </tspan><tspan fill="#8b949e">(-1 +2 lines)</tspan>
+    </text>
+    <text x="28" y="246" fill="#ff8b81">        -   return users.find(u =&gt; u.email === email);</text>
+    <text x="28" y="268" fill="#7ee787">        +   const needle = email.toLowerCase();</text>
+    <text x="28" y="290" fill="#7ee787">        +   return users.find(u =&gt; u.email.toLowerCase() === needle);</text>
   </g>
 </svg>
