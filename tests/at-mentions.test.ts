@@ -427,6 +427,54 @@ describe("listFilesWithStatsAsync", () => {
     const entries = await listFilesWithStatsAsync(join(root, "does-not-exist"));
     expect(entries).toEqual([]);
   });
+
+  it("honors root .gitignore — ignored files and dirs are skipped", async () => {
+    writeFileSync(join(root, ".gitignore"), "ignored-file.log\ngenerated/\n");
+    writeFileSync(join(root, "ignored-file.log"), "noise");
+    mkdirSync(join(root, "generated"), { recursive: true });
+    writeFileSync(join(root, "generated", "out.dart"), "");
+    const entries = await listFilesWithStatsAsync(root);
+    const paths = entries.map((e) => e.path);
+    expect(paths).not.toContain("ignored-file.log");
+    expect(paths.every((p) => !p.startsWith("generated/"))).toBe(true);
+    // Sanity: non-ignored files still present.
+    expect(paths).toContain("src/index.ts");
+  });
+
+  it("respectGitignore=false bypasses .gitignore filter", async () => {
+    writeFileSync(join(root, ".gitignore"), "ignored-file.log\n");
+    writeFileSync(join(root, "ignored-file.log"), "noise");
+    const entries = await listFilesWithStatsAsync(root, { respectGitignore: false });
+    expect(entries.map((e) => e.path)).toContain("ignored-file.log");
+  });
+
+  it("walks nested .gitignore files — sub-dir patterns scope correctly", async () => {
+    // Root .gitignore catches root-only matches; sub .gitignore adds local patterns.
+    writeFileSync(join(root, ".gitignore"), "secret.env\n");
+    writeFileSync(join(root, "secret.env"), "k=v");
+    mkdirSync(join(root, "lib"), { recursive: true });
+    writeFileSync(join(root, "lib", ".gitignore"), "*.generated.ts\n");
+    writeFileSync(join(root, "lib", "main.ts"), "");
+    writeFileSync(join(root, "lib", "schema.generated.ts"), "");
+    // Sub-pattern doesn't leak to siblings.
+    writeFileSync(join(root, "schema.generated.ts"), "");
+    const entries = await listFilesWithStatsAsync(root);
+    const paths = entries.map((e) => e.path);
+    expect(paths).not.toContain("secret.env");
+    expect(paths).not.toContain("lib/schema.generated.ts");
+    expect(paths).toContain("lib/main.ts");
+    // Sibling at root is NOT caught by lib/.gitignore.
+    expect(paths).toContain("schema.generated.ts");
+  });
+
+  it("negation patterns (!important.log) override prior excludes", async () => {
+    writeFileSync(join(root, ".gitignore"), "*.log\n!keep.log\n");
+    writeFileSync(join(root, "drop.log"), "");
+    writeFileSync(join(root, "keep.log"), "");
+    const paths = (await listFilesWithStatsAsync(root)).map((e) => e.path);
+    expect(paths).not.toContain("drop.log");
+    expect(paths).toContain("keep.log");
+  });
 });
 
 describe("AT_URL_PATTERN", () => {

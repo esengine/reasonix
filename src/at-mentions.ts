@@ -3,10 +3,17 @@
 import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import {
+  type GitignoreLayer,
+  ignoredByLayers,
+  loadGitignoreAt,
+  loadGitignoreAtSync,
+} from "./gitignore.js";
 
 /** Caps match tool-result dispatch truncation (0.5.2). */
 export const DEFAULT_AT_MENTION_MAX_BYTES = 64 * 1024;
 
+/** Universally-uninteresting build / VCS dirs. Framework-specific dirs (Pods, target, …) live in .gitignore. */
 export const DEFAULT_PICKER_IGNORE_DIRS: readonly string[] = [
   "node_modules",
   ".git",
@@ -25,10 +32,12 @@ export const DEFAULT_PICKER_IGNORE_DIRS: readonly string[] = [
 ];
 
 export interface ListFilesOptions {
-  /** Cap the walk once we've collected this many entries. Default 500. */
+  /** Cap the walk once we've collected this many entries. Default 2000. */
   maxResults?: number;
   /** Directory names to skip entirely. Defaults to {@link DEFAULT_PICKER_IGNORE_DIRS}. */
   ignoreDirs?: readonly string[];
+  /** Walk nested .gitignores (root + every subdir). Default true. */
+  respectGitignore?: boolean;
 }
 
 /** Sync on purpose — fits the TUI's single-turn-per-tick model. Skips dot-DIRS but keeps dotfiles. */
@@ -45,13 +54,19 @@ export interface FileWithStats {
 
 /** Stat failures kept as `mtimeMs: 0` — entry still appears, sinks to bottom of recency sort. */
 export function listFilesWithStatsSync(root: string, opts: ListFilesOptions = {}): FileWithStats[] {
-  const maxResults = Math.max(1, opts.maxResults ?? 500);
-  const ignore = new Set(opts.ignoreDirs ?? DEFAULT_PICKER_IGNORE_DIRS);
+  const maxResults = Math.max(1, opts.maxResults ?? 2000);
+  const ignoreDirs = new Set(opts.ignoreDirs ?? DEFAULT_PICKER_IGNORE_DIRS);
   const rootAbs = resolve(root);
+  const respectGi = opts.respectGitignore !== false;
   const out: FileWithStats[] = [];
 
-  const walk = (dirAbs: string, dirRel: string) => {
+  const walk = (dirAbs: string, dirRel: string, layers: readonly GitignoreLayer[]) => {
     if (out.length >= maxResults) return;
+    let effectiveLayers = layers;
+    if (respectGi) {
+      const ig = loadGitignoreAtSync(dirAbs);
+      if (ig) effectiveLayers = [...layers, { dirAbs, ig }];
+    }
     let entries: Dirent[];
     try {
       entries = readdirSync(dirAbs, { withFileTypes: true });
@@ -62,13 +77,16 @@ export function listFilesWithStatsSync(root: string, opts: ListFilesOptions = {}
     for (const ent of entries) {
       if (out.length >= maxResults) return;
       const relPath = dirRel ? `${dirRel}/${ent.name}` : ent.name;
+      const absPath = join(dirAbs, ent.name);
       if (ent.isDirectory()) {
-        if (ent.name.startsWith(".") || ignore.has(ent.name)) continue;
-        walk(join(dirAbs, ent.name), relPath);
+        if (ent.name.startsWith(".") || ignoreDirs.has(ent.name)) continue;
+        if (ignoredByLayers(effectiveLayers, absPath, true)) continue;
+        walk(absPath, relPath, effectiveLayers);
       } else if (ent.isFile()) {
+        if (ignoredByLayers(effectiveLayers, absPath, false)) continue;
         let mtimeMs = 0;
         try {
-          mtimeMs = statSync(join(dirAbs, ent.name)).mtimeMs;
+          mtimeMs = statSync(absPath).mtimeMs;
         } catch {
           /* stat failed (permission / EAGAIN) — keep the entry with mtime=0 */
         }
@@ -77,7 +95,7 @@ export function listFilesWithStatsSync(root: string, opts: ListFilesOptions = {}
     }
   };
 
-  walk(rootAbs, "");
+  walk(rootAbs, "", []);
   return out;
 }
 
@@ -86,13 +104,23 @@ export async function listFilesWithStatsAsync(
   root: string,
   opts: ListFilesOptions = {},
 ): Promise<FileWithStats[]> {
-  const maxResults = Math.max(1, opts.maxResults ?? 500);
-  const ignore = new Set(opts.ignoreDirs ?? DEFAULT_PICKER_IGNORE_DIRS);
+  const maxResults = Math.max(1, opts.maxResults ?? 2000);
+  const ignoreDirs = new Set(opts.ignoreDirs ?? DEFAULT_PICKER_IGNORE_DIRS);
   const rootAbs = resolve(root);
+  const respectGi = opts.respectGitignore !== false;
   const out: FileWithStats[] = [];
 
-  const walk = async (dirAbs: string, dirRel: string): Promise<void> => {
+  const walk = async (
+    dirAbs: string,
+    dirRel: string,
+    layers: readonly GitignoreLayer[],
+  ): Promise<void> => {
     if (out.length >= maxResults) return;
+    let effectiveLayers = layers;
+    if (respectGi) {
+      const ig = await loadGitignoreAt(dirAbs);
+      if (ig) effectiveLayers = [...layers, { dirAbs, ig }];
+    }
     let entries: Dirent[];
     try {
       entries = await readdir(dirAbs, { withFileTypes: true });
@@ -100,34 +128,34 @@ export async function listFilesWithStatsAsync(
       return;
     }
     entries.sort((a, b) => a.name.localeCompare(b.name));
-    // Pull file stats for THIS directory in parallel before
-    // recursing — readdir gave us all the names at once, may as
-    // well issue all the stats at once too. Recursion stays
-    // sequential so the alphabetical ordering of the merged list
-    // matches the sync walk's contract.
+    // Stats batched per directory to amortize syscall overhead. Recursion stays
+    // sequential so the merged DFS order matches the sync walker's contract.
     const fileEnts: Dirent[] = [];
     for (const ent of entries) {
       if (out.length >= maxResults) break;
+      const relPath = dirRel ? `${dirRel}/${ent.name}` : ent.name;
+      const absPath = join(dirAbs, ent.name);
       if (ent.isDirectory()) {
-        if (ent.name.startsWith(".") || ignore.has(ent.name)) continue;
+        if (ent.name.startsWith(".") || ignoreDirs.has(ent.name)) continue;
+        if (ignoredByLayers(effectiveLayers, absPath, true)) continue;
         // Drain pending file stats from THIS directory before
         // descending so the output order stays DFS-alphabetical.
         if (fileEnts.length > 0) {
-          await statBatch(fileEnts, dirAbs, dirRel, out, maxResults);
+          await statBatch(fileEnts, dirAbs, dirRel, out, maxResults, effectiveLayers);
           fileEnts.length = 0;
           if (out.length >= maxResults) return;
         }
-        await walk(join(dirAbs, ent.name), dirRel ? `${dirRel}/${ent.name}` : ent.name);
+        await walk(absPath, relPath, effectiveLayers);
       } else if (ent.isFile()) {
         fileEnts.push(ent);
       }
     }
     if (fileEnts.length > 0 && out.length < maxResults) {
-      await statBatch(fileEnts, dirAbs, dirRel, out, maxResults);
+      await statBatch(fileEnts, dirAbs, dirRel, out, maxResults, effectiveLayers);
     }
   };
 
-  await walk(rootAbs, "");
+  await walk(rootAbs, "", []);
   return out;
 }
 
@@ -137,18 +165,23 @@ async function statBatch(
   dirRel: string,
   out: FileWithStats[],
   maxResults: number,
+  layers: readonly GitignoreLayer[],
 ): Promise<void> {
-  const remaining = Math.max(0, maxResults - out.length);
-  const batch = ents.slice(0, remaining);
+  const accepted: Dirent[] = [];
+  for (const e of ents) {
+    if (out.length + accepted.length >= maxResults) break;
+    if (ignoredByLayers(layers, join(dirAbs, e.name), false)) continue;
+    accepted.push(e);
+  }
   const stats = await Promise.all(
-    batch.map((e) =>
+    accepted.map((e) =>
       stat(join(dirAbs, e.name))
         .then((s) => s.mtimeMs)
         .catch(() => 0),
     ),
   );
-  for (let i = 0; i < batch.length; i++) {
-    const ent = batch[i]!;
+  for (let i = 0; i < accepted.length; i++) {
+    const ent = accepted[i]!;
     out.push({
       path: dirRel ? `${dirRel}/${ent.name}` : ent.name,
       mtimeMs: stats[i] ?? 0,

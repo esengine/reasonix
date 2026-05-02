@@ -2,7 +2,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import ignore, { type Ignore } from "ignore";
+import { type GitignoreLayer, ignoredByLayers, loadGitignoreAt } from "../../gitignore.js";
 import {
   type IndexFilters,
   type ResolvedIndexConfig,
@@ -118,33 +118,8 @@ function safeSplit(chunk: CodeChunk, maxChars: number): CodeChunk[] {
   return out;
 }
 
-async function loadGitignoreAt(dirAbs: string): Promise<Ignore | null> {
-  try {
-    const text = await fs.readFile(path.join(dirAbs, ".gitignore"), "utf8");
-    return ignore().add(text);
-  } catch {
-    return null;
-  }
-}
-
 function toForwardRel(root: string, abs: string): string {
   return path.relative(root, abs).split(path.sep).join("/");
-}
-
-interface GitignoreLayer {
-  /** Absolute dir the gitignore lives in — patterns are evaluated relative to this. */
-  dirAbs: string;
-  ig: Ignore;
-}
-
-/** Returns true if any nested .gitignore — outermost to innermost — matches the path. */
-function ignoredByLayers(layers: readonly GitignoreLayer[], abs: string, isDir: boolean): boolean {
-  for (const layer of layers) {
-    const rel = path.relative(layer.dirAbs, abs).split(path.sep).join("/");
-    if (!rel || rel.startsWith("..")) continue;
-    if (layer.ig.ignores(isDir ? `${rel}/` : rel)) return true;
-  }
-  return false;
 }
 
 interface WalkFrame {
