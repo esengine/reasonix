@@ -1,6 +1,5 @@
 import { readConfig, writeConfig } from "../../../../config.js";
-import { reconnectMcpServer } from "../../../../mcp/reconnect.js";
-import { formatMcpLifecycleEvent } from "../../mcp-lifecycle.js";
+import { kickOffMcpReconnect } from "../../mcp-reconnect-kickoff.js";
 import type { SlashHandler } from "../dispatch.js";
 import { appendSection } from "../helpers.js";
 import type { McpServerSummary } from "../types.js";
@@ -151,47 +150,7 @@ function triggerReconnect(
   if (!postInfo) {
     return { info: "/mcp reconnect requires the interactive TUI (postInfo not wired)." };
   }
-  // Sync return: kick off the async work and let it report via postInfo.
-  // Identity drift is the only currently-supported success case; everything
-  // else surfaces as a "restart Reasonix to apply" line so the user knows
-  // why the reconnect didn't take.
-  const beforeTools = target.report.tools.supported ? target.report.tools.items : [];
-  void (async () => {
-    try {
-      const result = await reconnectMcpServer({
-        host: target.host,
-        spec: target.spec,
-        beforeTools,
-      });
-      if (result.ok) {
-        postInfo(
-          formatMcpLifecycleEvent({
-            state: "connected",
-            name: target.label,
-            tools: beforeTools.length,
-            ms: result.ms,
-          }),
-        );
-      } else {
-        postInfo(
-          formatMcpLifecycleEvent({
-            state: "failed",
-            name: target.label,
-            reason: `${result.reason} · ${result.message}`,
-          }),
-        );
-      }
-    } catch (err) {
-      postInfo(
-        formatMcpLifecycleEvent({
-          state: "failed",
-          name: target.label,
-          reason: (err as Error).message,
-        }),
-      );
-    }
-  })();
-  return { info: formatMcpLifecycleEvent({ state: "reconnect", name: target.label }) };
+  return { info: kickOffMcpReconnect(target, postInfo) };
 }
 
 export const handlers: Record<string, SlashHandler> = { mcp };

@@ -3386,6 +3386,7 @@ function AppInner({
               servers={mcpServers ?? []}
               configPath={defaultConfigPath()}
               onClose={() => setPendingMcpBrowser(false)}
+              postInfo={(text) => log.pushInfo(text)}
             />
           ) : pendingPlan ? (
             <PlanConfirm
