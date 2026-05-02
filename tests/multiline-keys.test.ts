@@ -355,6 +355,60 @@ describe("processMultilineKey — buffer-wide navigation + clear shortcuts", () 
   });
 });
 
+describe("processMultilineKey — Home/End/Ctrl+K/Alt-word", () => {
+  it("Home jumps to start of current line (multi-line)", () => {
+    // mid "two", index 5 → start of "two" at index 4
+    const r = processMultilineKey("one\ntwo\nthree", 5, key({ home: true }));
+    expect(r.cursor).toBe(4);
+  });
+
+  it("End jumps to end of current line (multi-line)", () => {
+    // mid "two", index 5 → end of "two" at index 7
+    const r = processMultilineKey("one\ntwo\nthree", 5, key({ end: true }));
+    expect(r.cursor).toBe(7);
+  });
+
+  it("Ctrl+K kills from cursor to end of current line", () => {
+    const r = processMultilineKey("hello world\nbye", 5, key({ input: "k", ctrl: true }));
+    expect(r.next).toBe("hello\nbye");
+    expect(r.cursor).toBe(5);
+  });
+
+  it("Ctrl+K at end-of-line is a no-op (does not eat the newline)", () => {
+    const r = processMultilineKey("hello\nbye", 5, key({ input: "k", ctrl: true }));
+    expect(r).toEqual({ next: null, cursor: null, submit: false });
+  });
+
+  it("Alt+B moves cursor to start of previous word", () => {
+    const r = processMultilineKey("hello world", 11, key({ input: "b", meta: true }));
+    expect(r.cursor).toBe(6);
+    expect(r.next).toBeNull();
+  });
+
+  it("Alt+B at start of buffer is a no-op", () => {
+    const r = processMultilineKey("hello", 0, key({ input: "b", meta: true }));
+    expect(r).toEqual({ next: null, cursor: null, submit: false });
+  });
+
+  it("Alt+F moves cursor to end of next word", () => {
+    const r = processMultilineKey("hello world", 0, key({ input: "f", meta: true }));
+    expect(r.cursor).toBe(5);
+    expect(r.next).toBeNull();
+  });
+
+  it("Alt+F at end of buffer is a no-op", () => {
+    const v = "hello";
+    const r = processMultilineKey(v, v.length, key({ input: "f", meta: true }));
+    expect(r).toEqual({ next: null, cursor: null, submit: false });
+  });
+
+  it("Alt+Backspace deletes the previous word (Ctrl+W alias)", () => {
+    const r = processMultilineKey("hello world", 11, key({ meta: true, backspace: true }));
+    expect(r.next).toBe("hello ");
+    expect(r.cursor).toBe(6);
+  });
+});
+
 describe("processMultilineKey — paste burst handling", () => {
   it("paste with embedded \\n surfaces a pasteRequest, does NOT submit even with key.return set", () => {
     // Repro of the reported bug: Ink occasionally sets key.return on

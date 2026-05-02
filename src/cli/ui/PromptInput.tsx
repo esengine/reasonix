@@ -99,6 +99,8 @@ export function PromptInput({
       escape: ev.escape,
       pageUp: ev.pageUp,
       pageDown: ev.pageDown,
+      home: ev.home,
+      end: ev.end,
     };
     const action = processMultilineKey(lastLocalValueRef.current, cursorRef.current, key);
     if (action.pasteRequest) {

@@ -16,6 +16,8 @@ export interface MultilineKey {
   escape?: boolean;
   pageUp?: boolean;
   pageDown?: boolean;
+  home?: boolean;
+  end?: boolean;
 }
 
 export interface MultilineAction {
@@ -98,12 +100,12 @@ export function processMultilineKey(
     return moved === cursor ? NOOP : { next: null, cursor: moved, submit: false };
   }
 
-  // Emacs-style line jumps (universal across terminals; Home/End aren't
-  // reliably reported by Ink so we don't depend on them).
-  if (key.ctrl && key.input === "a") {
+  // Emacs-style line jumps. Home/End come through our own stdin reader
+  // (see stdin-reader.ts CSI_TAIL_MAP); Ctrl+A/E stay as universal aliases.
+  if ((key.ctrl && key.input === "a") || key.home) {
     return { next: null, cursor: startOfLine(value, cursor), submit: false };
   }
-  if (key.ctrl && key.input === "e") {
+  if ((key.ctrl && key.input === "e") || key.end) {
     return { next: null, cursor: endOfLine(value, cursor), submit: false };
   }
   // Bash / readline conventions:
@@ -111,11 +113,25 @@ export function processMultilineKey(
   //     "clear from cursor to start"; for our text-area we treat it
   //     as "clear all" because there's no ergonomic way to clear a
   //     huge paste otherwise).
-  //   Ctrl+W — delete the word before the cursor.
+  //   Ctrl+K — kill from cursor to end of current line.
+  //   Ctrl+W / Alt+Backspace — delete the word before the cursor.
+  //   Alt+B / Alt+F — jump cursor backward / forward by one word.
   if (key.ctrl && key.input === "u") {
     return value.length === 0 ? NOOP : { next: "", cursor: 0, submit: false };
   }
-  if (key.ctrl && key.input === "w") {
+  if (key.ctrl && key.input === "k") {
+    const lineEnd = endOfLine(value, cursor);
+    if (lineEnd === cursor) return NOOP;
+    return {
+      next: value.slice(0, cursor) + value.slice(lineEnd),
+      cursor,
+      submit: false,
+    };
+  }
+  if (
+    (key.ctrl && key.input === "w") ||
+    (key.meta && (key.backspace || key.input === "\x7f" || key.input === "\b"))
+  ) {
     if (cursor === 0) return NOOP;
     const wordStart = previousWordStart(value, cursor);
     return {
@@ -123,6 +139,14 @@ export function processMultilineKey(
       cursor: wordStart,
       submit: false,
     };
+  }
+  if (key.meta && key.input === "b") {
+    const target = previousWordStart(value, cursor);
+    return target === cursor ? NOOP : { next: null, cursor: target, submit: false };
+  }
+  if (key.meta && key.input === "f") {
+    const target = nextWordEnd(value, cursor);
+    return target === cursor ? NOOP : { next: null, cursor: target, submit: false };
   }
 
   // Paste-burst detection. If `input` contains a newline (or
@@ -236,6 +260,15 @@ function previousWordStart(value: string, cursor: number): number {
   let i = cursor;
   while (i > 0 && /\s/.test(value[i - 1] ?? "")) i--;
   while (i > 0 && !/\s/.test(value[i - 1] ?? "")) i--;
+  return i;
+}
+
+/** Symmetric to previousWordStart: skip leading whitespace, then run to next word boundary. */
+function nextWordEnd(value: string, cursor: number): number {
+  let i = cursor;
+  const n = value.length;
+  while (i < n && /\s/.test(value[i] ?? "")) i++;
+  while (i < n && !/\s/.test(value[i] ?? "")) i++;
   return i;
 }
 
