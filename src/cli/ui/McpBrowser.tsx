@@ -4,6 +4,7 @@ import { Box, Text } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
 import React, { useState } from "react";
 import { useKeystroke } from "./keystroke-context.js";
+import { kickOffMcpReconnect } from "./mcp-reconnect-kickoff.js";
 import type { McpServerSummary } from "./slash/types.js";
 import { COLOR } from "./theme.js";
 
@@ -11,9 +12,11 @@ export interface McpBrowserProps {
   servers: McpServerSummary[];
   configPath: string;
   onClose: () => void;
+  /** Pushed by the modal when a key triggers async work (`r` reconnect). */
+  postInfo: (text: string) => void;
 }
 
-export function McpBrowser({ servers, configPath, onClose }: McpBrowserProps) {
+export function McpBrowser({ servers, configPath, onClose, postInfo }: McpBrowserProps) {
   const [index, setIndex] = useState(0);
   const max = Math.max(0, servers.length - 1);
 
@@ -22,6 +25,15 @@ export function McpBrowser({ servers, configPath, onClose }: McpBrowserProps) {
     if (ev.upArrow) setIndex((i) => Math.max(0, i - 1));
     else if (ev.downArrow) setIndex((i) => Math.min(max, i + 1));
     else if (ev.escape) onClose();
+    else if (ev.input === "r") {
+      const target = servers[index];
+      if (!target) return;
+      // Hand the "starting" lifecycle line to scrollback and let the
+      // kickoff schedule the result line via postInfo. Close the modal
+      // so the line is visible immediately.
+      postInfo(kickOffMcpReconnect(target, postInfo));
+      onClose();
+    }
   });
 
   return (
@@ -46,7 +58,7 @@ export function McpBrowser({ servers, configPath, onClose }: McpBrowserProps) {
         )}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>↑↓ pick · [r] reconnect (Stage C) · [d] disable (Stage C) · esc quit</Text>
+        <Text dimColor>↑↓ pick · [r] reconnect · [d] disable (TBD) · esc quit</Text>
       </Box>
     </Box>
   );
