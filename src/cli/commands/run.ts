@@ -20,6 +20,7 @@ import { appendUsage } from "../../telemetry/usage.js";
 import { ToolRegistry } from "../../tools.js";
 import { openTranscriptFile, recordFromLoopEvent, writeRecord } from "../../transcript/log.js";
 import { formatMcpLifecycleEvent } from "../ui/mcp-lifecycle.js";
+import { formatMcpSlowToast } from "../ui/mcp-toast.js";
 
 export interface RunOptions {
   task: string;
@@ -109,7 +110,15 @@ export async function runCommand(opts: RunOptions): Promise<void> {
               : new StdioTransport({ command: spec.command, args: spec.args });
         const mcp = new McpClient({ transport });
         await mcp.initialize();
-        const bridge = await bridgeMcpTools(mcp, { registry: tools, namePrefix: prefix });
+        const bridge = await bridgeMcpTools(mcp, {
+          registry: tools,
+          namePrefix: prefix,
+          serverName: label,
+          onSlow: (info) =>
+            process.stderr.write(
+              `${formatMcpSlowToast({ name: info.serverName, p95Ms: info.p95Ms, sampleSize: info.sampleSize })}\n`,
+            ),
+        });
         process.stderr.write(
           `${formatMcpLifecycleEvent({
             state: "connected",

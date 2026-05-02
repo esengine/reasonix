@@ -2,6 +2,7 @@ import { countTokens } from "../tokenizer.js";
 import { ToolRegistry } from "../tools.js";
 import type { JSONSchema } from "../types.js";
 import type { McpClient } from "./client.js";
+import { LatencyTracker, type SlowEvent } from "./latency.js";
 import type { CallToolResult, McpContentBlock } from "./types.js";
 
 export interface BridgeOptions {
@@ -20,6 +21,12 @@ export interface BridgeOptions {
     total?: number;
     message?: string;
   }) => void;
+  /** Server name used to tag latency samples + slow events. Falls through to namePrefix without trailing `_`. */
+  serverName?: string;
+  /** p95 cutoff in ms before a slow event fires — defaults to 4000. */
+  slowThresholdMs?: number;
+  /** Fired exactly when the per-server p95 transitions over `slowThresholdMs`. */
+  onSlow?: (ev: SlowEvent) => void;
 }
 
 export const DEFAULT_MAX_RESULT_CHARS = 32_000;
@@ -44,6 +51,10 @@ export async function bridgeMcpTools(
   const maxResultChars = opts.maxResultChars ?? DEFAULT_MAX_RESULT_CHARS;
   const result: BridgeResult = { registry, registeredNames: [], skipped: [] };
 
+  const serverName = opts.serverName ?? prefix.replace(/_$/, "") ?? "anon";
+  const tracker = opts.onSlow
+    ? new LatencyTracker(serverName, { thresholdMs: opts.slowThresholdMs, onSlow: opts.onSlow })
+    : null;
   const listed = await client.listTools();
   for (const mcpTool of listed.tools) {
     if (!mcpTool.name) {
@@ -56,6 +67,7 @@ export async function bridgeMcpTools(
       description: mcpTool.description ?? "",
       parameters: mcpTool.inputSchema as JSONSchema,
       fn: async (args: Record<string, unknown>, ctx) => {
+        const t0 = tracker ? Date.now() : 0;
         const toolResult = await client.callTool(mcpTool.name, args, {
           // Forward server-side progress frames to the bridge caller,
           // tagged with the registered name so multi-server UIs can
@@ -71,6 +83,7 @@ export async function bridgeMcpTools(
           // pending promise immediately, no "wait for subprocess".
           signal: ctx?.signal,
         });
+        if (tracker) tracker.record(Date.now() - t0);
         return flattenMcpResult(toolResult, { maxChars: maxResultChars });
       },
     });

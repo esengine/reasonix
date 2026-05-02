@@ -24,6 +24,7 @@ import { SessionPicker } from "../ui/SessionPicker.js";
 import { Setup } from "../ui/Setup.js";
 import { KeystrokeProvider } from "../ui/keystroke-context.js";
 import { formatMcpLifecycleEvent } from "../ui/mcp-lifecycle.js";
+import { formatMcpSlowToast } from "../ui/mcp-toast.js";
 import type { McpServerSummary } from "../ui/slash.js";
 
 export interface ProgressInfo {
@@ -233,7 +234,12 @@ export async function chatCommand(opts: ChatOptions): Promise<void> {
         const bridge = await bridgeMcpTools(mcp, {
           registry: tools,
           namePrefix: prefix,
+          serverName: label,
           onProgress: (info) => progressSink.current?.(info),
+          onSlow: (info) =>
+            process.stderr.write(
+              `${formatMcpSlowToast({ name: info.serverName, p95Ms: info.p95Ms, sampleSize: info.sampleSize })}\n`,
+            ),
         });
         // Inspect collects resources + prompts once so `/mcp` can render them
         // synchronously. Servers that don't support these fall through as
