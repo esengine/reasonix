@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { html } from "../lib/html.js";
+import { type DashboardLang, getLang, setLang, t, useLang } from "../i18n/index.js";
 
 interface SettingsData {
   apiKey?: string | null;
@@ -13,6 +14,7 @@ interface SettingsData {
 }
 
 export function SettingsPanel() {
+  useLang();
   const [data, setData] = useState<SettingsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -39,7 +41,7 @@ export function SettingsPanel() {
       try {
         await api("/settings", { method: "POST", body: fields });
         await load();
-        setSaved(`saved: ${Object.keys(fields).join(", ")}`);
+        setSaved(t("settings.saved", { fields: Object.keys(fields).join(", ") }));
         setTimeout(() => setSaved(null), 3000);
       } catch (err) {
         setError((err as Error).message);
@@ -51,7 +53,7 @@ export function SettingsPanel() {
   );
 
   if (!data && !error)
-    return html`<div class="card" style="color:var(--fg-3)">loading settings…</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("settings.loading")}</div>`;
   if (error && !data) return html`<div class="card accent-err">${error}</div>`;
   if (!data) return null;
   const v = data;
@@ -71,6 +73,8 @@ export function SettingsPanel() {
     </div>
   `;
 
+  const currentLang = getLang();
+
   return html`
     <div style="max-width:760px;display:flex;flex-direction:column;gap:6px">
       ${
@@ -80,18 +84,37 @@ export function SettingsPanel() {
         error ? html`<div class="card accent-err">${error}</div>` : null
       }
 
-      ${sectionH3("DeepSeek API")}
+      ${sectionH3(t("settings.sectionLanguage"))}
       <div class="card">
         ${fieldRow(
-          "API key",
-          html`<code class="mono" style="color:var(--fg-2);font-size:11.5px">${v.apiKey ?? "(not set)"}</code>`,
+          t("settings.language"),
+          html`
+            <select
+              value=${currentLang}
+              onChange=${(e: Event) => {
+                const lang = (e.target as HTMLSelectElement).value as DashboardLang;
+                setLang(lang);
+              }}
+            >
+              <option value="en">${t("settings.langEn")}</option>
+              <option value="zh-CN">${t("settings.langZhCn")}</option>
+            </select>
+          `,
+        )}
+      </div>
+
+      ${sectionH3(t("settings.sectionApi"))}
+      <div class="card">
+        ${fieldRow(
+          t("settings.apiKey"),
+          html`<code class="mono" style="color:var(--fg-2);font-size:11.5px">${v.apiKey ?? t("settings.notSet")}</code>`,
         )}
         ${fieldRow(
-          "replace",
+          t("settings.replace"),
           html`
             <input
               type="password"
-              placeholder="paste a fresh sk-… token"
+              placeholder=${t("settings.pasteKey")}
               value=${draft.apiKey ?? ""}
               onInput=${(e: Event) => setDraft({ ...draft, apiKey: (e.target as HTMLInputElement).value })}
               style="flex:1"
@@ -100,16 +123,16 @@ export function SettingsPanel() {
               class="btn primary"
               disabled=${saving || !(draft.apiKey ?? "").trim()}
               onClick=${() => save({ apiKey: draft.apiKey })}
-            >Save key</button>
+            >${t("settings.saveKey")}</button>
           `,
         )}
         ${fieldRow(
-          "base url",
+          t("settings.baseUrl"),
           html`
             <input
               type="text"
               value=${draft.baseUrl ?? v.baseUrl ?? ""}
-              placeholder="https://api.deepseek.com (default)"
+              placeholder=${t("settings.baseUrlPlaceholder")}
               onInput=${(e: Event) => setDraft({ ...draft, baseUrl: (e.target as HTMLInputElement).value })}
               style="flex:1"
             />
@@ -117,65 +140,65 @@ export function SettingsPanel() {
               class="btn"
               disabled=${saving || (draft.baseUrl ?? v.baseUrl ?? "") === (v.baseUrl ?? "")}
               onClick=${() => save({ baseUrl: draft.baseUrl })}
-            >Save</button>
+            >${t("common.save")}</button>
           `,
         )}
       </div>
 
-      ${sectionH3("Defaults")}
+      ${sectionH3(t("settings.sectionDefaults"))}
       <div class="card">
         ${fieldRow(
-          "preset",
+          t("settings.preset"),
           html`
             <select
               value=${["auto", "flash", "pro"].includes(v.preset ?? "") ? v.preset : "auto"}
               onChange=${(e: Event) => save({ preset: (e.target as HTMLSelectElement).value })}
               disabled=${saving}
             >
-              <option value="auto">auto — flash → pro on hard turns</option>
-              <option value="flash">flash — always flash, no auto-escalate</option>
-              <option value="pro">pro — always pro</option>
+              <option value="auto">${t("settings.presetAuto")}</option>
+              <option value="flash">${t("settings.presetFlash")}</option>
+              <option value="pro">${t("settings.presetPro")}</option>
             </select>
           `,
-          "applies next turn",
+          t("settings.appliesNextTurn"),
         )}
         ${fieldRow(
-          "effort",
+          t("settings.effort"),
           html`
             <select
               value=${v.reasoningEffort}
               onChange=${(e: Event) => save({ reasoningEffort: (e.target as HTMLSelectElement).value })}
               disabled=${saving}
             >
-              <option value="max">max (default — best)</option>
-              <option value="high">high (cheaper / faster)</option>
+              <option value="max">${t("settings.effortMax")}</option>
+              <option value="high">${t("settings.effortHigh")}</option>
             </select>
           `,
-          "applies next turn",
+          t("settings.appliesNextTurn"),
         )}
         ${fieldRow(
-          "web search",
+          t("settings.webSearch"),
           html`
             <button
               class=${`btn ${v.search ? "primary" : ""}`}
               onClick=${() => save({ search: !v.search })}
               disabled=${saving}
-            >${v.search ? "ON" : "off"}</button>
+            >${v.search ? t("common.on") : t("common.off")}</button>
           `,
-          "web_fetch + web_search tools",
+          t("settings.webSearchNote"),
         )}
       </div>
 
-      ${sectionH3("Runtime")}
+      ${sectionH3(t("settings.sectionRuntime"))}
       <div class="card">
         ${fieldRow(
-          "active model",
+          t("settings.activeModel"),
           html`<code class="mono">${v.model ?? "—"}</code>`,
         )}
         ${fieldRow(
-          "edit mode",
+          t("settings.editMode"),
           html`<code class="mono">${v.editMode}</code>`,
-          "switch from the Chat tab header",
+          t("settings.editModeNote"),
         )}
       </div>
     </div>

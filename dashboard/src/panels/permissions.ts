@@ -2,6 +2,7 @@ import { useCallback, useState } from "preact/hooks";
 import { api } from "../lib/api.js";
 import { html } from "../lib/html.js";
 import { usePoll } from "../lib/use-poll.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface PermissionsData {
   editMode?: string;
@@ -29,6 +30,7 @@ function groupByVerb(list: string[]): [string, string[]][] {
 }
 
 export function PermissionsPanel() {
+  useLang();
   const { data, error, loading, refresh } = usePoll<PermissionsData>("/permissions", 5000);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,8 +46,8 @@ export function PermissionsPanel() {
         method: "POST",
         body: { prefix },
       });
-      if (res.alreadyPresent) setFeedback({ kind: "info", text: `${prefix} already in list` });
-      else setFeedback({ kind: "ok", text: `added: ${prefix}` });
+      if (res.alreadyPresent) setFeedback({ kind: "info", text: t("permissions.alreadyIn", { prefix }) });
+      else setFeedback({ kind: "ok", text: t("permissions.added", { prefix }) });
       setDraft("");
       await refresh();
     } catch (err) {
@@ -57,12 +59,12 @@ export function PermissionsPanel() {
 
   const remove = useCallback(
     async (prefix: string) => {
-      if (!confirm(`Remove "${prefix}" from this project's allowlist?`)) return;
+      if (!confirm(t("permissions.removeConfirm", { prefix }))) return;
       setBusy(true);
       setFeedback(null);
       try {
         await api("/permissions", { method: "DELETE", body: { prefix } });
-        setFeedback({ kind: "ok", text: `removed: ${prefix}` });
+        setFeedback({ kind: "ok", text: t("permissions.removed", { prefix }) });
         await refresh();
       } catch (err) {
         setFeedback({ kind: "err", text: (err as Error).message });
@@ -74,7 +76,7 @@ export function PermissionsPanel() {
   );
 
   const clearAll = useCallback(async () => {
-    if (!confirm("Wipe every project allowlist entry? Builtin entries are unaffected.")) return;
+    if (!confirm(t("permissions.clearConfirm"))) return;
     setBusy(true);
     setFeedback(null);
     try {
@@ -84,7 +86,7 @@ export function PermissionsPanel() {
       });
       setFeedback({
         kind: "ok",
-        text: `cleared ${res.dropped} entr${res.dropped === 1 ? "y" : "ies"}`,
+        text: t("permissions.cleared", { count: res.dropped, y: res.dropped === 1 ? "y" : "ies" }),
       });
       await refresh();
     } catch (err) {
@@ -95,8 +97,8 @@ export function PermissionsPanel() {
   }, [refresh]);
 
   if (loading && !data)
-    return html`<div class="card" style="color:var(--fg-3)">loading permissions…</div>`;
-  if (error) return html`<div class="card accent-err">permissions failed: ${error.message}</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("permissions.loading")}</div>`;
+  if (error) return html`<div class="card accent-err">${t("common.loadingFailed", { name: "permissions", error: error.message })}</div>`;
   if (!data) return null;
   const p = data;
 
@@ -111,18 +113,17 @@ export function PermissionsPanel() {
       ${
         p.editMode === "yolo"
           ? html`<div class="card accent-warn">
-              <div class="card-h"><span class="title" style="color:var(--c-warn)">YOLO mode</span></div>
+              <div class="card-h"><span class="title" style="color:var(--c-warn)">${t("permissions.yoloTitle")}</span></div>
               <div class="card-b">
-                Every shell command auto-runs, allowlist bypassed.
-                Switch back with <code class="mono">/mode review</code> in the TUI.
+                ${t("permissions.yoloDesc")}
               </div>
             </div>`
           : null
       }
 
       <div class="chips">
-        <span class="chip-f active">project <span class="ct">${p.project.length}</span></span>
-        <span class="chip-f">builtin <span class="ct">${p.builtin.length}</span></span>
+        <span class="chip-f active">${t("permissions.project")} <span class="ct">${p.project.length}</span></span>
+        <span class="chip-f">${t("permissions.builtin")} <span class="ct">${p.builtin.length}</span></span>
       </div>
 
       ${
@@ -130,13 +131,13 @@ export function PermissionsPanel() {
           ? html`
             <div class="card">
               <div class="card-h">
-                <span class="title">add a prefix</span>
+                <span class="title">${t("permissions.addPrefix")}</span>
                 <span class="meta">${p.currentCwd}</span>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
                 <input
                   type="text"
-                  placeholder='e.g. "npm run build" or "deploy.sh"'
+                  placeholder=${t("permissions.addPlaceholder")}
                   value=${draft}
                   onInput=${(e: Event) => setDraft((e.target as HTMLInputElement).value)}
                   onKeyDown=${(e: KeyboardEvent) => {
@@ -145,12 +146,12 @@ export function PermissionsPanel() {
                   disabled=${busy}
                   style="flex:1"
                 />
-                <button class="primary" onClick=${add} disabled=${busy || !draft.trim()}>Add</button>
+                <button class="primary" onClick=${add} disabled=${busy || !draft.trim()}>${t("common.add")}</button>
                 <button
                   class="danger"
                   onClick=${clearAll}
                   disabled=${busy || p.project.length === 0}
-                >Clear all</button>
+                >${t("permissions.clearAll")}</button>
               </div>
               ${feedbackPill ? html`<div style="margin-top:8px">${feedbackPill}</div>` : null}
             </div>
@@ -158,27 +159,25 @@ export function PermissionsPanel() {
           : html`
             <div class="card accent-warn">
               <div class="card-b">
-                Mutations require <code class="mono">/dashboard</code> from inside an active
-                <code class="mono">reasonix code</code> session — standalone
-                <code class="mono">reasonix dashboard</code> can't tell which project's allowlist to edit.
+                ${t("permissions.standaloneWarning")}
               </div>
             </div>
           `
       }
 
       <h3 style="margin:6px 0 0;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
-        Project allowlist · ${p.project.length}
+        ${t("permissions.projectAllowlist", { count: p.project.length })}
       </h3>
       ${
         p.project.length === 0
-          ? html`<div class="card" style="color:var(--fg-3)">Nothing stored yet for this project.</div>`
+          ? html`<div class="card" style="color:var(--fg-3)">${t("permissions.nothingStored")}</div>`
           : html`
             <div class="card" style="padding:0;overflow:hidden">
               <table class="tbl">
                 <thead>
                   <tr>
-                    <th style="width:48px">#</th>
-                    <th>prefix</th>
+                    <th style="width:48px">${t("permissions.colNum")}</th>
+                    <th>${t("permissions.colPrefix")}</th>
                     <th style="width:120px"></th>
                   </tr>
                 </thead>
@@ -195,7 +194,7 @@ export function PermissionsPanel() {
                                   class="danger"
                                   onClick=${() => remove(prefix)}
                                   disabled=${busy}
-                                >remove</button>`
+                                >${t("common.remove")}</button>`
                               : null
                           }
                         </td>
@@ -209,7 +208,7 @@ export function PermissionsPanel() {
       }
 
       <h3 style="margin:6px 0 0;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.1em">
-        Builtin · ${p.builtin.length} · read-only
+        ${t("permissions.builtinTitle", { count: p.builtin.length })}
       </h3>
       <div class="card" style="font-family:var(--font-mono);font-size:11.5px;line-height:1.8">
         ${groupByVerb(p.builtin).map(

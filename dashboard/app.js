@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { MODE } from "./src/lib/api";
 import { ToastStack, appBus } from "./src/lib/bus";
 import { ErrorBoundary, ErrorOverlay } from "./src/lib/error-boundary";
+import { t, useLang } from "./src/i18n";
 import { ChatPanel } from "./src/panels/chat";
 import { HooksPanel } from "./src/panels/hooks";
 import { McpPanel } from "./src/panels/mcp";
@@ -23,41 +24,42 @@ import { UsagePanel } from "./src/panels/usage";
 
 const html = htm.bind(h);
 
-const TAB_SECTIONS = [
-  {
-    label: "workspace",
-    tabs: [
-      { id: "chat", name: "Chat", glyph: "◆", panel: () => html`<${ChatPanel} />` },
-      { id: "plans", name: "Plans", glyph: "⊞", panel: () => html`<${PlansPanel} />` },
-      { id: "sessions", name: "Sessions", glyph: "›", panel: () => html`<${SessionsPanel} />` },
-    ],
-  },
-  {
-    label: "observe",
-    tabs: [
-      { id: "overview", name: "Overview", glyph: "◈", panel: () => html`<${OverviewPanel} />` },
-      { id: "usage", name: "Usage", glyph: "$", panel: () => html`<${UsagePanel} />` },
-      { id: "health", name: "System", glyph: "+", panel: () => html`<${SystemPanel} />` },
-      { id: "semantic", name: "Semantic", glyph: "≈", panel: () => html`<${SemanticPanel} />` },
-    ],
-  },
-  {
-    label: "configure",
-    tabs: [
-      { id: "tools", name: "Tools", glyph: "▣", panel: () => html`<${ToolsPanel} />` },
-      { id: "permissions", name: "Permissions", glyph: "▎", panel: () => html`<${PermissionsPanel} />` },
-      { id: "mcp", name: "MCP", glyph: "M", panel: () => html`<${McpPanel} />` },
-      { id: "skills", name: "Skills", glyph: "S", panel: () => html`<${SkillsPanel} />` },
-      { id: "memory", name: "Memory", glyph: "·", panel: () => html`<${MemoryPanel} />` },
-      { id: "hooks", name: "Hooks", glyph: "H", panel: () => html`<${HooksPanel} />` },
-      { id: "settings", name: "Settings", glyph: "⌘", panel: () => html`<${SettingsPanel} />` },
-    ],
-  },
-];
-
-const ALL_TABS = TAB_SECTIONS.flatMap((s) => s.tabs);
+function tabSections() {
+  return [
+    {
+      label: t("app.sectionWorkspace"),
+      tabs: [
+        { id: "chat", name: t("app.tabChat"), glyph: "◆", panel: () => html`<${ChatPanel} />` },
+        { id: "plans", name: t("app.tabPlans"), glyph: "⊞", panel: () => html`<${PlansPanel} />` },
+        { id: "sessions", name: t("app.tabSessions"), glyph: "›", panel: () => html`<${SessionsPanel} />` },
+      ],
+    },
+    {
+      label: t("app.sectionObserve"),
+      tabs: [
+        { id: "overview", name: t("app.tabOverview"), glyph: "◈", panel: () => html`<${OverviewPanel} />` },
+        { id: "usage", name: t("app.tabUsage"), glyph: "$", panel: () => html`<${UsagePanel} />` },
+        { id: "health", name: t("app.tabSystem"), glyph: "+", panel: () => html`<${SystemPanel} />` },
+        { id: "semantic", name: t("app.tabSemantic"), glyph: "≈", panel: () => html`<${SemanticPanel} />` },
+      ],
+    },
+    {
+      label: t("app.sectionConfigure"),
+      tabs: [
+        { id: "tools", name: t("app.tabTools"), glyph: "▣", panel: () => html`<${ToolsPanel} />` },
+        { id: "permissions", name: t("app.tabPermissions"), glyph: "▎", panel: () => html`<${PermissionsPanel} />` },
+        { id: "mcp", name: t("app.tabMcp"), glyph: "M", panel: () => html`<${McpPanel} />` },
+        { id: "skills", name: t("app.tabSkills"), glyph: "S", panel: () => html`<${SkillsPanel} />` },
+        { id: "memory", name: t("app.tabMemory"), glyph: "·", panel: () => html`<${MemoryPanel} />` },
+        { id: "hooks", name: t("app.tabHooks"), glyph: "H", panel: () => html`<${HooksPanel} />` },
+        { id: "settings", name: t("app.tabSettings"), glyph: "⌘", panel: () => html`<${SettingsPanel} />` },
+      ],
+    },
+  ];
+}
 
 function App() {
+  useLang();
   const [activeId, setActiveId] = useState("chat");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -73,6 +75,8 @@ function App() {
       /* private mode / disabled storage — ignore */
     }
   }, [sidebarCollapsed]);
+  const TAB_SECTIONS = tabSections();
+  const ALL_TABS = TAB_SECTIONS.flatMap((s) => s.tabs);
   const active = ALL_TABS.find((t) => t.id === activeId) ?? ALL_TABS[0];
 
   useEffect(() => {
@@ -135,7 +139,7 @@ function App() {
       </div>
       <footer class="app-status">
         <span class="grow"></span>
-        <span class="item">127.0.0.1 only · token-gated</span>
+        <span class="item">${t("app.footer")}</span>
       </footer>
     </div>
     <${ToastStack} />

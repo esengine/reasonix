@@ -4,6 +4,7 @@ import { api } from "../lib/api.js";
 import { fmtBytes, fmtNum, fmtRelativeTime } from "../lib/format.js";
 import { html } from "../lib/html.js";
 import { usePoll } from "../lib/use-poll.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface SessionEntry {
   name: string;
@@ -23,6 +24,7 @@ interface OpenSession {
 }
 
 export function SessionsPanel() {
+  useLang();
   const { data, error, loading } = usePoll<SessionsData>("/sessions", 5000);
   const [open, setOpen] = useState<OpenSession | null>(null);
   const [openLoading, setOpenLoading] = useState(false);
@@ -42,12 +44,12 @@ export function SessionsPanel() {
   }, []);
 
   if (loading && !data)
-    return html`<div class="card" style="color:var(--fg-3)">loading sessions…</div>`;
-  if (error) return html`<div class="card accent-err">sessions failed: ${error.message}</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("sessions.loading")}</div>`;
+  if (error) return html`<div class="card accent-err">${t("common.loadingFailed", { name: "sessions", error: error.message })}</div>`;
   const sessions = data?.sessions ?? [];
 
   if (sessions.length === 0)
-    return html`<div class="card" style="color:var(--fg-3)">No saved sessions yet.</div>`;
+    return html`<div class="card" style="color:var(--fg-3)">${t("sessions.noSessions")}</div>`;
 
   const filtered = filter.trim()
     ? sessions.filter((s) => s.name.toLowerCase().includes(filter.toLowerCase()))
@@ -59,14 +61,14 @@ export function SessionsPanel() {
         <div class="ssl-h">
           <input
             type="text"
-            placeholder="filter sessions"
+            placeholder=${t("sessions.filterPlaceholder")}
             value=${filter}
             onInput=${(e: Event) => setFilter((e.target as HTMLInputElement).value)}
             style="flex:1"
           />
         </div>
         <div class="chips" style="padding:0 12px 8px">
-          <span class="chip-f active">all <span class="ct">${sessions.length}</span></span>
+          <span class="chip-f active">${t("common.all")} <span class="ct">${sessions.length}</span></span>
         </div>
         <div class="ssl-rows">
           ${filtered.map(
@@ -77,7 +79,7 @@ export function SessionsPanel() {
               >
                 <span class="name">${s.name}</span>
                 <span class="meta">
-                  <span><span class="v">${fmtNum(s.messageCount)}</span> msgs</span>
+                  <span><span class="v">${fmtNum(s.messageCount)}</span> ${t("sessions.msgs")}</span>
                   <span><span class="v">${fmtBytes(s.size)}</span></span>
                   <span>${fmtRelativeTime(s.mtime)}</span>
                 </span>
@@ -91,7 +93,7 @@ export function SessionsPanel() {
         ${
           open == null
             ? html`<div style="color:var(--fg-3);font-size:13px;text-align:center;padding:60px 20px">
-                Pick a session on the left to read its transcript.
+                ${t("sessions.pickHint")}
               </div>`
             : html`
                 <div class="sessions-detail-h">
@@ -99,24 +101,24 @@ export function SessionsPanel() {
                   <span class="ws">
                     ${
                       open.messages
-                        ? `${open.messages.length} message${open.messages.length === 1 ? "" : "s"}`
-                        : "loading…"
+                        ? t("sessions.messages", { count: open.messages.length, s: open.messages.length === 1 ? "" : "s" })
+                        : t("common.loading")
                     }
                   </span>
                   <span class="actions">
-                    <button class="btn ghost" onClick=${() => setOpen(null)}>← back</button>
+                    <button class="btn ghost" onClick=${() => setOpen(null)}>${t("common.back")}</button>
                   </span>
                 </div>
                 <div class="card accent-brand" style="margin-bottom:10px">
-                  <div class="card-h"><span class="title">Resume in TUI</span></div>
+                  <div class="card-h"><span class="title">${t("sessions.resumeTitle")}</span></div>
                   <div class="card-b" style="font-size:12.5px;color:var(--fg-2)">
-                    Mid-session swap requires a restart so the message log can rewind cleanly. Quit your current session, then run:
+                    ${t("sessions.resumeDesc")}
                     <code class="mono" style="display:block;margin-top:8px;padding:8px 10px;background:var(--bg-input);border-radius:var(--r);color:var(--fg-0);font-size:12px;user-select:all">reasonix chat --session ${open.name}</code>
                   </div>
                 </div>
                 ${
                   openLoading
-                    ? html`<div style="color:var(--fg-3)">loading transcript…</div>`
+                    ? html`<div style="color:var(--fg-3)">${t("sessions.loadingTranscript")}</div>`
                     : open.error
                       ? html`<div class="card accent-err">${open.error}</div>`
                       : open.messages && open.messages.length > 0
@@ -143,7 +145,7 @@ export function SessionsPanel() {
                               `,
                             )}
                           </div>`
-                        : html`<div style="color:var(--fg-3)">empty transcript.</div>`
+                        : html`<div style="color:var(--fg-3)">${t("sessions.emptyTranscript")}</div>`
                 }
               `
         }

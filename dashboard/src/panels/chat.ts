@@ -16,6 +16,7 @@ import { MODE, TOKEN, api } from "../lib/api.js";
 import { appBus, showToast } from "../lib/bus.js";
 import { fmtUsd } from "../lib/format.js";
 import { html } from "../lib/html.js";
+import { t, useLang } from "../i18n/index.js";
 
 interface StreamingState {
   id: string;
@@ -100,6 +101,7 @@ interface SettingsPatch {
 }
 
 export function ChatPanel() {
+  useLang();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
   const [activeTool, setActiveTool] = useState<ActiveToolState | null>(null);
@@ -263,7 +265,7 @@ export function ChatPanel() {
     es.onerror = () => {
       // Auto-reconnect by default; surface a brief banner on persistent
       // failure but don't tear down — EventSource retries in the background.
-      setError("event stream interrupted — reconnecting…");
+      setError(t("chat.eventStreamError"));
       setTimeout(() => setError(null), 3000);
     };
     return () => es.close();
@@ -298,8 +300,8 @@ export function ChatPanel() {
 
   const newConversation = useCallback(async () => {
     if (busy) {
-      if (!confirm("A turn is in flight. Abort and start a new conversation?")) return;
-    } else if (messages.length > 0 && !confirm("Clear current conversation and start fresh?")) {
+      if (!confirm(t("chat.newConfirmBusy"))) return;
+    } else if (messages.length > 0 && !confirm(t("chat.newConfirm"))) {
       return;
     }
     try {
@@ -307,7 +309,7 @@ export function ChatPanel() {
       setMessages([]);
       setStreaming(null);
       setActiveTool(null);
-      showToast("new conversation", "info");
+      showToast(t("chat.newToast"), "info");
       setTimeout(async () => {
         try {
           const r = await api<MessagesResponse>("/messages");
@@ -317,7 +319,7 @@ export function ChatPanel() {
         }
       }, 200);
     } catch (err) {
-      setError(`/new failed: ${(err as Error).message}`);
+      setError(t("chat.newFailed", { error: (err as Error).message }));
     }
   }, [busy, messages.length]);
 
@@ -327,7 +329,7 @@ export function ChatPanel() {
       setMessages([]);
       setStreaming(null);
       setActiveTool(null);
-      showToast("scrollback cleared", "info");
+      showToast(t("chat.clearToast"), "info");
       setTimeout(async () => {
         try {
           const r = await api<MessagesResponse>("/messages");
@@ -337,7 +339,7 @@ export function ChatPanel() {
         }
       }, 200);
     } catch (err) {
-      setError(`/clear failed: ${(err as Error).message}`);
+      setError(t("chat.clearFailed", { error: (err as Error).message }));
     }
   }, []);
 
@@ -443,7 +445,7 @@ export function ChatPanel() {
   );
 
   if (bootError) {
-    return html`<div class="notice err">chat unavailable: ${bootError}</div>`;
+    return html`<div class="notice err">${t("common.loadingFailed", { name: "chat", error: bootError })}</div>`;
   }
 
   /** Suppresses scroll listener during programmatic auto-snap so it doesn't re-arm shouldAutoScroll. */
@@ -557,20 +559,20 @@ export function ChatPanel() {
     <div class="chat-shell">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div class="chips" style="padding:0">
-          <span class="chip-f active">${MODE === "attached" ? "TUI mirror" : "session view"}</span>
+          <span class="chip-f active">${MODE === "attached" ? t("chat.modeMirror") : t("chat.modeView")}</span>
         </div>
         <div class="header-pickers" style="margin-left:auto">
           ${
             effort
               ? html`
-              <div class="mode-picker" title="reasoning_effort — applies next turn">
+              <div class="mode-picker" title=${t("chat.effortTitle")}>
                 ${["high", "max"].map(
                   (e) => html`
                   <button
                     key=${e}
                     class="mode-btn ${effort === e ? "active accent" : ""}"
                     onClick=${() => setSetting("reasoningEffort", e)}
-                    title=${e === "max" ? "max (default — best quality)" : "high (cheaper / faster)"}
+                    title=${e === "max" ? t("chat.effortMaxTitle") : t("chat.effortHighTitle")}
                   >${e}</button>
                 `,
                 )}
@@ -581,7 +583,7 @@ export function ChatPanel() {
           ${
             preset
               ? html`
-              <div class="mode-picker" title="preset — model commitment">
+              <div class="mode-picker" title=${t("chat.presetTitle")}>
                 ${(() => {
                   // Anything that isn't one of the three new presets
                   // (including legacy fast/smart/max from old configs)
@@ -597,10 +599,10 @@ export function ChatPanel() {
                         onClick=${() => setSetting("preset", p)}
                         title=${
                           p === "auto"
-                            ? "auto — flash baseline; auto-escalates to pro on hard turns (NEEDS_PRO / failure threshold)"
+                            ? t("chat.presetAutoTitle")
                             : p === "flash"
-                              ? "flash — always flash; no auto-escalate. /pro still works for one-shot manual"
-                              : "pro — always pro; ~3× flash cost (5/31 discount). Locks in on hard architecture work."
+                              ? t("chat.presetFlashTitle")
+                              : t("chat.presetProTitle")
                         }
                       >${p}</button>
                     `,
@@ -613,7 +615,7 @@ export function ChatPanel() {
           ${
             editMode
               ? html`
-              <div class="mode-picker" title="edit gate — Shift+Tab cycles in TUI">
+              <div class="mode-picker" title=${t("chat.editGateTitle")}>
                 ${["review", "auto", "yolo"].map(
                   (m) => html`
                   <button
@@ -622,10 +624,10 @@ export function ChatPanel() {
                     onClick=${() => setEditMode(m)}
                     title=${
                       m === "review"
-                        ? "review — both edits and non-allowlisted shell ask first"
+                        ? t("chat.editReviewTitle")
                         : m === "auto"
-                          ? "auto — edits auto-apply, shell still asks"
-                          : "yolo — edits AND shell auto-run, allowlist bypassed"
+                          ? t("chat.editAutoTitle")
+                          : t("chat.editYoloTitle")
                     }
                   >${m}</button>
                 `,
@@ -647,19 +649,19 @@ export function ChatPanel() {
           ? html`<div class="chat-banner">
               <span class="chat-banner-icon">≈</span>
               <span class="chat-banner-text">
-                <strong>Semantic search isn't enabled for this project.</strong>
+                <strong>${t("chat.semanticBanner")}</strong>
                 <span class="muted">
-                  Build the index once and the model can find code by meaning ("where do we handle auth failures?") instead of grep on exact strings.
+                  ${t("chat.semanticBannerDesc")}
                 </span>
               </span>
               <button
                 class="primary"
                 onClick=${() => appBus.dispatchEvent(new CustomEvent("navigate-tab", { detail: { tabId: "semantic" } }))}
-              >Build it →</button>
+              >${t("chat.semanticBannerBtn")}</button>
               <button
                 class="chat-banner-close"
                 onClick=${() => setSemanticBannerDismissed(true)}
-                title="dismiss (don't show again)"
+                title=${t("chat.semanticBannerDismiss")}
               >×</button>
             </div>`
           : null
@@ -692,7 +694,7 @@ export function ChatPanel() {
             ${
               allMessages.length === 0
                 ? html`<div class="chat-empty">
-                    No conversation yet. Send a prompt below to begin.
+                    ${t("chat.noConversation")}
                   </div>`
                 : allMessages.map(
                     (m) => html`
@@ -711,7 +713,7 @@ export function ChatPanel() {
               popoverKind && popoverItems.length > 0
                 ? html`
                   <div class="popover" style="position:absolute;bottom:calc(100% + 6px);left:0;width:380px;max-height:280px;overflow-y:auto;z-index:10">
-                    <div class="popover-h">${popoverKind === "slash" ? "slash commands" : "project files"}</div>
+                    <div class="popover-h">${popoverKind === "slash" ? t("chat.slashCommands") : t("chat.projectFiles")}</div>
                     ${popoverItems.map(
                       (it, i) => html`
                         <div
@@ -733,7 +735,7 @@ export function ChatPanel() {
                 : null
             }
             <textarea
-              placeholder=${busy ? "wait for the current turn to finish…" : "Type a prompt — Enter sends, Shift+Enter for a newline · / @ for pickers"}
+              placeholder=${busy ? t("chat.placeholderBusy") : t("chat.placeholder")}
               value=${input}
               onInput=${onInput}
               onKeyDown=${onKeyDown}
@@ -746,10 +748,10 @@ export function ChatPanel() {
                 class="primary"
                 onClick=${send}
                 disabled=${busy || !input.trim()}
-              >Send</button>
+              >${t("chat.send")}</button>
               <div style="display: flex; gap: 6px;">
-                <button onClick=${newConversation} title="/new — wipe conversation context (loop log + scrollback)">New</button>
-                <button onClick=${clearScrollback} title="/clear — wipe just visible scrollback (context kept)">Clear</button>
+                <button onClick=${newConversation} title=${t("chat.newTitle")}>${t("chat.new")}</button>
+                <button onClick=${clearScrollback} title=${t("chat.clearTitle")}>${t("chat.clear")}</button>
               </div>
             </div>
           </div>
@@ -782,6 +784,7 @@ interface SideRailProps {
 }
 
 function SideRail({ stats, budgetUsd, activePlan }: SideRailProps) {
+  useLang();
   if (!stats && !activePlan) return html`<aside class="chat-rail"></aside>`;
   const cachePct = stats ? Math.round(stats.cacheHitRatio * 100) : 0;
   const cacheTone = cachePct >= 80 ? "ok" : cachePct >= 50 ? "" : "warn";
@@ -795,12 +798,12 @@ function SideRail({ stats, budgetUsd, activePlan }: SideRailProps) {
         stats
           ? html`
             <div class="rail-card">
-              <div class="rh">Session</div>
-              <div class="rail-kv"><span class="k">turns</span><span class="v">${stats.turns.toLocaleString()}</span></div>
-              <div class="rail-kv"><span class="k">prompt tok</span><span class="v">${stats.lastPromptTokens.toLocaleString()}</span></div>
-              <div class="rail-kv"><span class="k">cost</span><span class="v">${fmtUsd(stats.totalCostUsd)}</span></div>
+              <div class="rh">${t("chat.railSession")}</div>
+              <div class="rail-kv"><span class="k">${t("chat.railTurns")}</span><span class="v">${stats.turns.toLocaleString()}</span></div>
+              <div class="rail-kv"><span class="k">${t("chat.railPromptTok")}</span><span class="v">${stats.lastPromptTokens.toLocaleString()}</span></div>
+              <div class="rail-kv"><span class="k">${t("chat.railCost")}</span><span class="v">${fmtUsd(stats.totalCostUsd)}</span></div>
               <div class="progress-row" style="margin-top:8px">
-                <span class="lbl">cache hit</span>
+                <span class="lbl">${t("chat.railCacheHit")}</span>
                 <div class=${`progress ${cacheTone}`}><div class="progress-fill" style=${`width:${cachePct}%`}></div></div>
                 <span class="v">${cachePct}%</span>
               </div>
@@ -812,9 +815,9 @@ function SideRail({ stats, budgetUsd, activePlan }: SideRailProps) {
         showBudget
           ? html`
             <div class="rail-card">
-              <div class="rh">Tool budget</div>
+              <div class="rh">${t("chat.railToolBudget")}</div>
               <div class="progress-row">
-                <span class="lbl">spend</span>
+                <span class="lbl">${t("chat.railSpend")}</span>
                 <div class=${`progress ${budgetTone}`}><div class="progress-fill" style=${`width:${Math.min(100, budgetPct)}%`}></div></div>
                 <span class="v" style=${budgetTone === "err" ? "color:var(--c-err)" : budgetTone === "warn" ? "color:var(--c-warn)" : ""}>${fmtUsd(stats.totalCostUsd)} / ${fmtUsd(budgetUsd)}</span>
               </div>
@@ -827,6 +830,7 @@ function SideRail({ stats, budgetUsd, activePlan }: SideRailProps) {
 }
 
 function ActivePlanCard({ plan }: { plan: RailPlan }) {
+  useLang();
   const dots = [];
   for (let i = 0; i < plan.totalSteps; i++) {
     const done = i < plan.completedSteps;
@@ -840,10 +844,10 @@ function ActivePlanCard({ plan }: { plan: RailPlan }) {
   }
   return html`
     <div class="rail-card">
-      <div class="rh">Active plan</div>
+      <div class="rh">${t("chat.railActivePlan")}</div>
       <div class="steps" style="margin-bottom:8px">${dots}</div>
       <div class="rail-kv"><span class="k" style="font-family:var(--font-sans);color:var(--fg-1);font-size:12.5px">${plan.title}</span></div>
-      <div class="rail-kv"><span class="k">progress</span><span class="v">${plan.completedSteps} / ${plan.totalSteps}</span></div>
+      <div class="rail-kv"><span class="k">${t("chat.railProgress")}</span><span class="v">${plan.completedSteps} / ${plan.totalSteps}</span></div>
     </div>
   `;
 }
@@ -894,6 +898,7 @@ function InFlightRow({
   onAbort,
   tick: _tick,
 }: InFlightRowProps) {
+  useLang();
   const elapsedMs = startedAt ? Date.now() - startedAt : 0;
   const elapsed = (elapsedMs / 1000).toFixed(1);
   const reasoningLen = streaming?.reasoning?.length ?? 0;
@@ -901,12 +906,12 @@ function InFlightRow({
   /** Tool dispatch wins over text/reasoning — model is blocked on the tool, show that. */
   const toolSummary = summarizeActiveTool(activeTool);
   const phase = toolSummary
-    ? "running"
+    ? t("chat.inflightRunning")
     : reasoningLen > 0 && textLen === 0
-      ? "thinking"
+      ? t("chat.inflightThinking")
       : textLen > 0
-        ? "streaming"
-        : "waiting";
+        ? t("chat.inflightStreaming")
+        : t("chat.inflightWaiting");
   return html`
     <div class="chat-inflight">
       <span class="spinner"></span>
@@ -926,9 +931,9 @@ function InFlightRow({
           ? html`
             <span class="chat-inflight-sep">·</span>
             <span class="muted">
-              ${reasoningLen > 0 ? html`reasoning ${reasoningLen.toLocaleString()} ch` : null}
+              ${reasoningLen > 0 ? html`${t("chat.inflightReasoning", { count: reasoningLen.toLocaleString() })}` : null}
               ${reasoningLen > 0 && textLen > 0 ? html`<span> · </span>` : null}
-              ${textLen > 0 ? html`out ${textLen.toLocaleString()} ch` : null}
+              ${textLen > 0 ? html`${t("chat.inflightOut", { count: textLen.toLocaleString() })}` : null}
             </span>
           `
           : null
@@ -941,7 +946,7 @@ function InFlightRow({
           `
           : null
       }
-      <button class="chat-inflight-abort" onClick=${onAbort}>Abort (Esc)</button>
+      <button class="chat-inflight-abort" onClick=${onAbort}>${t("chat.abortBtn")}</button>
     </div>
   `;
 }
@@ -952,10 +957,11 @@ interface ChatStatusBarProps {
 }
 
 function ChatStatusBar({ stats, model }: ChatStatusBarProps) {
+  useLang();
   if (!stats) {
     return html`
       <div class="chat-statusbar">
-        <span class="muted">· · ·  waiting for live stats</span>
+        <span class="muted">${t("chat.waitingStats")}</span>
       </div>
     `;
   }
@@ -965,38 +971,38 @@ function ChatStatusBar({ stats, model }: ChatStatusBarProps) {
   return html`
     <div class="chat-statusbar">
       <span class="status-item">
-        <span class="status-label">model</span>
+        <span class="status-label">${t("chat.statusModel")}</span>
         <code>${model ?? "—"}</code>
       </span>
       <span class="status-item">
-        <span class="status-label">ctx</span>
+        <span class="status-label">${t("chat.statusCtx")}</span>
         <span class="status-bar-mini">
           <span class="status-bar-mini-fill" style=${`width: ${Math.min(100, ctxPct).toFixed(1)}%;`}></span>
         </span>
         <span class="muted">${stats.lastPromptTokens.toLocaleString()} / ${(stats.contextCapTokens / 1000).toFixed(0)}K</span>
       </span>
       <span class="status-item">
-        <span class="status-label">cache</span>
+        <span class="status-label">${t("chat.statusCache")}</span>
         <span class=${stats.cacheHitRatio >= 0.9 ? "status-ok" : stats.cacheHitRatio >= 0.6 ? "status-warn" : "status-err"}>
           ${(stats.cacheHitRatio * 100).toFixed(1)}%
         </span>
       </span>
       <span class="status-item">
-        <span class="status-label">turn</span>
+        <span class="status-label">${t("chat.statusTurn")}</span>
         <code>${fmtUsd(stats.lastTurnCostUsd)}</code>
       </span>
       <span class="status-item">
-        <span class="status-label">session</span>
+        <span class="status-label">${t("chat.statusSession")}</span>
         <code>${fmtUsd(stats.totalCostUsd)}</code>
         <span class="muted" style="font-size: 10px;">
-          (${stats.turns} turn${stats.turns === 1 ? "" : "s"})
+          ${t("chat.statusTurns", { count: stats.turns, s: stats.turns === 1 ? "" : "s" })}
         </span>
       </span>
       ${
         balance
           ? html`
           <span class="status-item">
-            <span class="status-label">balance</span>
+            <span class="status-label">${t("chat.statusBalance")}</span>
             <code>${balance.total_balance} ${balance.currency}</code>
           </span>
         `
