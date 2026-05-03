@@ -300,6 +300,7 @@ function AppInner({
       if (
         c?.kind === "plan" &&
         c.variant === "active" &&
+        c.steps.some((step) => step.status !== "queued") &&
         c.steps.some((step) => step.status !== "done" && step.status !== "skipped")
       ) {
         return c;

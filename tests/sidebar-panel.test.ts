@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { windowSteps } from "../src/cli/ui/layout/SidebarPanel.js";
-import type { PlanStep } from "../src/cli/ui/state/cards.js";
+import { findActivePlan, windowSteps } from "../src/cli/ui/layout/SidebarPanel.js";
+import type { Card, PlanCard, PlanStep } from "../src/cli/ui/state/cards.js";
 
 function step(id: string, status: PlanStep["status"] = "queued"): PlanStep {
   return { id, title: `step ${id}`, status };
+}
+
+function planCard(steps: PlanStep[], variant: PlanCard["variant"] = "active"): PlanCard {
+  return {
+    kind: "plan",
+    id: "p1",
+    ts: 0,
+    variant,
+    title: "test plan",
+    steps,
+  };
 }
 
 describe("windowSteps", () => {
@@ -53,5 +64,34 @@ describe("windowSteps", () => {
     expect(r.kind).toBe("windowed");
     if (r.kind !== "windowed") throw new Error("type guard");
     expect(r.startIndex).toBe(0);
+  });
+});
+
+describe("findActivePlan", () => {
+  it("returns null when every step is queued — plan is awaiting approval", () => {
+    const cards: Card[] = [planCard([step("a"), step("b"), step("c")])];
+    expect(findActivePlan(cards)).toBeNull();
+  });
+
+  it("returns the plan once any step has left queued", () => {
+    const cards: Card[] = [planCard([step("a", "running"), step("b"), step("c")])];
+    expect(findActivePlan(cards)).toBe(cards[0]);
+  });
+
+  it("returns null when every step is done or skipped — plan finished", () => {
+    const cards: Card[] = [planCard([step("a", "done"), step("b", "skipped")])];
+    expect(findActivePlan(cards)).toBeNull();
+  });
+
+  it("returns null for non-active variants (resumed / replay)", () => {
+    const running = [step("a", "running")];
+    expect(findActivePlan([planCard(running, "resumed")])).toBeNull();
+    expect(findActivePlan([planCard(running, "replay")])).toBeNull();
+  });
+
+  it("returns the latest active plan when multiple exist", () => {
+    const older = planCard([step("a", "running")]);
+    const newer: typeof older = { ...older, id: "p2", steps: [step("x", "running")] };
+    expect(findActivePlan([older, newer])).toBe(newer);
   });
 });
