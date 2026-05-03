@@ -36,14 +36,16 @@ export function SidebarPanel({
   );
 }
 
-function findActivePlan(cards: ReadonlyArray<Card>) {
-  // Mirrors the App.tsx selector. Cancelled plans flip variant via plan.drop,
-  // so checking variant === "active" + "not all done" is enough.
+export function findActivePlan(cards: ReadonlyArray<Card>) {
+  // Mirrors the App.tsx selector. "Active" means execution-started: at least
+  // one step has left `queued` AND not all steps are done/skipped. Plans
+  // pending user approval have every step in `queued` and must NOT trigger.
   for (let i = cards.length - 1; i >= 0; i--) {
     const c = cards[i];
     if (
       c?.kind === "plan" &&
       c.variant === "active" &&
+      c.steps.some((s) => s.status !== "queued") &&
       c.steps.some((s) => s.status !== "done" && s.status !== "skipped")
     ) {
       return c;
