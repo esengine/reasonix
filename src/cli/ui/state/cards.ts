@@ -157,15 +157,6 @@ export interface SearchCard extends CardBase {
   readonly elapsedMs: number;
 }
 
-export interface ApprovalCard extends CardBase {
-  readonly kind: "approval";
-  readonly variant: "shell" | "edit" | "plan" | "workspace" | "choice" | "deny";
-  readonly title: string;
-  readonly options: ReadonlyArray<{ key: string; label: string; hint: string }>;
-  readonly payload: unknown;
-  resolved?: { choice: string };
-}
-
 export type LiveKind =
   | "thinking"
   | "undo"
@@ -223,7 +214,6 @@ export type Card =
   | MemoryCard
   | SubAgentCard
   | SearchCard
-  | ApprovalCard
   | LiveCard
   | CtxCard
   | BranchCard

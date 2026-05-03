@@ -57,8 +57,6 @@ function renderCard(card: Card): React.ReactElement {
       return <SubAgentCard card={card} />;
     case "search":
       return <SearchCard card={card} />;
-    case "approval":
-      return <FallbackCard card={card} />;
     case "live":
       return <LiveCard card={card} />;
     case "ctx":
