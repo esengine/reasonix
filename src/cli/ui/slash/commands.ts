@@ -47,6 +47,12 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       "session USD cap — warns at 80%, refuses next turn at 100%. Off by default. /budget alone shows status",
     argCompleter: ["off", "1", "5", "10", "20", "50"],
   },
+  {
+    cmd: "language",
+    argsHint: "<EN|zh-CN>",
+    summary: "switch the runtime language",
+    argCompleter: ["EN", "zh-CN"],
+  },
   { cmd: "mcp", summary: "list MCP servers + tools attached to this session" },
   {
     cmd: "resource",

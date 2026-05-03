@@ -177,6 +177,11 @@ const sessionReset = z.object({
   type: z.literal("session.reset"),
 });
 
+const languageChange = z.object({
+  type: z.literal("language.change"),
+  lang: z.string(),
+});
+
 const planShow = z.object({
   type: z.literal("plan.show"),
   id: cardId,
@@ -309,6 +314,7 @@ export const AgentEventSchema = z.discriminatedUnion("type", [
   turnEnd,
   modeChange,
   networkChange,
+  languageChange,
   sessionUpdate,
   focusMove,
   focusSet,

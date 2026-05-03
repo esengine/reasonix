@@ -10,6 +10,12 @@ import {
   suggestSlashCommands,
 } from "../src/cli/ui/slash.js";
 import { DeepSeekClient, Usage } from "../src/client.js";
+import {
+  getLanguage,
+  notifyLanguageChange,
+  onLanguageChange,
+  setLanguageRuntime,
+} from "../src/i18n/index.js";
 import { CacheFirstLoop } from "../src/loop.js";
 import { ImmutablePrefix } from "../src/memory/runtime.js";
 import { VERSION } from "../src/version.js";
@@ -810,7 +816,7 @@ describe("handleSlash", () => {
 
     it("/mcp reconnect <name> emits the lifecycle line on dispatch", () => {
       const r = handleSlash("mcp", ["reconnect", "notion"], makeLoop(), {
-        mcpServers: [summary("notion", "notion=node -e 0")],
+        mcpServers: [summary("notion", "notion=tail -f /dev/null")],
         postInfo: () => {
           /* swallowed for this test */
         },
@@ -1330,6 +1336,51 @@ describe("handleSlash", () => {
     it("/status hides the plan line when plan mode is off", () => {
       const r = handleSlash("status", [], makeLoop(), { planMode: false });
       expect(r.info).not.toMatch(/plan\s+ON/);
+    });
+  });
+
+  describe("/language", () => {
+    afterEach(() => {
+      setLanguageRuntime("EN");
+    });
+
+    it("opens arg picker when no argument given", () => {
+      const r = handleSlash("language", [], makeLoop());
+      expect(r.openArgPickerFor).toBe("language");
+    });
+
+    it("switches language and returns success message", () => {
+      const r = handleSlash("language", ["zh-CN"], makeLoop());
+      expect(getLanguage()).toBe("zh-CN");
+      expect(r.info).toBe("语言已切换为简体中文。");
+    });
+
+    it("switches back to English", () => {
+      setLanguageRuntime("zh-CN");
+      const r = handleSlash("language", ["EN"], makeLoop());
+      expect(getLanguage()).toBe("EN");
+      expect(r.info).toBe("Language switched to English.");
+    });
+
+    it("returns error for unsupported language", () => {
+      const r = handleSlash("language", ["fr"], makeLoop());
+      expect(r.info).toMatch(/Unsupported/);
+      expect(r.info).toMatch(/fr/);
+      expect(getLanguage()).toBe("EN");
+    });
+
+    it("/lang is an alias for /language", () => {
+      const r = handleSlash("lang", ["zh-CN"], makeLoop());
+      expect(getLanguage()).toBe("zh-CN");
+      expect(r.info).toBe("语言已切换为简体中文。");
+    });
+
+    it("fires onLanguageChange listeners", () => {
+      const cb = vi.fn();
+      const unsub = onLanguageChange(cb);
+      handleSlash("language", ["zh-CN"], makeLoop());
+      expect(cb).toHaveBeenCalledOnce();
+      unsub();
     });
   });
 });

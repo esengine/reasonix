@@ -1,3 +1,5 @@
+import { getLanguage } from "../../../i18n/index.js";
+import type { LanguageCode } from "../../../i18n/types.js";
 import type { Card, CardId } from "./cards.js";
 
 export type Mode = "auto" | "ask" | "plan" | "edit";
@@ -41,6 +43,7 @@ export interface Toast {
 }
 
 export interface AgentState {
+  readonly lang: LanguageCode;
   readonly session: SessionInfo;
   readonly cards: ReadonlyArray<Card>;
   readonly composer: ComposerState;
@@ -52,6 +55,7 @@ export interface AgentState {
 
 export function initialState(session: SessionInfo, cards: ReadonlyArray<Card> = []): AgentState {
   return {
+    lang: getLanguage(),
     session,
     cards,
     composer: {

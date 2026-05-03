@@ -7,38 +7,35 @@ import {
   restoreCheckpoint,
 } from "../../../../code/checkpoints.js";
 import type { EditMode } from "../../../../config.js";
+import { t } from "../../../../i18n/index.js";
 import { parseEditIndices } from "../../edit-history.js";
 import type { SlashHandler } from "../dispatch.js";
 import { runGitCommit, stripOuterQuotes } from "../helpers.js";
 
 const undo: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeUndo) {
-    return {
-      info: "/undo is only available inside `reasonix code` — chat mode doesn't apply edits.",
-    };
+    return { info: t("handlers.edits.undoCodeOnly") };
   }
   return { info: ctx.codeUndo(args) };
 };
 
 const history: SlashHandler = (_args, _loop, ctx) => {
   if (!ctx.codeHistory) {
-    return { info: "/history is only available inside `reasonix code`." };
+    return { info: t("handlers.edits.historyCodeOnly") };
   }
   return { info: ctx.codeHistory() };
 };
 
 const show: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeShowEdit) {
-    return { info: "/show is only available inside `reasonix code`." };
+    return { info: t("handlers.edits.showCodeOnly") };
   }
   return { info: ctx.codeShowEdit(args) };
 };
 
 const apply: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeApply) {
-    return {
-      info: "/apply is only available inside `reasonix code` (nothing to apply here).",
-    };
+    return { info: t("handlers.edits.applyCodeOnly") };
   }
   const parsed = parseIndicesArg(args, ctx.pendingEditCount ?? 0);
   if ("error" in parsed) return { info: `/apply: ${parsed.error}` };
@@ -47,16 +44,13 @@ const apply: SlashHandler = (args, _loop, ctx) => {
 
 const discard: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeDiscard) {
-    return {
-      info: "/discard is only available inside `reasonix code`.",
-    };
+    return { info: t("handlers.edits.discardCodeOnly") };
   }
   const parsed = parseIndicesArg(args, ctx.pendingEditCount ?? 0);
   if ("error" in parsed) return { info: `/discard: ${parsed.error}` };
   return { info: ctx.codeDiscard(parsed.indices) };
 };
 
-/** Re-joins on `,` to handle both `1,3-4` and `1, 3, 4` shapes from the whitespace-split parser. */
 function parseIndicesArg(
   args: readonly string[],
   max: number,
@@ -70,9 +64,7 @@ function parseIndicesArg(
 
 const plan: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.setPlanMode) {
-    return {
-      info: "/plan is only available inside `reasonix code` — chat mode doesn't gate tool writes.",
-    };
+    return { info: t("handlers.edits.planCodeOnly") };
   }
   const currentOn = Boolean(ctx.planMode);
   const raw = (args[0] ?? "").toLowerCase();
@@ -82,35 +74,26 @@ const plan: SlashHandler = (args, _loop, ctx) => {
   else target = !currentOn;
   ctx.setPlanMode(target);
   if (target) {
-    return {
-      info: "▸ plan mode ON — write tools are gated; the model MUST call `submit_plan` before anything executes. (The model can also call submit_plan on its own for big tasks even when plan mode is off — this toggle is the stronger, explicit constraint.) Type /plan off to leave.",
-    };
+    return { info: t("handlers.edits.planOn") };
   }
-  return {
-    info: "▸ plan mode OFF — write tools are live again. Model can still propose plans autonomously for large tasks.",
-  };
+  return { info: t("handlers.edits.planOff") };
 };
 
 const applyPlan: SlashHandler = (_args, _loop, ctx) => {
   if (!ctx.setPlanMode) {
-    return {
-      info: "/apply-plan is only available inside `reasonix code`.",
-    };
+    return { info: t("handlers.edits.applyPlanCodeOnly") };
   }
   ctx.setPlanMode(false);
   ctx.clearPendingPlan?.();
   return {
-    info: "▸ plan approved — implementing",
-    resubmit:
-      "The plan above has been approved. Implement it now. You are out of plan mode — use edit_file / write_file / run_command as needed. Stick to the plan unless you discover a concrete reason to deviate; if you do, tell me and wait for a response before making that deviation.",
+    info: t("handlers.edits.applyPlanInfo"),
+    resubmit: t("handlers.edits.applyPlanResubmit"),
   };
 };
 
 const mode: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.setEditMode) {
-    return {
-      info: "/mode is only available inside `reasonix code`.",
-    };
+    return { info: t("handlers.edits.modeCodeOnly") };
   }
   const raw = (args[0] ?? "").toLowerCase();
   const current = ctx.editMode ?? "review";
@@ -119,59 +102,42 @@ const mode: SlashHandler = (args, _loop, ctx) => {
   else if (raw === "auto") target = "auto";
   else if (raw === "yolo") target = "yolo";
   else if (raw === "") {
-    // Bare /mode cycles review → auto → yolo → review, mirroring
-    // Shift+Tab. Users who just want to see current mode without
-    // flipping can read /status.
     target = current === "review" ? "auto" : current === "auto" ? "yolo" : "review";
   } else {
-    return {
-      info: "usage: /mode <review|auto|yolo>   (Shift+Tab also cycles)",
-    };
+    return { info: t("handlers.edits.modeUsage") };
   }
   ctx.setEditMode(target);
   const banner =
     target === "yolo"
-      ? "▸ edit mode: YOLO — edits AND shell commands auto-run with no prompt. /undo still rolls back edits. Use carefully."
+      ? t("handlers.edits.modeYolo")
       : target === "auto"
-        ? "▸ edit mode: AUTO — edits apply immediately; press u within 5s to undo, or /undo later. Shell commands still ask."
-        : "▸ edit mode: review — edits queue for /apply (or y) / /discard (or n)";
+        ? t("handlers.edits.modeAuto")
+        : t("handlers.edits.modeReview");
   return { info: banner };
 };
 
 const commit: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeRoot) {
-    return {
-      info: "/commit is only available inside `reasonix code` (needs a rooted git repo).",
-    };
+    return { info: t("handlers.edits.commitCodeOnly") };
   }
-  // Reassemble the original argv. The parser lowercases cmd but leaves
-  // args alone, and the TUI splits on whitespace which mangles quoted
-  // messages — rejoin with spaces and strip a surrounding pair of
-  // double quotes if the user wrote them.
   const raw = args.join(" ").trim();
   const message = stripOuterQuotes(raw);
   if (!message) {
-    return {
-      info: `usage: /commit "your commit message"  — runs \`git add -A && git commit -m "…"\` in ${ctx.codeRoot}`,
-    };
+    return { info: t("handlers.edits.commitUsage", { root: ctx.codeRoot }) };
   }
   return runGitCommit(ctx.codeRoot, message);
 };
 
 const walk: SlashHandler = (_args, _loop, ctx) => {
   if (!ctx.startWalkthrough) {
-    return {
-      info: "/walk is only available inside `reasonix code`.",
-    };
+    return { info: t("handlers.edits.walkCodeOnly") };
   }
   return { info: ctx.startWalkthrough() };
 };
 
 const checkpoint: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeRoot || !ctx.touchedFiles) {
-    return {
-      info: "/checkpoint is only available inside `reasonix code` — chat mode doesn't apply edits.",
-    };
+    return { info: t("handlers.edits.checkpointCodeOnly") };
   }
   const sub = (args[0] ?? "").toLowerCase();
   const rest = args.slice(1).join(" ").trim();
@@ -179,11 +145,9 @@ const checkpoint: SlashHandler = (args, _loop, ctx) => {
   if (sub === "" || sub === "list") {
     const items = [...listCheckpoints(ctx.codeRoot)].reverse();
     if (items.length === 0) {
-      return {
-        info: "no checkpoints yet — `/checkpoint <name>` snapshots every file the session has touched. Restore later with `/restore <name>`.",
-      };
+      return { info: t("handlers.edits.checkpointNone") };
     }
-    const lines = [`◈ checkpoints · ${items.length} stored`, ""];
+    const lines = [t("handlers.edits.checkpointHeader", { count: items.length }), ""];
     for (const m of items) {
       const sizeKb = (m.bytes / 1024).toFixed(1);
       const tag = m.source === "manual" ? "" : ` (${m.source})`;
@@ -192,28 +156,25 @@ const checkpoint: SlashHandler = (args, _loop, ctx) => {
       );
     }
     lines.push("");
-    lines.push("  /restore <name|id> · /checkpoint forget <id> · /checkpoint <name> to add");
+    lines.push(t("handlers.edits.checkpointRestoreHint"));
     return { info: lines.join("\n") };
   }
 
   if (sub === "forget" || sub === "rm" || sub === "delete") {
-    if (!rest) return { info: "usage: /checkpoint forget <id|name>" };
+    if (!rest) return { info: t("handlers.edits.checkpointForgetUsage") };
     const found = findCheckpoint(ctx.codeRoot, rest);
-    if (!found) return { info: `▸ no checkpoint matching "${rest}" — see /checkpoint list` };
+    if (!found) return { info: t("handlers.edits.checkpointNoMatch", { name: rest }) };
     const ok = deleteCheckpoint(ctx.codeRoot, found.id);
     return {
       info: ok
-        ? `▸ deleted checkpoint ${found.id} (${found.name})`
-        : `▸ failed to delete ${found.id} (already gone?)`,
+        ? t("handlers.edits.checkpointDeleted", { id: found.id, name: found.name })
+        : t("handlers.edits.checkpointDeleteFailed", { id: found.id }),
     };
   }
 
-  // `/checkpoint <name>` (any free-form name) → save
   const name = args.join(" ").trim();
   if (!name) {
-    return {
-      info: "usage: /checkpoint <name>   (or /checkpoint list to see existing)",
-    };
+    return { info: t("handlers.edits.checkpointSaveUsage") };
   }
   const paths = ctx.touchedFiles();
   const meta = createCheckpoint({
@@ -224,45 +185,62 @@ const checkpoint: SlashHandler = (args, _loop, ctx) => {
   });
   if (paths.length === 0) {
     return {
-      info: `▸ checkpoint "${name}" saved (${meta.id}) — but no files have been touched yet, so it's an empty baseline. Edits made after this point will be revertable.`,
+      info: t("handlers.edits.checkpointSavedEmpty", { name, id: meta.id }),
     };
   }
   return {
-    info: `▸ checkpoint "${name}" saved (${meta.id}) — ${meta.fileCount} file${meta.fileCount === 1 ? "" : "s"}, ${(meta.bytes / 1024).toFixed(1)} KB. Restore: /restore ${name}`,
+    info: t("handlers.edits.checkpointSaved", {
+      name,
+      id: meta.id,
+      files: meta.fileCount,
+      s: meta.fileCount === 1 ? "" : "s",
+      size: (meta.bytes / 1024).toFixed(1),
+    }),
   };
 };
 
 const restore: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeRoot) {
-    return {
-      info: "/restore is only available inside `reasonix code`.",
-    };
+    return { info: t("handlers.edits.restoreCodeOnly") };
   }
   const target = args.join(" ").trim();
   if (!target) {
-    return {
-      info: "usage: /restore <name|id>   (see /checkpoint list for ids)",
-    };
+    return { info: t("handlers.edits.restoreUsage") };
   }
   const found = findCheckpoint(ctx.codeRoot, target);
   if (!found) {
-    return { info: `▸ no checkpoint matching "${target}" — try /checkpoint list` };
+    return { info: t("handlers.edits.restoreNoMatch", { target }) };
   }
   const result = restoreCheckpoint(ctx.codeRoot, found.id);
-  const lines = [`▸ restored "${found.name}" (${found.id}) from ${fmtAgo(found.createdAt)}`];
+  const lines = [
+    t("handlers.edits.restoreInfo", {
+      name: found.name,
+      id: found.id,
+      when: fmtAgo(found.createdAt),
+    }),
+  ];
   if (result.restored.length > 0) {
     lines.push(
-      `  · wrote back ${result.restored.length} file${result.restored.length === 1 ? "" : "s"}`,
+      t("handlers.edits.restoreWrote", {
+        count: result.restored.length,
+        s: result.restored.length === 1 ? "" : "s",
+      }),
     );
   }
   if (result.removed.length > 0) {
     lines.push(
-      `  · removed ${result.removed.length} file${result.removed.length === 1 ? "" : "s"} (didn't exist at checkpoint time)`,
+      t("handlers.edits.restoreRemoved", {
+        count: result.removed.length,
+        s: result.removed.length === 1 ? "" : "s",
+      }),
     );
   }
   if (result.skipped.length > 0) {
     lines.push(
-      `  ✗ ${result.skipped.length} file${result.skipped.length === 1 ? "" : "s"} skipped:`,
+      t("handlers.edits.restoreSkipped", {
+        count: result.skipped.length,
+        s: result.skipped.length === 1 ? "" : "s",
+      }),
     );
     for (const s of result.skipped.slice(0, 5)) {
       lines.push(`    ${s.path} — ${s.reason}`);

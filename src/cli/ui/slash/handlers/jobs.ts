@@ -1,3 +1,4 @@
+import { t } from "../../../../i18n/index.js";
 import type { JobRecord } from "../../../../tools/jobs.js";
 import type { SlashHandler } from "../dispatch.js";
 
@@ -19,7 +20,6 @@ function fmtAge(ms: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
-/** Caps at 3 unique ports for compose-style multi-service boots; never guesses from command name. */
 function detectPorts(output: string): number[] {
   if (!output) return [];
   const found = new Set<number>();
@@ -53,23 +53,14 @@ function fmtMeta(r: JobRecord): string {
 
 const jobs: SlashHandler = (_args, _loop, ctx) => {
   if (!ctx.jobs) {
-    return { info: "/jobs is only available inside `reasonix code`." };
+    return { info: t("handlers.jobs.codeOnly") };
   }
   const rows = ctx.jobs.list();
   if (rows.length === 0) {
-    return {
-      info: "◈ jobs · 0 running · 0 total\n  (run_background spawns one — dev servers, watchers, long-running scripts)",
-    };
+    return { info: t("handlers.jobs.empty") };
   }
   const running = rows.filter((r) => r.running).length;
-  // Layout: ICO (1) · ID (right-pad 4) · CMD (flex) · META (auto) · AGE (right-pad 5)
-  // Plain text from a slash, so we can't apply per-cell color the way
-  // the React tree could; the icons + indentation already give the eye
-  // strong landmarks. The chrome layer (when this lands in the TUI
-  // directly) will color the icons via chalk.
-  const lines: string[] = [`◈ jobs · ${running} running · ${rows.length} total`, ""];
-  // Compute the max command width so cmds line up; cap at 44 so a long
-  // docker-compose invocation doesn't push the meta column off-screen.
+  const lines: string[] = [t("handlers.jobs.header", { running, total: rows.length }), ""];
   const cmdWidth = Math.min(44, Math.max(8, ...rows.map((r) => r.command.length)));
   for (const r of rows) {
     const ico = statusIcon(r);
@@ -83,57 +74,50 @@ const jobs: SlashHandler = (_args, _loop, ctx) => {
     lines.push(`  ${ico}  ${id}  ${cmd}  ${meta}  ${age}`);
   }
   lines.push("");
-  lines.push("  /logs <id> tail · /kill <id> SIGTERM → SIGKILL");
+  lines.push(t("handlers.jobs.footer"));
   return { info: lines.join("\n") };
 };
 
 const kill: SlashHandler = (args, _loop, ctx) => {
-  if (!ctx.jobs) return { info: "/kill is only available inside `reasonix code`." };
+  if (!ctx.jobs) return { info: t("handlers.jobs.killCodeOnly") };
   const id = Number.parseInt(args[0] ?? "", 10);
-  if (!Number.isFinite(id)) return { info: "usage: /kill <id>   (see /jobs for ids)" };
+  if (!Number.isFinite(id)) return { info: t("handlers.jobs.killUsage") };
   const rec = ctx.jobs.list().find((r) => r.id === id);
-  if (!rec) return { info: `job ${id}: not found` };
-  if (!rec.running) return { info: `job ${id} already exited (${rec.exitCode ?? "?"})` };
-  // Fire-and-forget: the registry waits for grace + SIGKILL internally;
-  // returning immediately keeps the slash synchronous so the user's
-  // prompt doesn't lock up for 2s on every /kill. The postInfo
-  // callback lands a follow-up row in historical when the kill
-  // actually completes, so the user sees "job N stopped" without
-  // polling /jobs.
+  if (!rec) return { info: t("handlers.jobs.killNotFound", { id }) };
+  if (!rec.running)
+    return { info: t("handlers.jobs.killAlreadyExited", { id, code: rec.exitCode ?? "?" }) };
   const jobsRef = ctx.jobs;
   void (async () => {
     const final = await jobsRef.stop(id);
     if (!final) return;
     const status = final.running
-      ? "still alive after SIGKILL (!) — report this as a bug"
+      ? t("handlers.jobs.killStillAlive")
       : final.exitCode !== null
         ? `exit ${final.exitCode}`
         : "stopped";
-    ctx.postInfo?.(`▸ job ${id} ${status}`);
+    ctx.postInfo?.(t("handlers.jobs.killStatus", { id, status }));
   })();
-  return {
-    info: `▸ stopping job ${id} (tree kill: SIGTERM → SIGKILL after 2s grace; Windows: taskkill /T /F)`,
-  };
+  return { info: t("handlers.jobs.killStopping", { id }) };
 };
 
 const logs: SlashHandler = (args, _loop, ctx) => {
-  if (!ctx.jobs) return { info: "/logs is only available inside `reasonix code`." };
+  if (!ctx.jobs) return { info: t("handlers.jobs.logsCodeOnly") };
   const id = Number.parseInt(args[0] ?? "", 10);
   if (!Number.isFinite(id)) {
-    return { info: "usage: /logs <id> [lines]   (default last 80 lines)" };
+    return { info: t("handlers.jobs.logsUsage") };
   }
   const requested = Number.parseInt(args[1] ?? "", 10);
   const tail = Number.isFinite(requested) && requested > 0 ? requested : 80;
   const out = ctx.jobs.read(id, { tailLines: tail });
-  if (!out) return { info: `job ${id}: not found` };
+  if (!out) return { info: t("handlers.jobs.logsNotFound", { id }) };
   const status = out.running
-    ? `running · pid ${out.pid ?? "?"}`
+    ? t("handlers.jobs.logsRunning", { pid: out.pid ?? "?" })
     : out.exitCode !== null
-      ? `exited ${out.exitCode}`
+      ? t("handlers.jobs.logsExited", { code: out.exitCode })
       : out.spawnError
-        ? `failed (${out.spawnError})`
-        : "stopped";
-  const header = `[job ${id} · ${status}]\n$ ${out.command}`;
+        ? t("handlers.jobs.logsFailed", { reason: out.spawnError })
+        : t("handlers.jobs.logsStopped");
+  const header = t("handlers.jobs.logsStatus", { id, status, command: out.command });
   return { info: out.output ? `${header}\n${out.output}` : header };
 };
 

@@ -1,3 +1,4 @@
+import { t } from "../../../../i18n/index.js";
 import {
   deleteSession,
   listSessions,
@@ -12,59 +13,56 @@ const sessions: SlashHandler = () => ({ openSessionsPicker: true });
 
 const forget: SlashHandler = (_args, loop) => {
   if (!loop.sessionName) {
-    return { info: "not in a session — nothing to forget" };
+    return { info: t("handlers.sessions.forgetNoSession") };
   }
   const name = loop.sessionName;
   const ok = deleteSession(name);
   return {
     info: ok
-      ? `▸ deleted session "${name}" — current screen still shows the conversation, but next launch starts fresh`
-      : `could not delete session "${name}" (already gone?)`,
+      ? t("handlers.sessions.forgetInfo", { name })
+      : t("handlers.sessions.forgetFailed", { name }),
   };
 };
 
 const pruneSessions: SlashHandler = (args) => {
-  // Optional first arg: cutoff in days (default 90). Lets users
-  // tighten the threshold for a one-off purge without editing code.
   const raw = args?.[0];
   const days = raw ? Number.parseInt(raw, 10) : STALE_THRESHOLD_DAYS;
   if (!Number.isFinite(days) || days < 1) {
     return {
-      info: `▸ usage: /prune-sessions [days]   — defaults to ${STALE_THRESHOLD_DAYS}, must be ≥1`,
+      info: t("handlers.sessions.pruneUsage", { default: STALE_THRESHOLD_DAYS }),
     };
   }
   const removed = pruneStaleSessions(days);
   if (removed.length === 0) {
-    return { info: `▸ nothing to prune — no sessions idle ≥${days} days` };
+    return { info: t("handlers.sessions.pruneNone", { days }) };
   }
   return {
-    info: `▸ pruned ${removed.length} session${removed.length === 1 ? "" : "s"} idle ≥${days} days: ${removed.join(", ")}`,
+    info: t("handlers.sessions.pruneInfo", {
+      count: removed.length,
+      s: removed.length === 1 ? "" : "s",
+      days,
+      names: removed.join(", "),
+    }),
   };
 };
 
 const rename: SlashHandler = (args, loop) => {
   const newName = args?.[0]?.trim();
-  if (!newName) return { info: "usage: /rename <new-name>" };
-  if (!loop.sessionName) return { info: "not in a session — nothing to rename" };
+  if (!newName) return { info: t("handlers.sessions.renameUsage") };
+  if (!loop.sessionName) return { info: t("handlers.sessions.renameNoSession") };
   const ok = renameSession(loop.sessionName, newName);
   if (!ok) {
-    return {
-      info: `could not rename — "${newName}" already exists or sanitises to the same id as the current session`,
-    };
+    return { info: t("handlers.sessions.renameFailed", { name: newName }) };
   }
-  return {
-    info: `▸ renamed session → "${newName}". Restart the TUI to pick it up under its new name.`,
-  };
+  return { info: t("handlers.sessions.renameInfo", { name: newName }) };
 };
 
 const resume: SlashHandler = (args) => {
   const name = args?.[0]?.trim();
-  if (!name) return { info: "usage: /resume <session-name>  — list with /sessions" };
+  if (!name) return { info: t("handlers.sessions.resumeUsage") };
   const exists = listSessions().some((s) => s.name === name);
-  if (!exists) return { info: `no session named "${name}" — list with /sessions` };
-  return {
-    info: `▸ to resume "${name}", quit and run: reasonix chat --session ${name}\n  (mid-session swap requires a restart so the message log can rewind cleanly)`,
-  };
+  if (!exists) return { info: t("handlers.sessions.resumeNotFound", { name }) };
+  return { info: t("handlers.sessions.resumeInfo", { name }) };
 };
 
 export const handlers: Record<string, SlashHandler> = {

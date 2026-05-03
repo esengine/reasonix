@@ -5,6 +5,7 @@ import { handlers as dashboardHandlers } from "./handlers/dashboard.js";
 import { handlers as editsHandlers } from "./handlers/edits.js";
 import { handlers as initHandlers } from "./handlers/init.js";
 import { handlers as jobsHandlers } from "./handlers/jobs.js";
+import { handlers as languageHandlers } from "./handlers/language.js";
 import { handlers as mcpHandlers } from "./handlers/mcp.js";
 import { handlers as memoryHandlers } from "./handlers/memory.js";
 import { handlers as modelHandlers } from "./handlers/model.js";
@@ -26,6 +27,7 @@ const HANDLERS: Record<string, SlashHandler> = {
   ...editsHandlers,
   ...initHandlers,
   ...jobsHandlers,
+  ...languageHandlers,
   ...mcpHandlers,
   ...memoryHandlers,
   ...modelHandlers,

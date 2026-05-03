@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig.jsx = "react" needs React in value scope for JSX compilation
 import React from "react";
+import { t } from "../../i18n/index.js";
 import type { SlashCommandSpec } from "./slash.js";
 import { COLOR, GLYPH } from "./theme.js";
 
@@ -82,6 +83,9 @@ export function SlashSuggestions({
 function SuggestionRow({ spec, isSelected }: { spec: SlashCommandSpec; isSelected: boolean }) {
   const name = `/${spec.cmd}`;
   const argsSuffix = spec.argsHint ? spec.argsHint : "";
+  const key = `slash.${spec.cmd}.description`;
+  const translated = t(key);
+  const summary = translated === key ? spec.summary : translated;
   return (
     <Box>
       <Text color={isSelected ? COLOR.primary : COLOR.info} bold={isSelected}>
@@ -93,7 +97,7 @@ function SuggestionRow({ spec, isSelected }: { spec: SlashCommandSpec; isSelecte
       <Text dimColor>{argsSuffix.padEnd(14)}</Text>
       <Text>{"  "}</Text>
       <Text color={isSelected ? COLOR.user : COLOR.info} dimColor={!isSelected}>
-        {spec.summary}
+        {summary}
       </Text>
     </Box>
   );
