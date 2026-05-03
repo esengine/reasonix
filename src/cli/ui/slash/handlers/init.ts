@@ -1,10 +1,8 @@
-/** `/init` — resubmits a constrained brief; output flows through the normal edit-review gate. */
-
 import { existsSync } from "node:fs";
 import * as pathMod from "node:path";
+import { t } from "../../../../i18n/index.js";
 import type { SlashHandler } from "../dispatch.js";
 
-/** "STOP after writing" is load-bearing — without it the model burns extra turns on follow-up offers. */
 const INIT_PROMPT = [
   "# Task: Initialize REASONIX.md",
   "",
@@ -66,33 +64,24 @@ const INIT_PROMPT = [
 
 const init: SlashHandler = (args, _loop, ctx) => {
   if (!ctx.codeRoot) {
-    return {
-      info: [
-        "/init only works in code mode (it needs filesystem tools).",
-        "Run `reasonix code [path]` to start a session rooted at the",
-        "project you want to initialize, then run /init.",
-      ].join("\n"),
-    };
+    return { info: t("handlers.init.codeOnly") };
   }
   const force = (args[0] ?? "").toLowerCase() === "force";
   const target = pathMod.join(ctx.codeRoot, "REASONIX.md");
   if (existsSync(target) && !force) {
     return {
       info: [
-        `▸ REASONIX.md already exists at ${target}`,
+        t("handlers.init.exists", { path: target }),
         "",
-        "  /init force   regenerate from scratch (overwrites)",
+        t("handlers.init.existsForce"),
         "",
-        "  Or edit it by hand — it's just markdown. The current file is",
-        "  pinned into the system prompt every launch as-is.",
+        t("handlers.init.existsEdit"),
+        t("handlers.init.existsPinned"),
       ].join("\n"),
     };
   }
   return {
-    info: [
-      "▸ /init — model will scan the project and synthesize REASONIX.md.",
-      "  The result lands as a pending edit; review with /apply or /walk.",
-    ].join("\n"),
+    info: t("handlers.init.info"),
     resubmit: INIT_PROMPT,
   };
 };

@@ -5,23 +5,23 @@ import {
   globalSettingsPath,
   projectSettingsPath,
 } from "../../../../hooks.js";
+import { t } from "../../../../i18n/index.js";
 import { aggregateUsage, defaultUsageLogPath, readUsageLog } from "../../../../telemetry/usage.js";
 import { VERSION, compareVersions, isNpxInstall } from "../../../../version.js";
 import { runDoctorChecks } from "../../../commands/doctor.js";
 import { renderDashboard } from "../../../commands/stats.js";
 import type { SlashHandler } from "../dispatch.js";
 
-/** Async via postDoctor — slash dispatch is sync, doctor checks aren't. */
 const doctor: SlashHandler = (_args, _loop, ctx) => {
   const root = ctx.codeRoot ?? process.cwd();
-  if (!ctx.postDoctor) return { info: "/doctor needs a TUI context (postDoctor wired)." };
+  if (!ctx.postDoctor) return { info: t("handlers.admin.doctorNeedsTui") };
   void (async () => {
     const checks = await runDoctorChecks(root);
     ctx.postDoctor!(
       checks.map((c) => ({ label: c.label.trim(), level: c.level, detail: c.detail })),
     );
   })();
-  return { info: "⚕ Doctor — running health checks…" };
+  return { info: t("handlers.admin.doctorRunning") };
 };
 
 const hooks: SlashHandler = (args, loop, ctx) => {
@@ -29,18 +29,14 @@ const hooks: SlashHandler = (args, loop, ctx) => {
 
   if (sub === "reload") {
     if (!ctx.reloadHooks) {
-      return {
-        info: "/hooks reload is not available in this context (no reload callback wired).",
-      };
+      return { info: t("handlers.admin.hooksReloadUnavailable") };
     }
     const count = ctx.reloadHooks();
-    return { info: `▸ reloaded hooks · ${count} active` };
+    return { info: t("handlers.admin.hooksReloaded", { count }) };
   }
 
   if (sub !== "" && sub !== "list" && sub !== "ls") {
-    return {
-      info: "usage: /hooks            list active hooks\n       /hooks reload     re-read settings.json files",
-    };
+    return { info: t("handlers.admin.hooksUsage") };
   }
 
   const all = loop.hooks;
@@ -48,16 +44,16 @@ const hooks: SlashHandler = (args, loop, ctx) => {
   const globPath = globalSettingsPath();
   if (all.length === 0) {
     const lines = [
-      "no hooks configured.",
+      t("handlers.admin.hooksNone"),
       "",
-      "drop a settings.json with a `hooks` key into either of:",
+      t("handlers.admin.hooksDropHint"),
       ctx.codeRoot
-        ? `  · ${projPath} (project)`
-        : "  · <project>/.reasonix/settings.json (project)",
-      `  · ${globPath} (global)`,
+        ? t("handlers.admin.hooksProject", { path: projPath! })
+        : t("handlers.admin.hooksProjectFallback"),
+      t("handlers.admin.hooksGlobal", { path: globPath }),
       "",
-      "events: PreToolUse, PostToolUse, UserPromptSubmit, Stop",
-      "exit 0 = pass · exit 2 = block (Pre*) · other = warn",
+      t("handlers.admin.hooksEvents"),
+      t("handlers.admin.hooksExitCodes"),
     ];
     return { info: lines.join("\n") };
   }
@@ -66,7 +62,7 @@ const hooks: SlashHandler = (args, loop, ctx) => {
   for (const event of HOOK_EVENTS) grouped.set(event, []);
   for (const h of all) grouped.get(h.event)?.push(h);
 
-  const lines: string[] = [`▸ ${all.length} hook(s) loaded`];
+  const lines: string[] = [t("handlers.admin.hooksLoaded", { count: all.length })];
   for (const event of HOOK_EVENTS) {
     const list = grouped.get(event) ?? [];
     if (list.length === 0) continue;
@@ -77,47 +73,46 @@ const hooks: SlashHandler = (args, loop, ctx) => {
       lines.push(`  [${h.scope}]${match} ${h.command}${desc}`);
     }
   }
-  lines.push("", `sources: project=${projPath ?? "(none — chat mode)"} · global=${globPath}`);
+  lines.push(
+    "",
+    t("handlers.admin.hooksSources", {
+      project: projPath ?? "(none — chat mode)",
+      global: globPath,
+    }),
+  );
   return { info: lines.join("\n") };
 };
 
-/** No in-TUI npm spawn — stdio:inherit corrupts Ink and Windows locks the running binary. */
 const update: SlashHandler = (_args, _loop, ctx) => {
   const latest = ctx.latestVersion ?? null;
-  const lines: string[] = [`current: reasonix ${VERSION}`];
+  const lines: string[] = [t("handlers.admin.updateCurrent", { version: VERSION })];
   if (latest === null) {
-    // Kick off a fresh fetch so a follow-up /update a few seconds
-    // later has a real answer instead of the same pending message.
     ctx.refreshLatestVersion?.();
     lines.push(
-      "latest:  (not yet resolved — background check in flight or offline)",
+      t("handlers.admin.updateLatestPending"),
       "",
-      "triggered a fresh registry fetch — retry `/update` in a few seconds,",
-      "or run `reasonix update` in another terminal to force it synchronously.",
+      t("handlers.admin.updateRetryHint"),
+      t("handlers.admin.updateRetryHint2"),
     );
     return { info: lines.join("\n") };
   }
-  lines.push(`latest:  reasonix ${latest}`);
+  lines.push(t("handlers.admin.updateLatest", { version: latest }));
   const diff = compareVersions(VERSION, latest);
   if (diff >= 0) {
-    lines.push("", "you're on the latest. nothing to do.");
+    lines.push("", t("handlers.admin.updateUpToDate"));
     return { info: lines.join("\n") };
   }
   if (isNpxInstall()) {
-    lines.push(
-      "",
-      "you're running via npx — the next `npx reasonix ...` launch will auto-fetch.",
-      "to force a refresh sooner: `npm cache clean --force`.",
-    );
+    lines.push("", t("handlers.admin.updateNpxHint"), t("handlers.admin.updateNpxForce"));
   } else {
     lines.push(
       "",
-      "to upgrade, exit this session and run:",
-      "  reasonix update           (interactive, dry-run supported via --dry-run)",
-      "  npm install -g reasonix@latest   (direct)",
+      t("handlers.admin.updateUpgradeHint"),
+      t("handlers.admin.updateUpgradeCmd1"),
+      t("handlers.admin.updateUpgradeCmd2"),
       "",
-      "in-session install is deliberately disabled — the npm spawn would",
-      "corrupt this TUI's rendering and Windows can lock the running binary.",
+      t("handlers.admin.updateInSessionDisabled"),
+      t("handlers.admin.updateInSessionDisabled2"),
     );
   }
   return { info: lines.join("\n") };
@@ -129,12 +124,12 @@ const stats: SlashHandler = () => {
   if (records.length === 0) {
     return {
       info: [
-        "no usage data yet.",
+        t("handlers.admin.statsNoData"),
         "",
         `  ${path}`,
         "",
-        "every turn you run here appends one record — this session's turns",
-        "will show up in the dashboard once you send a message.",
+        t("handlers.admin.statsEveryTurn"),
+        t("handlers.admin.statsWillAppear"),
       ].join("\n"),
     };
   }

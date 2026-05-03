@@ -11,6 +11,8 @@ export interface SlashResult {
   openSessionsPicker?: boolean;
   /** Open the MCP browser modal — used by `/mcp` slash in interactive contexts. */
   openMcpBrowser?: boolean;
+  /** Open the arg-completer picker for this command (e.g. `/language` → language picker). */
+  openArgPickerFor?: string;
   /** Exit the app. */
   exit?: boolean;
   /** Clear the visible history. */
@@ -83,7 +85,9 @@ export interface SlashContext {
     balance?: number;
     elapsedMs?: number;
   }) => void;
+  dispatch?: (event: import("../state/events.js").AgentEvent) => void;
   setPlanMode?: (on: boolean) => void;
+
   /** `/apply-plan` clears the picker so its own `resubmit` doesn't double-fire approval. */
   clearPendingPlan?: () => void;
   reloadHooks?: () => number;

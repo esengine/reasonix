@@ -106,6 +106,9 @@ export function reduce(state: AgentState, event: AgentEvent): AgentState {
         status: { ...state.status, network: event.state, networkDetail: event.detail },
       };
 
+    case "language.change":
+      return { ...state, lang: event.lang as any };
+
     case "session.update":
       return { ...state, status: { ...state.status, ...event.patch } };
 

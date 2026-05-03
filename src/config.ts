@@ -3,6 +3,7 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { LanguageCode } from "./i18n/types.js";
 import {
   type IndexUserConfig,
   type ResolvedIndexConfig,
@@ -20,6 +21,7 @@ export type ReasoningEffort = "high" | "max";
 export interface ReasonixConfig {
   apiKey?: string;
   baseUrl?: string;
+  lang?: LanguageCode;
   preset?: PresetName;
   editMode?: EditMode;
   editModeHintShown?: boolean;
@@ -65,6 +67,18 @@ export function writeConfig(cfg: ReasonixConfig, path: string = defaultConfigPat
   } catch {
     /* ignore on platforms without chmod */
   }
+}
+
+/** Resolve the language from config file. */
+export function loadLanguage(path: string = defaultConfigPath()): LanguageCode | undefined {
+  return readConfig(path).lang;
+}
+
+/** Persist the language so it survives a relaunch. */
+export function saveLanguage(lang: LanguageCode, path: string = defaultConfigPath()): void {
+  const cfg = readConfig(path);
+  cfg.lang = lang;
+  writeConfig(cfg, path);
 }
 
 /** Resolve the API key from env var first, then the config file. */

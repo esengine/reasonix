@@ -3,6 +3,8 @@
 import { Box, Text, useStdout } from "ink";
 // biome-ignore lint/style/useImportType: tsconfig jsx=react needs React in value scope for JSX compilation
 import React from "react";
+import { stringWidth } from "../../frame/width.js";
+import { t } from "../../i18n/index.js";
 import { FG, TONE } from "./theme/tokens.js";
 
 export interface WelcomeBannerProps {
@@ -10,11 +12,10 @@ export interface WelcomeBannerProps {
   inCodeMode?: boolean;
   /** Live URL of the embedded dashboard, or null when it isn't running. */
   dashboardUrl?: string | null;
+  /** Bumped on language change; forces re-render so t() picks up new locale. */
+  languageVersion?: number;
 }
 
-const TAGLINE_CHAT = "DeepSeek-native agent";
-const TAGLINE_CODE = "DeepSeek-native coding agent";
-const TAGLINE_SUB = "cache-first · flash-first";
 const HINTS = ["/help", "/init", "/memory", "/cost"] as const;
 const BOX_INNER_WIDTH = 35;
 
@@ -24,55 +25,42 @@ export function WelcomeBanner({
 }: WelcomeBannerProps): React.ReactElement {
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
-  const tagline = inCodeMode ? TAGLINE_CODE : TAGLINE_CHAT;
+  const tagline = inCodeMode ? t("ui.taglineCode") : t("ui.taglineChat");
+  const taglineSub = t("ui.taglineSub");
   const boxWidth = BOX_INNER_WIDTH + 2;
   const boxIndent = Math.max(2, Math.floor((cols - boxWidth) / 2));
-  const top = `╔${"═".repeat(BOX_INNER_WIDTH)}╗`;
-  const bot = `╚${"═".repeat(BOX_INNER_WIDTH)}╝`;
+  const pad = " ".repeat(boxIndent);
+
+  const emptyRow = `║${" ".repeat(BOX_INNER_WIDTH)}║`;
+  const rows: Array<{ text: string; color?: string; bold?: boolean }> = [
+    { text: `╔${"═".repeat(BOX_INNER_WIDTH)}╗`, color: TONE.brand },
+    { text: emptyRow, color: TONE.brand },
+    { text: `║${centerInside("◈  REASONIX", BOX_INNER_WIDTH)}║`, color: TONE.brand, bold: true },
+    { text: emptyRow, color: TONE.brand },
+    { text: `║${centerInside(tagline, BOX_INNER_WIDTH)}║`, color: TONE.brand },
+    { text: `║${centerInside(taglineSub, BOX_INNER_WIDTH)}║`, color: TONE.brand },
+    { text: emptyRow, color: TONE.brand },
+    { text: `╚${"═".repeat(BOX_INNER_WIDTH)}╝`, color: TONE.brand },
+  ];
+
   const hintsRow = HINTS.join("   ·   ");
-  const hintsIndent = Math.max(2, Math.floor((cols - hintsRow.length) / 2));
-  const startTextRaw = "type a message to start your session";
-  const startIndent = Math.max(2, Math.floor((cols - startTextRaw.length) / 2));
+  const hintsIndent = Math.max(2, Math.floor((cols - stringWidth(hintsRow)) / 2));
+  const startTextRaw = t("ui.startSessionHint");
+  const startIndent = Math.max(2, Math.floor((cols - stringWidth(startTextRaw)) / 2));
 
   return (
     <Box flexDirection="column" marginY={1}>
-      <BoxRow indent={boxIndent}>
-        <Text color={TONE.brand}>{top}</Text>
-      </BoxRow>
-      <BoxRow indent={boxIndent}>
-        <BoxLine pad={BOX_INNER_WIDTH}>{""}</BoxLine>
-      </BoxRow>
-      <BoxRow indent={boxIndent}>
-        <BoxLine pad={BOX_INNER_WIDTH}>
-          <Text bold color={TONE.brand}>
-            {centerInside("◈  REASONIX", BOX_INNER_WIDTH)}
-          </Text>
-        </BoxLine>
-      </BoxRow>
-      <BoxRow indent={boxIndent}>
-        <BoxLine pad={BOX_INNER_WIDTH}>{""}</BoxLine>
-      </BoxRow>
-      <BoxRow indent={boxIndent}>
-        <BoxLine pad={BOX_INNER_WIDTH}>
-          <Text color={FG.sub}>{centerInside(tagline, BOX_INNER_WIDTH)}</Text>
-        </BoxLine>
-      </BoxRow>
-      <BoxRow indent={boxIndent}>
-        <BoxLine pad={BOX_INNER_WIDTH}>
-          <Text color={FG.meta}>{centerInside(TAGLINE_SUB, BOX_INNER_WIDTH)}</Text>
-        </BoxLine>
-      </BoxRow>
-      <BoxRow indent={boxIndent}>
-        <BoxLine pad={BOX_INNER_WIDTH}>{""}</BoxLine>
-      </BoxRow>
-      <BoxRow indent={boxIndent}>
-        <Text color={TONE.brand}>{bot}</Text>
-      </BoxRow>
+      {rows.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static list, never reordered
+        <Text key={i} color={row.color} bold={row.bold}>
+          {`${pad}${row.text}`}
+        </Text>
+      ))}
 
-      <Box marginTop={1}>
-        <Text>{" ".repeat(startIndent)}</Text>
-        <Text color={FG.sub}>{startTextRaw}</Text>
-      </Box>
+      <Text color={FG.sub}>
+        {" ".repeat(startIndent)}
+        {startTextRaw}
+      </Text>
 
       <Box marginTop={1}>
         <Text>{" ".repeat(hintsIndent)}</Text>
@@ -96,49 +84,10 @@ export function WelcomeBanner({
   );
 }
 
-function BoxRow({
-  indent,
-  children,
-}: {
-  indent: number;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <Box>
-      <Text>{" ".repeat(indent)}</Text>
-      {children}
-    </Box>
-  );
-}
-
-function BoxLine({
-  pad,
-  children,
-}: {
-  pad: number;
-  children?: React.ReactNode;
-}): React.ReactElement {
-  if (children === "" || children === undefined) {
-    return (
-      <>
-        <Text color={TONE.brand}>{"║"}</Text>
-        <Text>{" ".repeat(pad)}</Text>
-        <Text color={TONE.brand}>{"║"}</Text>
-      </>
-    );
-  }
-  return (
-    <>
-      <Text color={TONE.brand}>{"║"}</Text>
-      {children}
-      <Text color={TONE.brand}>{"║"}</Text>
-    </>
-  );
-}
-
 function centerInside(text: string, pad: number): string {
-  if (text.length >= pad) return text.slice(0, pad);
-  const left = Math.floor((pad - text.length) / 2);
-  const right = pad - text.length - left;
+  const w = stringWidth(text);
+  if (w >= pad) return text;
+  const left = Math.floor((pad - w) / 2);
+  const right = pad - w - left;
   return `${" ".repeat(left)}${text}${" ".repeat(right)}`;
 }
