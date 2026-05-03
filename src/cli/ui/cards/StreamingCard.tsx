@@ -26,7 +26,7 @@ export function StreamingCard({ card }: { card: StreamingCardData }): React.Reac
 
   if (card.done && !card.aborted) {
     return (
-      <CardBox color={FG.faint}>
+      <CardBox color={CARD.streaming.color}>
         <Box paddingLeft={BODY_PAD} flexDirection="column">
           <Markdown text={card.text} />
         </Box>
