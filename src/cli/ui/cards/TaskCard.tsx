@@ -41,7 +41,7 @@ export function TaskCard({ card }: { card: TaskCardData }): React.ReactElement {
         tone="task"
         glyph={TASK_GLYPH[card.status]}
         title={`Step ${card.index} of ${card.total} · ${card.title}`}
-        meta={`${elapsed} · `}
+        meta={`${elapsed} ·`}
         trailing={<Text color={TASK_COLOR[card.status]}>{card.status}</Text>}
         barColor={TASK_COLOR[card.status]}
       />

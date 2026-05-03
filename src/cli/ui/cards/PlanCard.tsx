@@ -24,14 +24,11 @@ const STATUS_COLOR: Record<PlanStep["status"], string> = {
   skipped: FG.faint,
 };
 
-const ACTIVE_PLAN_FOOTER = "[r] revise   [s] skip step   [↵] expand item";
-
 export function PlanCard({ card }: { card: PlanCardData }): React.ReactElement {
   const doneCount = card.steps.filter((s) => s.status === "done").length;
   const variantTag =
     card.variant === "resumed" ? " · resumed" : card.variant === "replay" ? " · ⏪ archive" : "";
   const meta = `${variantTag}  · ${doneCount} of ${card.steps.length} done`;
-  const showFooter = card.variant === "active";
 
   return (
     <Box flexDirection="column">
@@ -39,7 +36,7 @@ export function PlanCard({ card }: { card: PlanCardData }): React.ReactElement {
       <BarRow tone="plan" indent={0} />
       {card.steps.map((step, i) => {
         const isActive = step.status === "running";
-        const titleColor = isActive ? FG.strong : step.status === "queued" ? FG.sub : FG.sub;
+        const titleColor = isActive ? FG.strong : FG.sub;
         return (
           <BarRow key={step.id} tone="plan">
             <Text color={STATUS_COLOR[step.status]}>{`[${STATUS_GLYPH[step.status]}]`}</Text>
@@ -50,14 +47,6 @@ export function PlanCard({ card }: { card: PlanCardData }): React.ReactElement {
           </BarRow>
         );
       })}
-      {showFooter && (
-        <>
-          <BarRow tone="plan" indent={0} />
-          <BarRow tone="plan">
-            <Text color={FG.meta}>{ACTIVE_PLAN_FOOTER}</Text>
-          </BarRow>
-        </>
-      )}
     </Box>
   );
 }

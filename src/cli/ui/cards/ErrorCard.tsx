@@ -3,7 +3,7 @@ import { Box, Text } from "ink";
 import React from "react";
 import { BarRow } from "../primitives/BarRow.js";
 import type { ErrorCard as ErrorCardData } from "../state/cards.js";
-import { CARD, FG, TONE } from "../theme/tokens.js";
+import { CARD, FG } from "../theme/tokens.js";
 import { CardHeader } from "./CardHeader.js";
 
 const STACK_TAIL = 5;
@@ -48,13 +48,6 @@ export function ErrorCard({ card }: { card: ErrorCardData }): React.ReactElement
           ))}
         </>
       )}
-      <BarRow tone="error" indent={0} />
-      <BarRow tone="error">
-        <Text bold color={TONE.err}>
-          {"[r] retry"}
-        </Text>
-        <Text color={FG.sub}>{"   [s] skip"}</Text>
-      </BarRow>
     </Box>
   );
 }

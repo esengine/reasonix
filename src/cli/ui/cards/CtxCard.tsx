@@ -3,7 +3,8 @@ import { Box, Text } from "ink";
 import React from "react";
 import { BarRow } from "../primitives/BarRow.js";
 import type { CtxCard as CtxCardData } from "../state/cards.js";
-import { CARD, FG, TONE } from "../theme/tokens.js";
+import { FG, TONE } from "../theme/tokens.js";
+import { CardHeader } from "./CardHeader.js";
 
 const BAR_CELLS = 32;
 
@@ -24,18 +25,11 @@ export function CtxCard({ card }: { card: CtxCardData }): React.ReactElement {
   const cap = Math.max(1, card.ctxMax);
   const used = card.systemTokens + card.toolsTokens + card.logTokens + card.inputTokens;
   const usedPct = (used / cap) * 100;
+  const meta = `· ${used.toLocaleString()} / ${cap.toLocaleString()} (${usedPct.toFixed(1)}%)`;
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="row">
-        <Text>{"  "}</Text>
-        <Text bold color={CARD.usage.color}>
-          {"⌘ Context window"}
-        </Text>
-        <Text color={FG.faint}>
-          {`  · ${used.toLocaleString()} / ${cap.toLocaleString()} (${usedPct.toFixed(1)}%)`}
-        </Text>
-      </Box>
+      <CardHeader tone="usage" glyph="⌘" title="Context window" meta={meta} />
       <BarRow tone="usage" indent={0} />
       {row("system", card.systemTokens, card.systemTokens / cap, TONE.brand)}
       {row("tools", card.toolsTokens, card.toolsTokens / cap, TONE.warn)}
