@@ -37,6 +37,8 @@ export function StreamingCard({ card }: { card: StreamingCardData }): React.Reac
   const allLines = card.text.length > 0 ? card.text.split("\n") : [""];
   const visualLines = allLines.flatMap((l) => wrapToCells(l, lineCells));
   const visible = visualLines.slice(-STREAMING_PREVIEW_LINES);
+  const padCount = Math.max(0, STREAMING_PREVIEW_LINES - visible.length);
+  const startIndex = allLines.length - visible.length;
 
   return (
     <CardBox color={card.aborted ? FG.faint : CARD.streaming.color}>
@@ -50,13 +52,12 @@ export function StreamingCard({ card }: { card: StreamingCardData }): React.Reac
         </Box>
       )}
       {visible.map((line, i) => (
-        <Box
-          key={`${card.id}:${allLines.length - visible.length + i}`}
-          paddingLeft={BODY_PAD}
-          flexDirection="row"
-        >
+        <Box key={`${card.id}:${startIndex + i}`} paddingLeft={BODY_PAD} flexDirection="row">
           <Text color={card.aborted ? FG.meta : FG.body}>{clipToCells(line, lineCells)}</Text>
         </Box>
+      ))}
+      {Array.from({ length: padCount }, (_, i) => (
+        <Box key={`${card.id}:pad:${i}`} height={1} />
       ))}
       {card.aborted && (
         <Box paddingLeft={BODY_PAD}>

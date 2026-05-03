@@ -103,7 +103,15 @@ interface BodyProps {
 function StreamingPreview({ card, allLines, lineCells }: BodyProps): React.ReactElement {
   const visualLines = allLines.flatMap((l) => wrapToCells(l, lineCells));
   const visible = visualLines.slice(-STREAMING_PREVIEW_LINES);
-  return <BodyLines card={card} lines={visible} lineCells={lineCells} cursorOnLast />;
+  const padCount = Math.max(0, STREAMING_PREVIEW_LINES - visible.length);
+  return (
+    <>
+      <BodyLines card={card} lines={visible} lineCells={lineCells} cursorOnLast />
+      {Array.from({ length: padCount }, (_, i) => (
+        <Box key={`${card.id}:pad:${i}`} height={1} />
+      ))}
+    </>
+  );
 }
 
 function SettledPreview({ card, allLines, lineCells }: BodyProps): React.ReactElement {
